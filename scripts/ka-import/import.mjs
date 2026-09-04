@@ -4,7 +4,13 @@
  * Step 2 of the KA import pipeline.
  * Reads ka-session.json (from get-session.mjs) and ka-algebra.json (topic tree),
  * enriches all items via concurrent HTTP requests to KA's internal GraphQL API,
- * then writes Concepts and Resources to MongoDB.
+ * then writes the full 4-level hierarchy to MongoDB:
+ *
+ *   Strand → Unit → Topic → Concept
+ *
+ * Each Concept is one KA content item (video or article), with its teaching
+ * video/article as a Resource in its lessonPlan.
+ * KA exercises become practice-test Resources linked to the parent Topic.
  *
  * Run: node import.mjs [--subject math/algebra] [--mongo mongodb://localhost:27017] [--db prodigy]
  *
@@ -13,6 +19,14 @@
  *   - ka-algebra.json exists (topic tree scraped by get-topic-tree.mjs)
  *   - MongoDB running locally
  *   - npm install mongodb playwright
+ *
+ * What is NOT imported (requires manual authoring or a separate script):
+ *   - probingTree          — authored manually per concept
+ *   - misconceptions       — authored manually
+ *   - masteryQuestions     — populated by question-import.mjs (exercise question stems)
+ *   - boards, classApplicableTo — mapped manually
+ *   - lessonPlan step types (ido/wedo/youdo) — all imported as "ido"
+ *   - Question answers     — KA withholds; must be filled manually or via LLM
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -25,10 +39,10 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SESSION_FILE = join(__dir, 'ka-session.json');
-const TREE_FILE = join(__dir, 'ka-algebra.json');
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
-const DB_NAME = process.env.DB_NAME || 'prodigy';
-const CONCURRENCY = 10;
+const TREE_FILE    = join(__dir, 'ka-algebra.json');
+const MONGO_URL    = process.env.MONGO_URL || 'mongodb://localhost:27017';
+const DB_NAME      = process.env.DB_NAME   || 'prodigy';
+const CONCURRENCY  = 10;
 
 if (!existsSync(SESSION_FILE)) {
   console.error('ka-session.json not found — run get-session.mjs first');
@@ -40,19 +54,15 @@ if (!existsSync(TREE_FILE)) {
 }
 
 // ── Session + HTTP fetcher ────────────────────────────────────────────────────
-const session = JSON.parse(readFileSync(SESSION_FILE, 'utf8'));
-const cookieHeader = session.cookies.map(c => `${c.name}=${c.value}`).join('; ');
-const capturedUrl = new URL(session.sampleRequest.url);
-const pcv = capturedUrl.searchParams.get('pcv');
-const hash = capturedUrl.searchParams.get('hash');
-const ua = session.sampleRequest.headers['user-agent'];
+const session       = JSON.parse(readFileSync(SESSION_FILE, 'utf8'));
+const cookieHeader  = session.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+const capturedUrl   = new URL(session.sampleRequest.url);
+const pcv           = capturedUrl.searchParams.get('pcv');
+const hash          = capturedUrl.searchParams.get('hash');
+const ua            = session.sampleRequest.headers['user-agent'];
 
 /**
  * Fetches full content detail for a single KA item via the internal GraphQL API.
- * Uses session cookies captured by get-session.mjs — no browser needed.
- *
- * @param {string} kaPath  e.g. "math/algebra/.../v/origins-of-algebra"
- * @returns {object|null}  content node from GraphQL response
  */
 function fetchContent(kaPath) {
   return new Promise((resolve) => {
@@ -106,11 +116,12 @@ function toKaPath(url) {
 // ── Load topic tree ───────────────────────────────────────────────────────────
 const tree = JSON.parse(readFileSync(TREE_FILE, 'utf8'));
 
+// Flatten all items for concurrent enrichment
 const allItems = [];
 for (const unit of tree.units) {
   for (const lesson of unit.lessons) {
     for (const item of lesson.items) {
-      allItems.push({ ...item, unitTitle: unit.title, unitSlug: unit.slug, lessonTitle: lesson.title, lessonSlug: lesson.slug });
+      allItems.push({ ...item, unitSlug: unit.slug, lessonSlug: lesson.slug });
     }
   }
 }
@@ -128,100 +139,196 @@ const enriched = await runConcurrent(allItems, CONCURRENCY, async item => {
 
 console.log(`✓ Enriched in ${((Date.now() - start) / 1000).toFixed(1)}s`);
 
+// Build slug → detail map for fast lookup
+const detailMap = {};
+for (const item of enriched) {
+  detailMap[item.slug] = item.detail;
+}
+
 // ── MongoDB ───────────────────────────────────────────────────────────────────
 const client = new MongoClient(MONGO_URL);
 await client.connect();
 const db = client.db(DB_NAME);
 
+const strandsColl   = db.collection('strands');
+const unitsColl     = db.collection('units');
+const topicsColl    = db.collection('topics');
+const conceptsColl  = db.collection('concepts');
 const resourcesColl = db.collection('resources');
-const conceptsColl = db.collection('concepts');
 
 // Clear previous KA import to allow re-runs
-await resourcesColl.deleteMany({ source: 'khan-academy' });
+await strandsColl.deleteMany({ source: 'khan-academy' });
+await unitsColl.deleteMany({ source: 'khan-academy' });
+await topicsColl.deleteMany({ source: 'khan-academy' });
 await conceptsColl.deleteMany({ source: 'khan-academy' });
+await resourcesColl.deleteMany({ source: 'khan-academy' });
+console.log('✓ Cleared previous KA import');
 
-// ── Insert Resources ──────────────────────────────────────────────────────────
-const resourceDocs = enriched.map(item => {
-  const d = item.detail;
-  const ytId = youtubeId(d?.downloadUrls);
-  return {
-    source: 'khan-academy',
-    title: d?.translatedTitle || item.title,
-    type: item.type === 'Video' ? 'teaching-video'
-        : item.type === 'Exercise' ? 'practice-test'
-        : 'article',
-    description: d?.translatedDescription || item.description || null,
-    url: item.url,
-    youtubeId: ytId,
-    youtubeUrl: ytId ? `https://www.youtube.com/watch?v=${ytId}` : null,
-    duration: d?.duration ?? null,
-    thumbnail: d?.imageUrl ?? null,
-    // Key moments from KA map directly to CFU marker timestamps
-    cfuMarkers: (d?.keyMoments || []).map(m => ({
-      timestamp: m.startOffset,
-      label: m.label,
-      question: null,   // to be linked manually or via question import
-    })),
-    kaSlug: item.slug,
-    unitSlug: item.unitSlug,
-    lessonSlug: item.lessonSlug,
-  };
-});
-
-const resourceInsert = await resourcesColl.insertMany(resourceDocs);
-console.log(`✓ Inserted ${resourceInsert.insertedCount} resources`);
-
-// Build slug → ObjectId map for linking
-const resourceIdMap = {};
-resourceDocs.forEach((doc, i) => {
-  resourceIdMap[doc.kaSlug] = resourceInsert.insertedIds[i];
-});
-
-// ── Insert Concepts (one per KA unit) ─────────────────────────────────────────
-// Prerequisites = previous unit in sequence (unit-order progression)
-const conceptDocs = tree.units.map((unit, idx) => ({
+// ── 1. Strand ─────────────────────────────────────────────────────────────────
+const strandResult = await strandsColl.insertOne({
+  title: 'Algebra 1',
+  subject: 'Mathematics',
   source: 'khan-academy',
+  kaSlug: 'algebra',
+  weight: null,
+});
+const strandId = strandResult.insertedId;
+console.log(`✓ Inserted strand: Algebra 1`);
+
+// ── 2. Units ──────────────────────────────────────────────────────────────────
+const unitDocs = tree.units.map((unit, idx) => ({
   title: unit.title,
-  kaSlug: unit.slug,
   description: unit.description || null,
-  lessonPlan: unit.lessons.map(lesson => ({
-    title: lesson.title,
-    kaSlug: lesson.slug,
-    type: 'ido',          // all imported as ido — to be refined manually
-    instruction: null,
-    resources: lesson.items.map(item => resourceIdMap[item.slug]).filter(Boolean),
-    learningIndicator: null,
-  })),
-  prerequisites: idx > 0 ? [{ kaSlug: tree.units[idx - 1].slug }] : [],
-  nextConcepts: idx < tree.units.length - 1 ? [{ kaSlug: tree.units[idx + 1].slug }] : [],
-  boards: [],
-  classApplicableTo: [],
-  questions: [],
-  misconceptions: [],
+  kaSlug: unit.slug,
+  source: 'khan-academy',
+  strand: strandId,
+  order: idx + 1,
+  prerequisites: [],  // resolved after insert
 }));
+const unitResult = await unitsColl.insertMany(unitDocs);
 
-const conceptInsert = await conceptsColl.insertMany(conceptDocs);
-console.log(`✓ Inserted ${conceptInsert.insertedCount} concepts`);
-
-// Resolve kaSlug references → ObjectIds
-const slugToId = {};
-conceptDocs.forEach((doc, i) => { slugToId[doc.kaSlug] = conceptInsert.insertedIds[i]; });
-
-for (const doc of conceptDocs) {
-  await conceptsColl.updateOne(
-    { kaSlug: doc.kaSlug },
-    {
-      $set: {
-        prerequisites: doc.prerequisites.map(p => slugToId[p.kaSlug]).filter(Boolean),
-        nextConcepts: doc.nextConcepts.map(p => slugToId[p.kaSlug]).filter(Boolean),
-      },
-    }
+// Resolve unit prerequisites (sequential chain: unit[i] prereq = unit[i-1])
+for (let i = 1; i < tree.units.length; i++) {
+  await unitsColl.updateOne(
+    { _id: unitResult.insertedIds[i] },
+    { $set: { prerequisites: [unitResult.insertedIds[i - 1]] } }
   );
 }
-console.log('✓ Resolved prerequisite links');
+
+// Slug → ObjectId map for units
+const unitSlugToId = {};
+tree.units.forEach((unit, idx) => { unitSlugToId[unit.slug] = unitResult.insertedIds[idx]; });
+console.log(`✓ Inserted ${unitResult.insertedCount} units`);
+
+// ── 3. Topics + Concepts + Resources ─────────────────────────────────────────
+let totalTopics   = 0;
+let totalConcepts = 0;
+let totalResources = 0;
+
+for (const unit of tree.units) {
+  const unitId = unitSlugToId[unit.slug];
+
+  for (let lessonIdx = 0; lessonIdx < unit.lessons.length; lessonIdx++) {
+    const lesson = unit.lessons[lessonIdx];
+
+    // Separate teaching items (video/article) from exercises
+    const teachingItems  = lesson.items.filter(item => item.type !== 'Exercise');
+    const exerciseItems  = lesson.items.filter(item => item.type === 'Exercise');
+
+    // Insert Topic
+    const topicDoc = {
+      title: lesson.title,
+      description: null,
+      kaSlug: lesson.slug,
+      source: 'khan-academy',
+      unit: unitId,
+      order: lessonIdx + 1,
+      probingTree: null,
+      practiceTests: [],  // populated below after exercise resources are inserted
+    };
+    const topicResult = await topicsColl.insertOne(topicDoc);
+    const topicId = topicResult.insertedId;
+    totalTopics++;
+
+    // Insert Resource + Concept for each teaching item (video or article)
+    const conceptIds = [];
+    for (let itemIdx = 0; itemIdx < teachingItems.length; itemIdx++) {
+      const item   = teachingItems[itemIdx];
+      const detail = detailMap[item.slug];
+      const ytId   = youtubeId(detail?.downloadUrls);
+
+      // Resource
+      const resourceDoc = {
+        source: 'khan-academy',
+        title: detail?.translatedTitle || item.title,
+        type: item.type === 'Video' ? 'teaching-video' : 'article',
+        description: detail?.translatedDescription || null,
+        url: item.url,
+        kaSlug: item.slug,
+        youtubeId: ytId,
+        youtubeUrl: ytId ? `https://www.youtube.com/watch?v=${ytId}` : null,
+        duration: detail?.duration ?? null,
+        thumbnail: detail?.imageUrl ?? null,
+        cfuMarkers: (detail?.keyMoments || []).map(m => ({
+          timestamp: m.startOffset,
+          label: m.label,
+          question: null,
+        })),
+      };
+      const resourceResult = await resourcesColl.insertOne(resourceDoc);
+      totalResources++;
+
+      // Concept
+      const conceptDoc = {
+        title: detail?.translatedTitle || item.title,
+        kaSlug: item.slug,
+        source: 'khan-academy',
+        topic: topicId,
+        order: itemIdx + 1,
+        prerequisites: itemIdx > 0 ? [conceptIds[itemIdx - 1]] : [],
+        nextConcepts: [],
+        boards: [],
+        classApplicableTo: [],
+        conceptWeightage: null,
+        misconceptions: [],
+        probingTree: null,
+        masteryQuestions: [],
+        examQuestions: [],
+        lessonPlan: [
+          {
+            type: 'ido',
+            instruction: null,
+            resources: [resourceResult.insertedId],
+            learningIndicator: null,
+          },
+        ],
+      };
+      const conceptResult = await conceptsColl.insertOne(conceptDoc);
+      conceptIds.push(conceptResult.insertedId);
+      totalConcepts++;
+    }
+
+    // Update nextConcepts for sequential chain within topic
+    for (let i = 0; i < conceptIds.length - 1; i++) {
+      await conceptsColl.updateOne(
+        { _id: conceptIds[i] },
+        { $set: { nextConcepts: [conceptIds[i + 1]] } }
+      );
+    }
+
+    // Insert exercise Resources, link to topic.practiceTests
+    const practiceTestIds = [];
+    for (const item of exerciseItems) {
+      const detail = detailMap[item.slug];
+      const exerciseDoc = {
+        source: 'khan-academy',
+        title: detail?.translatedTitle || item.title,
+        type: 'practice-test',
+        description: detail?.translatedDescription || null,
+        url: item.url,
+        kaSlug: item.slug,
+        questions: [],  // populated by question-import.mjs
+      };
+      const exResult = await resourcesColl.insertOne(exerciseDoc);
+      practiceTestIds.push(exResult.insertedId);
+      totalResources++;
+    }
+
+    if (practiceTestIds.length > 0) {
+      await topicsColl.updateOne(
+        { _id: topicId },
+        { $set: { practiceTests: practiceTestIds } }
+      );
+    }
+  }
+}
 
 await client.close();
 
 console.log(`\n✅ Import complete — database: ${DB_NAME}`);
-console.log(`   concepts:  ${conceptInsert.insertedCount}`);
-console.log(`   resources: ${resourceInsert.insertedCount}`);
+console.log(`   strand:    1`);
+console.log(`   units:     ${unitResult.insertedCount}`);
+console.log(`   topics:    ${totalTopics}`);
+console.log(`   concepts:  ${totalConcepts}`);
+console.log(`   resources: ${totalResources}`);
+console.log(`\nNext step: run question-import.mjs to fetch exercise question stems from KA.`);

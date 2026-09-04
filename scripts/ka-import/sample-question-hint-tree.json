@@ -1,0 +1,157 @@
+{
+  "_comment": "Question: x - 5y = -15, complete the pair ( ___, -2 ). Answer: x = -25",
+
+  "type": "perseus",
+  "difficultyLevel": "mots",
+
+  "perseusContent": {
+    "content": "$x-5y=-15$\n\n**Complete the missing value in the solution to the equation.**\n\n$($[[☃ numeric-input 1]]$,\\ -2)$",
+    "widgets": {
+      "numeric-input 1": {
+        "type": "numeric-input",
+        "graded": true,
+        "options": {
+          "answers": [{ "status": "correct", "value": -25 }],
+          "labelText": "x ="
+        }
+      }
+    },
+    "hints": []
+  },
+
+  "hints": [
+    {
+      "probe": "In the pair ( ___, -2 ), what does -2 represent — is it the value of x or the value of y?",
+      "idealAnswer": "y",
+
+      "ifCorrect": {
+        "type": "steps",
+        "steps": [
+          {
+            "probe": "Right! So y = -2. Substitute y = -2 into the equation: x - 5×(-2) = -15. What does the left side simplify to?",
+            "idealAnswer": "x + 10",
+
+            "ifCorrect": {
+              "type": "steps",
+              "steps": [
+                {
+                  "probe": "Great — so now you have x + 10 = -15. What is x?",
+                  "idealAnswer": "-25",
+
+                  "ifCorrect": {
+                    "type": "question",
+                    "_comment": "Route back to the original question — child should now answer -25"
+                  },
+
+                  "ifWrong": {
+                    "type": "inline",
+                    "content": "To solve x + 10 = -15, subtract 10 from both sides:\n\nx + 10 - 10 = -15 - 10\nx = -25",
+                    "thenAsk": {
+                      "probe": "Now try: if x + 10 = -15, what is x?",
+                      "idealAnswer": "-25",
+                      "ifCorrect": { "type": "question" },
+                      "ifWrong": {
+                        "type": "resource",
+                        "resourceId": "6a9318ae6d16fa023d155ba5",
+                        "title": "Completing solutions to 2-variable equations",
+                        "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/graphing-solutions-to-2-variable-linear-equations-1",
+                        "youtubeUrl": "https://www.youtube.com/watch?v=EHR-YDwrrhM"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+
+            "ifWrong": {
+              "type": "inline",
+              "content": "When y = -2, replace every y with -2:\n\nx - 5×(-2) = -15\n\nRemember: 5 × (-2) = -10, and subtracting -10 is the same as adding 10.\n\nSo: x + 10 = -15",
+              "thenAsk": {
+                "probe": "Now that you know x + 10 = -15, what is x?",
+                "idealAnswer": "-25",
+                "ifCorrect": { "type": "question" },
+                "ifWrong": {
+                  "type": "resource",
+                  "resourceId": "6a9318ae6d16fa023d155ba5",
+                  "title": "Completing solutions to 2-variable equations",
+                  "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/graphing-solutions-to-2-variable-linear-equations-1",
+                  "youtubeUrl": "https://www.youtube.com/watch?v=EHR-YDwrrhM"
+                }
+              }
+            }
+          }
+        ]
+      },
+
+      "ifWrong": {
+        "type": "steps",
+        "steps": [
+          {
+            "probe": "Let's try something simpler. In the equation x - 5y = -15, if x = 0, what is y?",
+            "idealAnswer": "3",
+            "_solveNote": "0 - 5y = -15 → -5y = -15 → y = 3",
+
+            "ifCorrect": {
+              "_comment": "Child can substitute — they just don't know what the tuple (x, y) means",
+              "type": "resource",
+              "resourceId": "6a9318ae6d16fa023d155ba2",
+              "title": "Solutions to 2-variable equations",
+              "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/checking-ordered-pair-solutions-to-equations-1",
+              "youtubeUrl": "https://www.youtube.com/watch?v=qk69pR91R00",
+              "_teaches": "What (x, y) pairs / ordered pairs mean",
+              "thenAsk": {
+                "probe": "In the pair ( ___, -2 ), which value goes in the blank — x or y?",
+                "idealAnswer": "x",
+                "ifCorrect": {
+                  "type": "steps",
+                  "steps": [
+                    {
+                      "probe": "Exactly — x is the blank. We know y = -2. Substitute into x - 5y = -15 to find x.",
+                      "idealAnswer": "-25",
+                      "ifCorrect": { "type": "question" },
+                      "ifWrong": {
+                        "type": "resource",
+                        "resourceId": "6a9318ae6d16fa023d155ba5",
+                        "title": "Completing solutions to 2-variable equations",
+                        "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/graphing-solutions-to-2-variable-linear-equations-1",
+                        "youtubeUrl": "https://www.youtube.com/watch?v=EHR-YDwrrhM"
+                      }
+                    }
+                  ]
+                },
+                "ifWrong": { "type": "question" }
+              }
+            },
+
+            "ifWrong": {
+              "_comment": "Child cannot substitute at all — needs the foundational concept",
+              "type": "resource",
+              "resourceId": "6a9318ae6d16fa023d155ba1",
+              "title": "Two-variable linear equations intro",
+              "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/2-variable-linear-equations-graphs",
+              "youtubeUrl": "https://www.youtube.com/watch?v=AOxMJRtoR2A",
+              "_teaches": "What x and y mean in a two-variable equation, and how to substitute",
+              "thenAsk": {
+                "probe": "In x - 5y = -15, if x = 0, what is y?",
+                "idealAnswer": "3",
+                "ifCorrect": {
+                  "type": "resource",
+                  "resourceId": "6a9318ae6d16fa023d155ba2",
+                  "title": "Solutions to 2-variable equations",
+                  "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs/x2f8bb11595b61c86:two-variable-linear-equations-intro/v/checking-ordered-pair-solutions-to-equations-1",
+                  "youtubeUrl": "https://www.youtube.com/watch?v=qk69pR91R00"
+                },
+                "ifWrong": {
+                  "type": "concept",
+                  "conceptSlug": "x2f8bb11595b61c86:foundation-algebra",
+                  "title": "Algebra foundations",
+                  "_teaches": "Back to basics — variables and substitution"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

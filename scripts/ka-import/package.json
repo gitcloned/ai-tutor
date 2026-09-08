@@ -1,0 +1,10 @@
+{
+  "name": "prodigy-ka-import",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "mongodb": "^7.6.0",
+    "playwright": "^1.62.1"
+  }
+}

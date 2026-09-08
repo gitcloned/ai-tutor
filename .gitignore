@@ -3,3 +3,4 @@ dist/
 *.json.bak
 ka-session.json
 .env
+.DS_Store

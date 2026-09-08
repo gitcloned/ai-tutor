@@ -1,26 +1,21 @@
 {
-  "_comment": "Full 4-level hierarchy for review. IDs are real MongoDB ObjectIds from KA import.",
+  "_comment": "Full 4-level hierarchy. kaSlug is the stable id for every entity.",
 
   "strand": {
     "title": "Algebra 1",
-    "subject": "Mathematics"
+    "subject": "Mathematics",
+    "kaSlug": "algebra-1"
   },
 
   "unit": {
-    "_id": "6a9318af6d16fa023d155da7",
     "title": "Linear equations & graphs",
     "kaSlug": "x2f8bb11595b61c86:linear-equations-graphs",
-    "strand": "Algebra 1",
-    "order": 4,
-    "prerequisites": ["6a9318af6d16fa023d155da6"],
-    "nextUnit": "6a9318af6d16fa023d155da8"
+    "order": 4
   },
 
   "topic": {
-    "_id": "_to_be_assigned_",
     "title": "Two-variable linear equations intro",
     "kaSlug": "x2f8bb11595b61c86:two-variable-linear-equations-intro",
-    "unit": "6a9318af6d16fa023d155da7",
     "order": 1,
 
     "probingTree": null,
@@ -28,7 +23,6 @@
     "masteryQuestions": [
       {
         "_comment": "Topic-level practice — tests solutions across all 4 concepts below",
-        "_id": "6a9318ae6d16fa023d155ba4",
         "title": "Solutions to 2-variable equations",
         "type": "practice-test",
         "kaSlug": "plugging_in_values",
@@ -39,10 +33,8 @@
     "concepts": [
 
       {
-        "_id": "_to_be_assigned_1",
         "title": "Two-variable linear equations intro",
         "kaSlug": "2-variable-linear-equations-graphs",
-        "topic": "_to_be_assigned_",
         "order": 1,
         "prerequisites": [],
         "misconceptions": [],
@@ -55,9 +47,9 @@
             "instruction": null,
             "resources": [
               {
-                "_id": "6a9318ae6d16fa023d155ba1",
                 "title": "Two-variable linear equations intro",
                 "type": "teaching-video",
+                "kaSlug": "intro-to-two-variable-linear-equations",
                 "youtubeUrl": "https://www.youtube.com/watch?v=AOxMJRtoR2A",
                 "duration": 501,
                 "cfuMarkers": [
@@ -76,12 +68,10 @@
       },
 
       {
-        "_id": "_to_be_assigned_2",
         "title": "Solutions to 2-variable equations",
         "kaSlug": "checking-ordered-pair-solutions-to-equations-1",
-        "topic": "_to_be_assigned_",
         "order": 2,
-        "prerequisites": ["_to_be_assigned_1"],
+        "prerequisites": ["2-variable-linear-equations-graphs"],
         "misconceptions": [],
         "probingTree": null,
         "masteryQuestions": [],
@@ -92,9 +82,9 @@
             "instruction": null,
             "resources": [
               {
-                "_id": "6a9318ae6d16fa023d155ba2",
                 "title": "Solutions to 2-variable equations",
                 "type": "teaching-video",
+                "kaSlug": "solutions-to-2-variable-equations",
                 "youtubeUrl": "https://www.youtube.com/watch?v=qk69pR91R00",
                 "duration": 155,
                 "cfuMarkers": [
@@ -110,12 +100,10 @@
       },
 
       {
-        "_id": "_to_be_assigned_3",
         "title": "Worked example: solutions to 2-variable equations",
         "kaSlug": "checking-ordered-pair-solutions-to-equations-2",
-        "topic": "_to_be_assigned_",
         "order": 3,
-        "prerequisites": ["_to_be_assigned_2"],
+        "prerequisites": ["checking-ordered-pair-solutions-to-equations-1"],
         "misconceptions": [],
         "probingTree": null,
         "masteryQuestions": [],
@@ -126,9 +114,9 @@
             "instruction": null,
             "resources": [
               {
-                "_id": "6a9318ae6d16fa023d155ba3",
                 "title": "Worked example: solutions to 2-variable equations",
                 "type": "teaching-video",
+                "kaSlug": "worked-example-solutions-to-2-variable-equations",
                 "youtubeUrl": "https://www.youtube.com/watch?v=d3VMo1VWFvc",
                 "duration": 146,
                 "cfuMarkers": [
@@ -144,20 +132,18 @@
       },
 
       {
-        "_id": "_to_be_assigned_4",
         "title": "Completing solutions to 2-variable equations",
         "kaSlug": "graphing-solutions-to-2-variable-linear-equations-1",
-        "topic": "_to_be_assigned_",
         "order": 4,
-        "prerequisites": ["_to_be_assigned_3"],
+        "prerequisites": ["checking-ordered-pair-solutions-to-equations-2"],
         "misconceptions": [
           {
             "text": "Child assumes the first value in an ordered pair (x, y) is y, not x",
-            "prereqConcept": "_to_be_assigned_2"
+            "prereqConcept": "checking-ordered-pair-solutions-to-equations-1"
           },
           {
             "text": "Child cannot substitute a value for a variable in a two-variable equation",
-            "prereqConcept": "_to_be_assigned_1"
+            "prereqConcept": "2-variable-linear-equations-graphs"
           }
         ],
 
@@ -208,7 +194,7 @@
                               "ifCorrect": { "type": "question" },
                               "ifWrong": {
                                 "type": "teach",
-                                "conceptId": "_to_be_assigned_4",
+                                "conceptId": "graphing-solutions-to-2-variable-linear-equations-1",
                                 "title": "Completing solutions to 2-variable equations"
                               }
                             }
@@ -226,7 +212,7 @@
                         "ifCorrect": { "type": "question" },
                         "ifWrong": {
                           "type": "teach",
-                          "conceptId": "_to_be_assigned_4",
+                          "conceptId": "graphing-solutions-to-2-variable-linear-equations-1",
                           "title": "Completing solutions to 2-variable equations"
                         }
                       }
@@ -245,7 +231,7 @@
                     "ifCorrect": {
                       "_comment": "Child can substitute — doesn't know what ordered pair notation means",
                       "type": "teach",
-                      "conceptId": "_to_be_assigned_2",
+                      "conceptId": "checking-ordered-pair-solutions-to-equations-1",
                       "title": "Solutions to 2-variable equations",
                       "thenAsk": {
                         "probe": "In the pair ( ___, -2 ), which value goes in the blank — x or y?",
@@ -259,7 +245,7 @@
                               "ifCorrect": { "type": "question" },
                               "ifWrong": {
                                 "type": "teach",
-                                "conceptId": "_to_be_assigned_4",
+                                "conceptId": "graphing-solutions-to-2-variable-linear-equations-1",
                                 "title": "Completing solutions to 2-variable equations"
                               }
                             }
@@ -272,19 +258,19 @@
                     "ifWrong": {
                       "_comment": "Child cannot substitute at all — needs foundational concept",
                       "type": "teach",
-                      "conceptId": "_to_be_assigned_1",
+                      "conceptId": "2-variable-linear-equations-graphs",
                       "title": "Two-variable linear equations intro",
                       "thenAsk": {
                         "probe": "In x - 5y = -15, if x = 0, what is y?",
                         "idealAnswer": "3",
                         "ifCorrect": {
                           "type": "teach",
-                          "conceptId": "_to_be_assigned_2",
+                          "conceptId": "checking-ordered-pair-solutions-to-equations-1",
                           "title": "Solutions to 2-variable equations"
                         },
                         "ifWrong": {
                           "type": "teach",
-                          "conceptId": "x2f8bb11595b61c86:foundation-algebra",
+                          "conceptId": "algebra-foundations",
                           "title": "Algebra foundations"
                         }
                       }
@@ -299,7 +285,6 @@
         "masteryQuestions": [
           {
             "_comment": "Concept-level practice — specifically for completing solutions",
-            "_id": "6a9318ae6d16fa023d155ba6",
             "title": "Complete solutions to 2-variable equations",
             "type": "practice-test",
             "kaSlug": "graphing-solutions-to-two-variable-linear-equations",
@@ -315,9 +300,9 @@
             "instruction": null,
             "resources": [
               {
-                "_id": "6a9318ae6d16fa023d155ba5",
                 "title": "Completing solutions to 2-variable equations",
                 "type": "teaching-video",
+                "kaSlug": "completing-solutions-to-2-variable-equations",
                 "youtubeUrl": "https://www.youtube.com/watch?v=EHR-YDwrrhM",
                 "duration": 431,
                 "cfuMarkers": [

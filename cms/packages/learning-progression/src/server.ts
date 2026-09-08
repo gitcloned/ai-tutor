@@ -1,0 +1,134 @@
+import express from 'express';
+import { connectDb } from './db.js';
+import { LearningJourney, LearningJourneyNode, Session, Memory } from './models/index.js';
+
+const app  = express();
+const PORT = process.env.PORT ?? 3002;
+
+app.use(express.json());
+
+type AsyncHandler = (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<unknown>;
+function wrap(fn: AsyncHandler): express.RequestHandler {
+  return (req, res, next) => fn(req, res, next).catch(next);
+}
+
+// ── Health ─────────────────────────────────────────────────────────────────────
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// ── Learning journeys ──────────────────────────────────────────────────────────
+
+app.get('/students/:studentId/journeys', wrap(async (req, res) => {
+  const journeys = await LearningJourney.find({ studentId: req.params.studentId });
+  res.json(journeys);
+}));
+
+app.post('/students/:studentId/journeys', wrap(async (req, res) => {
+  const journey = await LearningJourney.create({ ...req.body, studentId: req.params.studentId });
+  res.status(201).json(journey);
+}));
+
+app.get('/journeys/:id/nodes', wrap(async (req, res) => {
+  const nodes = await LearningJourneyNode.find({ journeyId: req.params.id }).sort({ order: 1 });
+  res.json(nodes);
+}));
+
+// ── Journey nodes ──────────────────────────────────────────────────────────────
+
+app.get('/journey-nodes', wrap(async (req, res) => {
+  const filter: Record<string, unknown> = {};
+  if (req.query['journeyId']) filter['journeyId'] = req.query['journeyId'];
+  if (req.query['conceptId']) filter['conceptId'] = req.query['conceptId'];
+  const nodes = await LearningJourneyNode.find(filter).sort({ order: 1 });
+  res.json(nodes);
+}));
+
+app.get('/journey-nodes/:id', wrap(async (req, res) => {
+  const node = await LearningJourneyNode.findOne({ id: req.params.id });
+  if (!node) return res.status(404).json({ error: 'Not found' });
+  res.json(node);
+}));
+
+app.post('/journey-nodes', wrap(async (req, res) => {
+  const node = await LearningJourneyNode.create(req.body);
+  res.status(201).json(node);
+}));
+
+app.patch('/journey-nodes/:id', wrap(async (req, res) => {
+  const node = await LearningJourneyNode.findOneAndUpdate(
+    { id: req.params.id },
+    { $set: req.body },
+    { new: true },
+  );
+  if (!node) return res.status(404).json({ error: 'Not found' });
+  res.json(node);
+}));
+
+// ── Sessions ───────────────────────────────────────────────────────────────────
+
+app.get('/students/:studentId/sessions', wrap(async (req, res) => {
+  const filter: Record<string, unknown> = { studentId: req.params.studentId };
+  if (req.query['conceptId']) filter['conceptId'] = req.query['conceptId'];
+  if (req.query['status'])    filter['status']    = req.query['status'];
+  const sessions = await Session.find(filter).sort({ createdAt: -1 });
+  res.json(sessions);
+}));
+
+app.post('/sessions', wrap(async (req, res) => {
+  const session = await Session.create(req.body);
+  res.status(201).json(session);
+}));
+
+app.patch('/sessions/:id', wrap(async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { id: req.params.id },
+    { $set: req.body },
+    { new: true },
+  );
+  if (!session) return res.status(404).json({ error: 'Not found' });
+  res.json(session);
+}));
+
+app.post('/sessions/:id/messages', wrap(async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { id: req.params.id },
+    { $push: { history: req.body } },
+    { new: true },
+  );
+  if (!session) return res.status(404).json({ error: 'Not found' });
+  res.json(session);
+}));
+
+// ── Memory ─────────────────────────────────────────────────────────────────────
+
+app.get('/students/:studentId/memories', wrap(async (req, res) => {
+  const filter: Record<string, unknown> = { studentId: req.params.studentId };
+  if (req.query['conceptId']) filter['context.conceptId'] = req.query['conceptId'];
+  const memories = await Memory.find(filter).sort({ lastAccessedAt: -1 });
+  res.json(memories);
+}));
+
+app.post('/students/:studentId/memories', wrap(async (req, res) => {
+  const memory = await Memory.create({ ...req.body, studentId: req.params.studentId });
+  res.status(201).json(memory);
+}));
+
+// ── Error handler ──────────────────────────────────────────────────────────────
+
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err.message);
+  res.status(500).json({ error: err.message });
+});
+
+// ── Start ──────────────────────────────────────────────────────────────────────
+
+async function main() {
+  await connectDb();
+  app.listen(PORT, () => {
+    console.log(`Prodigy Learning Progression running on http://localhost:${PORT}`);
+  });
+}
+
+main().catch(console.error);

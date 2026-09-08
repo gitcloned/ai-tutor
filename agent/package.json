@@ -1,0 +1,17 @@
+{
+  "name": "@prodigy/agent",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^2.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

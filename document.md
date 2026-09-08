@@ -26,24 +26,32 @@ categories: [system,data,api,decisions]
 ## Documentation Index
 
 ### Structure
-*Snapshot: 2026-09-03*
+*Snapshot: 2026-09-09*
 
 | File | Lines | Last modified | Since last sync |
 |---|---|---|---|
-| api.md | 9 | 2026-08-25 | unchanged |
-| content framework.md | 29 | 2026-08-25 | unchanged |
-| data.md | 355 | 2026-09-03 | +65 lines |
-| decisions.md | 120 | 2026-09-03 | +9 lines |
-| harness.md | 158 | 2026-09-03 | new |
-| prodigy.md | 11 | 2026-09-03 | +1 line |
-| system.md | 73 | 2026-08-29 | unchanged |
+| prodigy.md | 26 | 2026-09-09 | unchanged |
+| system.md | 108 | 2026-09-09 | unchanged |
+| data.md | 398 | 2026-09-09 | unchanged |
+| decisions.md | 162 | 2026-09-09 | unchanged |
+| agent/overview.md | 164 | 2026-09-09 | unchanged |
+| agent/harness.md | 167 | 2026-09-09 | unchanged |
+| agent/skills.md | 120 | 2026-09-09 | unchanged |
+| agent/tools.md | 121 | 2026-09-09 | unchanged |
+| agent/transport.md | 109 | 2026-09-09 | unchanged |
+| api/lp.md | 178 | 2026-09-09 | unchanged |
+| api/cms.md | 22 | 2026-09-09 | unchanged |
 
 ### Semantic Map
 
 | Category | File(s) | Topics | Last synced |
 |---|---|---|---|
-| system | system.md | Overview, Monorepo structure, Scripts, Tech stack | 2026-08-29 |
-| data | data.md | Board, Class, Strand, Exam, Resource, Question (incl. Perseus, teachingTree), HintStep (probing vs teaching tree), Concept (probingTree, masteryQuestions, examQuestions), LearningJourney, LearningJourneyNode (state), Session, TeachingPlan, Memory, Relationships | 2026-09-03 |
-| api | api.md | — | — |
-| decisions | decisions.md | Content Model, Tech Stack, Structure, Content Sourcing (KA), Question Format (Perseus), Adaptive Hint Trees, Student Concept State, LearningJourneyNode merge, TeachingPlan as text, Memory types | 2026-09-03 |
-| harness | harness.md | Objective, Architecture, Session flow, Agent state, Tools, Skills, Concept probing detail, TeachingPlan, State transitions, Memory | 2026-09-03 |
+| system | system.md | Overview, Monorepo structure (cms/ + agent/), KA import pipeline, Tech stack (Gemini, Transport) | 2026-09-09 |
+| data | data.md | Board, Class, Strand, Exam, Resource, Question, HintStep, Concept, LearningJourney, LearningJourneyNode, Session (status: initialised/started/completed), TeachingPlan, Memory, Relationships | 2026-09-09 |
+| api | api/lp.md, api/cms.md | LP: Journeys, JourneyNodes, Sessions, Memories; CMS: Concepts | 2026-09-09 |
+| decisions | decisions.md | Content Model, Tech Stack, Content Sourcing, Question Format, Hint Trees, Student State, Agent LLM (Gemini), Session Lifecycle, Agent Architecture | 2026-09-09 |
+| agent/overview | agent/overview.md | Architecture diagram, Session lifecycle, Turn flow, History format | 2026-09-09 |
+| agent/harness | agent/harness.md | AgentContext, TurnEngine, SessionManager, Agent, PlanStep, Plan compilation | 2026-09-09 |
+| agent/skills | agent/skills.md | SkillLoader, SKILL.md format, State→skill mapping, Probing skill detail | 2026-09-09 |
+| agent/tools | agent/tools.md | read_plan, get_next_step, update_step, advance_state, store_memory | 2026-09-09 |
+| agent/transport | agent/transport.md | Transport interface, TurnEvent types, StdinTransport, Adding transports | 2026-09-09 |

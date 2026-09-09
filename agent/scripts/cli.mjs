@@ -2,7 +2,7 @@
  * Prodigy agent CLI
  *
  * Usage:
- *   node scripts/cli.mjs --concept <kaSlug> [--student <id>]
+ *   node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--log-level debug|info|warn|error|none] [--hide-tool-calls]
  *
  * Prerequisites:
  *   pnpm build
@@ -22,10 +22,13 @@ try {
   }
 } catch {}
 
-const args      = process.argv.slice(2);
-const flag      = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
-const conceptId = flag('--concept');
-const studentId = flag('--student') ?? 'test-student-1';
+const args          = process.argv.slice(2);
+const flag          = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
+const hasFlag       = n => args.includes(n);
+const conceptId     = flag('--concept');
+const studentId     = flag('--student')    ?? 'test-student-1';
+const logLevel      = flag('--log-level')  ?? 'debug';
+const hideToolCalls = hasFlag('--hide-tool-calls');
 
 if (!conceptId) {
   console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>]');
@@ -55,7 +58,7 @@ console.log('Type your message and press Enter. Type /exit to quit.\n');
 
 // ── Join with stdin transport ─────────────────────────────────────────────────
 
-const transport = new StdinTransport(studentId);
+const transport = new StdinTransport({ studentName: studentId, logLevel, hideToolCalls });
 await sm.join(sessionId, transport);
 transport.start();
 

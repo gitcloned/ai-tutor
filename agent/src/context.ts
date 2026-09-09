@@ -1,4 +1,4 @@
-import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep } from './types.js';
+import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, LogEntry } from './types.js';
 import { buildPlan } from './plan-builder.js';
 import { cms, lp } from './api.js';
 
@@ -8,6 +8,7 @@ export interface AgentContext {
   journeyNode: JourneyNode;
   memories:    Memory[];
   plan:        PlanStep[];   // compiled fresh each session, lives in memory only
+  log:         (entry: LogEntry) => void;
 }
 
 export async function buildContext(studentId: string, conceptId: string, journeyNodeId: string): Promise<AgentContext> {
@@ -21,7 +22,7 @@ export async function buildContext(studentId: string, conceptId: string, journey
   const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
   const plan    = buildPlan(concept, journeyNode.state);
 
-  return { session, concept, journeyNode, memories, plan };
+  return { session, concept, journeyNode, memories, plan, log: () => {} };
 }
 
 async function createSession(studentId: string, conceptId: string, journeyNodeId: string, state: ConceptState): Promise<Session> {

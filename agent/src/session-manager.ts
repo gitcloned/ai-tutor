@@ -70,27 +70,31 @@ export class SessionManager {
 
     const { agent } = active;
 
+    agent.ctx.log = entry => transport.onLog(entry);
+
     transport.on('disconnected', () => {
+      transport.onLog({ level: 'info', message: `session disconnected: ${sessionId}` });
       this.end(sessionId).catch(console.error);
     });
 
     transport.on('message', async (text) => {
       try {
         for await (const event of agent.send(text)) {
-          transport.send(event);
+          transport.handle(event);
         }
       } catch (err) {
-        transport.send({ type: 'error', message: String(err) });
+        transport.handle({ type: 'error', message: String(err) });
       }
     });
 
     transport.on('connected', async () => {
+      transport.onLog({ level: 'info', message: `session connected: ${sessionId}` });
       try {
         for await (const event of agent.initiate()) {
-          transport.send(event);
+          transport.handle(event);
         }
       } catch (err) {
-        transport.send({ type: 'error', message: String(err) });
+        transport.handle({ type: 'error', message: String(err) });
       }
     });
   }

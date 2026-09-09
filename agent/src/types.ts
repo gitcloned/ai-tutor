@@ -1,5 +1,12 @@
 // Domain types the agent needs — subset of @prodigy/types, kept in sync manually.
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  level:   LogLevel;
+  message: string;
+}
+
 export type ConceptState = 'not_assessed' | 'learning' | 'clarity' | 'mastered' | 'exam_ready';
 
 export interface HintAction { type: string; [key: string]: unknown; }

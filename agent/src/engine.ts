@@ -51,14 +51,18 @@ export class TurnEngine {
     });
 
     // Agentic loop: send → handle tool calls → repeat until no more tool calls
-    console.error('[engine] history length:', chatHistory.length, '| last msg:', lastMessage.slice(0, 60));
+    ctx.log({ level: 'debug', message: `history length: ${chatHistory.length} | last msg: ${lastMessage.slice(0, 60)}` });
     let response = await chat.sendMessage({ message: lastMessage });
 
     while (true) {
-      if (response.text) yield { type: 'text', content: response.text };
-
       const calls = response.functionCalls;
-      if (!calls || calls.length === 0) break;
+
+      // Only access .text when there are no function calls — accessing it
+      // alongside function calls triggers a noisy SDK warning.
+      if (!calls || calls.length === 0) {
+        if (response.text) yield { type: 'text', content: response.text };
+        break;
+      }
 
       // Execute each tool call and collect responses
       const functionResponses: object[] = [];

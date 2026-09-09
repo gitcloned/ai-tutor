@@ -1,8 +1,17 @@
 import * as readline from 'readline';
 import type { Transport } from '../transport.js';
+import type { LogEntry, LogLevel } from '../types.js';
 import type { TurnEvent } from '../engine.js';
 
 type Handler<T> = (arg: T) => void | Promise<void>;
+
+const LOG_LEVELS: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3, none: 4 };
+
+export interface StdinTransportOptions {
+  studentName?:   string;
+  logLevel?:      LogLevel | 'none';
+  hideToolCalls?: boolean;
+}
 
 /**
  * StdinTransport — reads from stdin, writes to stdout.
@@ -16,7 +25,15 @@ export class StdinTransport implements Transport {
   private connectedHandlers:    Handler<void>[]   = [];
   private disconnectedHandlers: Handler<void>[]   = [];
 
-  constructor(private readonly studentName: string = 'You') {}
+  private readonly studentName:   string;
+  private readonly logLevel:      LogLevel | 'none';
+  private readonly hideToolCalls: boolean;
+
+  constructor(opts: StdinTransportOptions = {}) {
+    this.studentName   = opts.studentName   ?? 'You';
+    this.logLevel      = opts.logLevel      ?? 'debug';
+    this.hideToolCalls = opts.hideToolCalls ?? false;
+  }
 
   private rl: readline.Interface | null = null;
 
@@ -29,16 +46,30 @@ export class StdinTransport implements Transport {
     if (event === 'disconnected') this.disconnectedHandlers.push(handler);
   }
 
-  send(event: TurnEvent): void {
+  handle(event: TurnEvent): void {
     if (event.type === 'text') {
       process.stdout.write(`\nTutor: ${event.content}\n`);
     }
-    if (event.type === 'tool_call') {
-      process.stdout.write(`  → [${event.name}]\n`);
+    if (event.type === 'tool_call' && !this.hideToolCalls) {
+      process.stdout.write(`  → [${event.name}] ${JSON.stringify(event.args ?? {})}\n`);
     }
     if (event.type === 'error') {
       process.stdout.write(`\n[Error] ${event.message}\n`);
     }
+  }
+
+  onLog(entry: LogEntry): void {
+    if (LOG_LEVELS[entry.level] < LOG_LEVELS[this.logLevel]) return;
+
+    const colour: Record<string, string> = {
+      debug: '\x1b[90m',   // gray
+      info:  '\x1b[36m',   // cyan
+      warn:  '\x1b[33m',   // yellow
+      error: '\x1b[31m',   // red
+    };
+    const reset = '\x1b[0m';
+    const c = colour[entry.level] ?? '';
+    process.stderr.write(`${c}[${entry.level.toUpperCase()}] ${entry.message}${reset}\n`);
   }
 
   /** Start listening. Call after all handlers are registered. */
@@ -48,7 +79,7 @@ export class StdinTransport implements Transport {
       output: process.stdout,
     });
 
-    const prompt = () => this.rl!.question(`\n${this.studentName}: `, async (input) => {
+    const prompt = () => this.rl!.question(`\n${this.studentName}: `, async (input: string) => {
       const text = input.trim();
 
       if (!text || text === '/exit') {

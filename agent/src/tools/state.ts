@@ -19,7 +19,7 @@ export const advance_state: Tool = {
       lp.patch(`/sessions/${ctx.session.id}`, { conceptStateAtEnd: state }),
     ]);
     ctx.journeyNode.state = state as ConceptState;
-    console.log(`[state] → ${state} | ${summary}`);
+    ctx.log({ level: 'info', message: `state → ${state} | ${summary}` });
     return { ok: true, state };
   },
 };

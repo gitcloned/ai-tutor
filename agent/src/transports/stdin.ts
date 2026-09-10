@@ -8,8 +8,8 @@ type Handler<T> = (arg: T) => void | Promise<void>;
 const LOG_LEVELS: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3, none: 4 };
 
 export interface StdinTransportOptions {
-  studentName?:   string;
-  logLevel?:      LogLevel | 'none';
+  studentName?: string;
+  logLevel?: LogLevel | 'none';
   hideToolCalls?: boolean;
 }
 
@@ -21,28 +21,29 @@ export interface StdinTransportOptions {
  * Fires 'disconnected' when the user types /exit or closes stdin.
  */
 export class StdinTransport implements Transport {
-  private messageHandlers:      Handler<string>[] = [];
-  private connectedHandlers:    Handler<void>[]   = [];
-  private disconnectedHandlers: Handler<void>[]   = [];
+  private messageHandlers: Handler<string>[] = [];
+  private connectedHandlers: Handler<void>[] = [];
+  private disconnectedHandlers: Handler<void>[] = [];
 
-  private readonly studentName:   string;
-  private readonly logLevel:      LogLevel | 'none';
+  private readonly studentName: string;
+  private readonly logLevel: LogLevel | 'none';
   private readonly hideToolCalls: boolean;
 
   constructor(opts: StdinTransportOptions = {}) {
-    this.studentName   = opts.studentName   ?? 'You';
-    this.logLevel      = opts.logLevel      ?? 'debug';
+    this.studentName = opts.studentName ?? 'You';
+    this.logLevel = opts.logLevel ?? 'debug';
     this.hideToolCalls = opts.hideToolCalls ?? false;
   }
 
   private rl: readline.Interface | null = null;
+  private pendingAutoSend = false;
 
-  on(event: 'message',      handler: Handler<string>): void;
-  on(event: 'connected',    handler: Handler<void>): void;
+  on(event: 'message', handler: Handler<string>): void;
+  on(event: 'connected', handler: Handler<void>): void;
   on(event: 'disconnected', handler: Handler<void>): void;
   on(event: string, handler: Handler<any>): void {
-    if (event === 'message')      this.messageHandlers.push(handler);
-    if (event === 'connected')    this.connectedHandlers.push(handler);
+    if (event === 'message') this.messageHandlers.push(handler);
+    if (event === 'connected') this.connectedHandlers.push(handler);
     if (event === 'disconnected') this.disconnectedHandlers.push(handler);
   }
 
@@ -56,6 +57,9 @@ export class StdinTransport implements Transport {
     if (event.type === 'error') {
       process.stdout.write(`\n[Error] ${event.message}\n`);
     }
+    if (event.type === 'action' && (event.action as any)?.type === 'send-ok') {
+      this.pendingAutoSend = true;
+    }
   }
 
   onLog(entry: LogEntry): void {
@@ -63,8 +67,8 @@ export class StdinTransport implements Transport {
 
     const colour: Record<string, string> = {
       debug: '\x1b[90m',   // gray
-      info:  '\x1b[36m',   // cyan
-      warn:  '\x1b[33m',   // yellow
+      info: '\x1b[36m',   // cyan
+      warn: '\x1b[33m',   // yellow
       error: '\x1b[31m',   // red
     };
     const reset = '\x1b[0m';
@@ -75,7 +79,7 @@ export class StdinTransport implements Transport {
   /** Start listening. Call after all handlers are registered. */
   start(): void {
     this.rl = readline.createInterface({
-      input:  process.stdin,
+      input: process.stdin,
       output: process.stdout,
     });
 
@@ -92,6 +96,15 @@ export class StdinTransport implements Transport {
       // prints before the next input prompt appears
       for (const h of this.messageHandlers) {
         await h(text);
+      }
+
+      // If the turn signalled send-ok, auto-advance without user input
+      if (this.pendingAutoSend) {
+        this.pendingAutoSend = false;
+        for (const h of this.messageHandlers) {
+          process.stdout.write(`\n[Action] Sending auto ok\n`);
+          await h('Ok');
+        }
       }
 
       prompt();

@@ -1,9 +1,18 @@
 import { newAgent }        from './agent.js';
-import { lp }              from './api.js';
+import { lp, cms }        from './api.js';
 import type { Transport }  from './transport.js';
-import type { Session, Journey, JourneyNode } from './types.js';
+import type { Session, Journey, JourneyNode, Concept } from './types.js';
 
 type Agent = Awaited<ReturnType<typeof newAgent>>;
+
+async function persistSession(ctx: import('./context.js').AgentContext): Promise<void> {
+  if (ctx.session.status === 'initialised') return;
+  await lp.patch(`/sessions/${ctx.session.id}`, {
+    history:      ctx.session.history,
+    planHistory:  ctx.session.planHistory,
+    teachingPlan: ctx.session.teachingPlan,
+  }).catch(() => {});
+}
 
 interface ActiveSession {
   agent:   Agent;
@@ -39,12 +48,19 @@ export class SessionManager {
     );
     let node = nodes[0];
     if (!node) {
+      // Fetch the concept to determine goTo (next concept in linear sequence)
+      const concept = await cms.get<Concept>(`/concepts/${conceptId}`);
+      const goTo = concept.nextConcepts?.[0] ?? null;
+
       node = await lp.post<JourneyNode>('/journey-nodes', {
         journeyId:    journey.id,
         conceptId,
         order:        1,
         state:        'not_assessed',
         masteryLevel: null,
+        goTo,
+        cameFrom:     null,
+        preReqToLearn: null,
       });
     }
 
@@ -82,6 +98,7 @@ export class SessionManager {
         for await (const event of agent.send(text)) {
           transport.handle(event);
         }
+        persistSession(agent.ctx).catch(() => {});
       } catch (err) {
         transport.handle({ type: 'error', message: String(err) });
       }
@@ -93,6 +110,7 @@ export class SessionManager {
         for await (const event of agent.initiate()) {
           transport.handle(event);
         }
+        persistSession(agent.ctx).catch(() => {});
       } catch (err) {
         transport.handle({ type: 'error', message: String(err) });
       }
@@ -111,9 +129,11 @@ export class SessionManager {
     // Only persist sessions where the agent actually spoke
     if (ctx.session.status !== 'initialised') {
       await lp.patch<Session>(`/sessions/${ctx.session.id}`, {
-        status:  'completed',
-        history: ctx.session.history,
-        endedAt: new Date().toISOString(),
+        status:      'completed',
+        history:     ctx.session.history,
+        planHistory: ctx.session.planHistory,
+        teachingPlan: ctx.session.teachingPlan,
+        endedAt:     new Date().toISOString(),
       });
     }
 

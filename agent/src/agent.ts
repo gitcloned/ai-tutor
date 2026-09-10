@@ -5,7 +5,6 @@ import { SkillLoader }   from './skills.js';
 import { TurnEngine }    from './engine.js';
 import { ToolRegistry }  from './tools/index.js';
 import { read_plan, get_next_step, update_step } from './tools/plan.js';
-import { advance_state } from './tools/state.js';
 import { store_memory }  from './tools/memory.js';
 import { buildContext }  from './context.js';
 import type { AgentContext } from './context.js';
@@ -13,11 +12,10 @@ import type { TurnEvent }   from './engine.js';
 import { lp } from './api.js';
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-const basePrompt = readFileSync(join(__dir, '../../prompts/base.md'), 'utf8');
-const skills     = new SkillLoader(join(__dir, '../../skills'));
-const tools      = new ToolRegistry().add(
+const basePrompt = readFileSync(join(__dir, '../prompts/base.md'), 'utf8');
+const skills     = new SkillLoader(join(__dir, '../skills'));
+const tools = new ToolRegistry().add(
   read_plan, get_next_step, update_step,
-  advance_state,
   store_memory,
 );
 const engine = new TurnEngine(tools, basePrompt);

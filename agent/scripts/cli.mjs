@@ -35,8 +35,8 @@ if (!conceptId) {
   process.exit(1);
 }
 
-const { SessionManager } = await import('../dist/src/session-manager.js');
-const { StdinTransport } = await import('../dist/src/transports/stdin.js');
+const { SessionManager } = await import('../dist/session-manager.js');
+const { StdinTransport } = await import('../dist/transports/stdin.js');
 
 const sm = new SessionManager();
 

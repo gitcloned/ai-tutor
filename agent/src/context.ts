@@ -1,4 +1,4 @@
-import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, LogEntry } from './types.js';
+import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry } from './types.js';
 import { buildPlan } from './plan-builder.js';
 import { cms, lp } from './api.js';
 
@@ -22,6 +22,17 @@ export async function buildContext(studentId: string, conceptId: string, journey
   const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
   const plan    = buildPlan(concept, journeyNode.state);
 
+  // Seed planHistory with the initial concept+plan if this is a brand-new session
+  if (session.planHistory.length === 0) {
+    const entry: PlanHistoryEntry = {
+      conceptId:    concept.id,
+      conceptTitle: concept.title,
+      plan,
+      startedAt:    new Date().toISOString(),
+    };
+    session.planHistory.push(entry);
+  }
+
   return { session, concept, journeyNode, memories, plan, log: () => {} };
 }
 
@@ -31,6 +42,7 @@ async function createSession(studentId: string, conceptId: string, journeyNodeId
     studentId, conceptId, journeyNodeId,
     status: 'initialised', conceptStateAtStart: state, conceptStateAtEnd: null,
     teachingPlan: { content: '', createdAt: now, updatedAt: now },
+    planHistory: [],
     history: [], memory: [], createdAt: now, endedAt: null,
   });
 }

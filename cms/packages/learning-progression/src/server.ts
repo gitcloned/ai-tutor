@@ -81,6 +81,12 @@ app.post('/sessions', wrap(async (req, res) => {
   res.status(201).json(session);
 }));
 
+app.get('/sessions/:id', wrap(async (req, res) => {
+  const session = await Session.findOne({ id: req.params.id });
+  if (!session) return res.status(404).json({ error: 'Not found' });
+  res.json(session);
+}));
+
 app.patch('/sessions/:id', wrap(async (req, res) => {
   const session = await Session.findOneAndUpdate(
     { id: req.params.id },
@@ -113,6 +119,41 @@ app.get('/students/:studentId/memories', wrap(async (req, res) => {
 app.post('/students/:studentId/memories', wrap(async (req, res) => {
   const memory = await Memory.create({ ...req.body, studentId: req.params.studentId });
   res.status(201).json(memory);
+}));
+
+// ── Student directory ──────────────────────────────────────────────────────────
+
+app.get('/students', wrap(async (_req, res) => {
+  const studentIds = await LearningJourney.distinct('studentId') as string[];
+  const result = await Promise.all(studentIds.map(async (studentId) => {
+    const [journeyCount, sessionCount, memoryCount] = await Promise.all([
+      LearningJourney.countDocuments({ studentId }),
+      Session.countDocuments({ studentId }),
+      Memory.countDocuments({ studentId }),
+    ]);
+    return { studentId, journeyCount, sessionCount, memoryCount };
+  }));
+  res.json(result);
+}));
+
+app.delete('/students/:studentId/all', wrap(async (req, res) => {
+  const { studentId } = req.params;
+  const journeys   = await LearningJourney.find({ studentId }).lean();
+  const journeyIds = journeys.map((j: any) => j.id);
+  const [nodes, sessions, memories, deletedJourneys] = await Promise.all([
+    LearningJourneyNode.deleteMany({ journeyId: { $in: journeyIds } }),
+    Session.deleteMany({ studentId }),
+    Memory.deleteMany({ studentId }),
+    LearningJourney.deleteMany({ studentId }),
+  ]);
+  res.json({
+    deleted: {
+      journeys: deletedJourneys.deletedCount,
+      nodes:    nodes.deletedCount,
+      sessions: sessions.deletedCount,
+      memories: memories.deletedCount,
+    },
+  });
 }));
 
 // ── Error handler ──────────────────────────────────────────────────────────────

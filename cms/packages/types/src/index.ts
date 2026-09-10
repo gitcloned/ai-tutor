@@ -10,7 +10,7 @@ export type ResourceType = 'teaching-video' | 'practice-test' | 'article' | 'sim
 export type QuestionType = 'mcq' | 'fib' | 'subjective' | 'perseus';
 export type DifficultyLevel = 'lots' | 'mots' | 'hots';
 export type LessonStepType = 'ido' | 'wedo' | 'youdo';
-export type ConceptState = 'not_assessed' | 'learning' | 'clarity' | 'mastered' | 'exam_ready';
+export type ConceptState = 'not_assessed' | 'learning' | 'learn-pre-req-before' | 'clarity' | 'mastered' | 'exam_ready';
 export type MasteryLevel = 'lots' | 'mots' | 'hots';
 export type SessionStatus = 'initialised' | 'started' | 'completed';
 export type MemoryType = 'factual' | 'reflected';
@@ -64,6 +64,14 @@ export interface PerseusContent { content: string; widgets: Record<string, Perse
 export interface ExamAppearance { exam: ObjectId; link?: string; }
 export interface TeachingPlan   { content: string; createdAt: Date; updatedAt: Date; }
 export interface Message        { role: 'student' | 'agent'; content: string; timestamp: Date; }
+
+/** One entry in the plan history — records the active plan each time the agent switches concept. */
+export interface PlanHistoryEntry {
+  conceptId:    string;
+  conceptTitle: string;
+  plan:         unknown[];   // serialised PlanStep[] — kept as unknown to avoid circular dep
+  startedAt:    Date;
+}
 
 // ── Entity interfaces ─────────────────────────────────────────────────────────
 
@@ -169,6 +177,12 @@ export interface ILearningJourneyNode {
   state: ConceptState;
   masteryLevel?: MasteryLevel | null;
   probingPath: unknown[];
+  /** Next concept to visit after this node is done. Set from concept.nextConcepts[0] on creation; overridden to origin concept for prereq-redirect nodes. */
+  goTo?: string | null;
+  /** Concept that redirected here (set only on prereq-redirect nodes). */
+  cameFrom?: string | null;
+  /** Prereq concept blocking this node (set when state is learn-pre-req-before). */
+  preReqToLearn?: string | null;
   lastActivity?: Date;
   completedAt?: Date | null;
 }
@@ -181,7 +195,10 @@ export interface ISession {
   status: SessionStatus;
   conceptStateAtStart: ConceptState;
   conceptStateAtEnd?: ConceptState | null;
+  /** Current active plan — updated each time agent switches to a different concept. */
   teachingPlan: TeachingPlan;
+  /** Full history of plans across all concept hops in this session. */
+  planHistory: PlanHistoryEntry[];
   history: Message[];
   memory: string[];
   createdAt: Date;

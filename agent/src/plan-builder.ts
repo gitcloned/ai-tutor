@@ -67,7 +67,7 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
       }
 
       case 'teach': {
-        const s = alloc('teach', { conceptId: branch.conceptId, conceptTitle: branch.title });
+        const s = alloc('teach', { conceptId: branch.conceptId, conceptTitle: branch.title, reason: branch._comment ?? null });
         const next = branch.thenAsk ? compileNode(branch.thenAsk) : null;
         s.ifCorrect = next;
         s.ifWrong   = next;
@@ -120,7 +120,7 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
 
   // Add terminal steps
   const storeStep   = alloc('store_memory',  { instruction: 'Store what you learned about this student' });
-  const advanceStep = alloc('advance_state', { instruction: 'Advance state to "learning"' });
+  const advanceStep = alloc('advance_state', { instruction: 'Advance state to "learning"', targetState: 'learning' });
 
   storeStep.ifCorrect = advanceStep.id;
   storeStep.ifWrong   = advanceStep.id;
@@ -141,22 +141,83 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
 
 // ── Teaching plan ─────────────────────────────────────────────────────────────
 
+/**
+ * Build the learning plan from the concept's lessonPlan (ido/wedo/youdo steps).
+ *
+ * For each lesson step:
+ *   1. `resource` step — agent shares the video URL(s) with the student
+ *      (falls back to `teach` step with the instruction if no video attached)
+ *   2. `practice` step — agent asks the learning indicator / assessment question
+ *
+ * Ends with `advance_state → clarity`.
+ */
 function buildTeachingPlan(concept: Concept): PlanStep[] {
+  let nextId = 1;
   const steps: PlanStep[] = [];
 
-  steps.push(step(1, { instruction: 'Review the teaching plan — understand the identified knowledge gap' }, 'probe'));
-
-  const lessonSteps = concept.lessonPlan ?? [];
-  if (lessonSteps.length > 0) {
-    lessonSteps.forEach((ls, i) => {
-      steps.push(step(i + 2, { instruction: ls.instruction ?? `${ls.type.toUpperCase()} step` }, 'teach'));
-    });
-  } else {
-    steps.push(step(2, { instruction: 'Explain the concept clearly with a concrete example' }, 'teach'));
-    steps.push(step(3, { instruction: 'Ask a check-for-understanding question' }, 'probe'));
+  function alloc(type: PlanStepType, content: Record<string, unknown>): void {
+    steps.push(step(nextId++, content, type));
   }
 
-  steps.push(step(steps.length + 1, { instruction: 'Advance state to "clarity" once student answers a LOTS question correctly' }, 'advance_state'));
+  const ORDER: Record<string, number> = { ido: 0, wedo: 1, youdo: 2 };
+  const sorted = [...(concept.lessonPlan ?? [])].sort(
+    (a, b) => (ORDER[a.type] ?? 99) - (ORDER[b.type] ?? 99),
+  );
+
+  for (const ls of sorted) {
+    const resources = ls.resources ?? [];
+
+    // Step 1: deliver the content — video if available, verbal instruction otherwise
+    if (resources.length > 0) {
+      alloc('resource', {
+        lessonType:  ls.type,
+        instruction: ls.instruction ?? null,
+        resources:   resources.map(r => ({
+          id:         r.id,
+          title:      r.title,
+          youtubeUrl: r.youtubeUrl ?? null,
+          url:        r.url ?? null,
+        })),
+      });
+    } else {
+      alloc('teach', {
+        lessonType:  ls.type,
+        instruction: ls.instruction ?? `${ls.type.toUpperCase()} step`,
+      });
+    }
+
+    // Step 2: practice question
+    // Priority: assessmentQuestion stem → learningIndicator text → mastery question (for wedo/youdo)
+    const indicator = ls.learningIndicator;
+    const aq        = indicator?.assessmentQuestion;
+    let question: string | null = (aq?.stem) ? aq.stem : (indicator?.text ?? null);
+    let questionId: string | null = aq?.id ?? null;
+
+    if (!question && ls.type !== 'ido') {
+      const fallbackQ = (concept as any).masteryQuestions?.[0];
+      if (fallbackQ) {
+        question   = (fallbackQ as any).stem ?? null;
+        questionId = (fallbackQ as any).id   ?? null;
+      }
+    }
+
+    if (question) {
+      alloc('practice', {
+        lessonType:        ls.type,
+        question,
+        questionId,
+        learningIndicator: indicator?.text ?? null,
+      });
+    }
+  }
+
+  // Fallback when concept has no lesson plan yet
+  if (steps.length === 0) {
+    alloc('teach',    { lessonType: 'ido', instruction: `Teach "${concept.title}" with a concrete example` });
+    alloc('practice', { question: `Can you solve an example of ${concept.title}?`, lessonType: 'youdo' });
+  }
+
+  alloc('advance_state', { instruction: 'Advance state to "clarity"', targetState: 'clarity' });
   return linearPlan(steps);
 }
 
@@ -168,7 +229,8 @@ function buildMasteryPlan(level: 'lots' | 'hots'): PlanStep[] {
     step(2, { instruction: "Assess the student's answer — probe if wrong, affirm if correct" }, 'probe'),
     step(3, { instruction: level === 'lots'
       ? 'Advance state to "mastered" once student clears LOTS consistently'
-      : 'Advance state to "exam_ready" once student clears HOTS' }, 'advance_state'),
+      : 'Advance state to "exam_ready" once student clears HOTS',
+              targetState: level === 'lots' ? 'mastered' : 'exam_ready' }, 'advance_state'),
   ]);
 }
 

@@ -7,6 +7,13 @@ const teachingPlanSchema = new Schema({
   updatedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
+const planHistoryEntrySchema = new Schema({
+  conceptId:    { type: String, required: true },
+  conceptTitle: { type: String, required: true },
+  plan:         { type: [Schema.Types.Mixed], default: [] },
+  startedAt:    { type: Date, default: Date.now },
+}, { _id: false });
+
 const messageSchema = new Schema({
   role:      { type: String, enum: ['student', 'agent'], required: true },
   content:   { type: String, required: true },
@@ -19,9 +26,10 @@ const sessionSchema = new Schema<ISession>({
   conceptId:           { type: String, required: true },
   journeyNodeId:       { type: String, required: true },
   status:              { type: String, enum: ['initialised', 'started', 'completed'], default: 'initialised' },
-  conceptStateAtStart: { type: String, enum: ['not_assessed', 'learning', 'clarity', 'mastered', 'exam_ready'], required: true },
-  conceptStateAtEnd:   { type: String, enum: ['not_assessed', 'learning', 'clarity', 'mastered', 'exam_ready'], default: null },
+  conceptStateAtStart: { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], required: true },
+  conceptStateAtEnd:   { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: null },
   teachingPlan:        { type: teachingPlanSchema, required: true },
+  planHistory:         { type: [planHistoryEntrySchema], default: [] },
   history:             { type: [messageSchema], default: [] },
   memory:              [{ type: String }],
   createdAt:           { type: Date, default: Date.now },

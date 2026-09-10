@@ -6,11 +6,14 @@ const learningJourneyNodeSchema = new Schema<ILearningJourneyNode>({
   journeyId:    { type: String, required: true },
   conceptId:    { type: String, required: true },
   order:        { type: Number, required: true },
-  state:        { type: String, enum: ['not_assessed', 'learning', 'clarity', 'mastered', 'exam_ready'], default: 'not_assessed' },
-  masteryLevel: { type: String, enum: ['lots', 'mots', 'hots'], default: null },
-  probingPath:  { type: [Schema.Types.Mixed], default: [] },
-  lastActivity: { type: Date },
-  completedAt:  { type: Date, default: null },
+  state:          { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: 'not_assessed' },
+  masteryLevel:   { type: String, enum: ['lots', 'mots', 'hots'], default: null },
+  probingPath:    { type: [Schema.Types.Mixed], default: [] },
+  goTo:           { type: String, default: null },
+  cameFrom:       { type: String, default: null },
+  preReqToLearn:  { type: String, default: null },
+  lastActivity:   { type: Date },
+  completedAt:    { type: Date, default: null },
 }, { collection: 'learning_journey_nodes', id: false });
 
 learningJourneyNodeSchema.pre('validate', function (next) {

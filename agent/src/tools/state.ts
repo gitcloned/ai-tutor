@@ -1,25 +1,26 @@
-import type { Tool } from './index.js';
+/**
+ * Internal state transition helper — not exposed as an agent tool.
+ * Called by update_step when it completes an advance_state step.
+ */
+
+import type { AgentContext } from '../context.js';
 import type { ConceptState } from '../types.js';
 import { lp } from '../api.js';
+import { buildPlan } from '../plan-builder.js';
+import { returnToOrigin } from './redirect.js';
 
-export const advance_state: Tool = {
-  name:        'advance_state',
-  description: 'Transition the student\'s concept state. Call this only when the current plan is complete and the student is ready to move forward.',
-  schema: {
-    type: 'object',
-    properties: {
-      state:   { type: 'string', enum: ['learning', 'clarity', 'mastered', 'exam_ready'], description: 'The state to transition to' },
-      summary: { type: 'string', description: 'One or two sentences summarising what was accomplished in this state' },
-    },
-    required: ['state', 'summary'],
-  },
-  run: async ({ state, summary }, ctx) => {
-    await Promise.all([
-      lp.patch(`/journey-nodes/${ctx.journeyNode.id}`, { state }),
-      lp.patch(`/sessions/${ctx.session.id}`, { conceptStateAtEnd: state }),
-    ]);
-    ctx.journeyNode.state = state as ConceptState;
-    ctx.log({ level: 'info', message: `state → ${state} | ${summary}` });
-    return { ok: true, state };
-  },
-};
+export async function transitionState(targetState: ConceptState, ctx: AgentContext): Promise<void> {
+  await Promise.all([
+    lp.patch(`/journey-nodes/${ctx.journeyNode.id}`, { state: targetState }),
+    lp.patch(`/sessions/${ctx.session.id}`, { conceptStateAtEnd: targetState }),
+  ]);
+  ctx.journeyNode.state = targetState;
+  ctx.log({ level: 'info', message: `state → ${targetState}` });
+
+  // If this is a prereq node (has goTo), return to origin after advancing
+  const returned = await returnToOrigin(ctx);
+  if (returned) return;
+
+  // Otherwise rebuild the plan for the new state in this concept
+  ctx.plan = buildPlan(ctx.concept, targetState);
+}

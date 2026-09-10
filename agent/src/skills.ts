@@ -78,14 +78,19 @@ function parseFrontmatter(block: string): Record<string, string> {
 }
 
 function render(template: string, ctx: AgentContext): string {
-  const planLines = ctx.plan.map(s => `[${s.status}] ${s.id}. ${s.content}`).join('\n');
+  const planLines = ctx.plan.map(s => `[${s.status}] ${s.id}. ${JSON.stringify(s.content)}`).join('\n');
   const memLines  = ctx.memories.length > 0
     ? ctx.memories.map(m => `- [${m.type}] ${m.content}`).join('\n')
     : 'None yet.';
 
+  const prereqContext = ctx.journeyNode.cameFrom
+    ? `> **Context:** You are covering this concept as a prerequisite. The student was working on another concept (id: \`${ctx.journeyNode.cameFrom}\`) and could not proceed without understanding this one first. Once the student has a solid grasp of this concept, call \`return_to_origin\` to send them back.\n`
+    : '';
+
   return template
-    .replace('{{concept.title}}', ctx.concept.title)
-    .replace('{{probingTree}}',   JSON.stringify(ctx.concept.probingTree ?? {}, null, 2))
-    .replace('{{plan}}',          planLines)
-    .replace('{{memories}}',      memLines);
+    .replace('{{concept.title}}',  ctx.concept.title)
+    .replace('{{probingTree}}',    JSON.stringify(ctx.concept.probingTree ?? {}, null, 2))
+    .replace('{{plan}}',           planLines)
+    .replace('{{memories}}',       memLines)
+    .replace('{{prereq_context}}', prereqContext);
 }

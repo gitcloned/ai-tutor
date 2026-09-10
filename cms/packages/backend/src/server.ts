@@ -56,7 +56,8 @@ app.get('/concepts', wrap(async (req, res) => {
 
 app.get('/concepts/:id', wrap(async (req, res) => {
   const concept = await Concept.findOne({ id: req.params.id })
-    .populate('lessonPlan.resources')
+    .populate({ path: 'lessonPlan.resources', foreignField: 'id', justOne: false })
+    .populate('lessonPlan.learningIndicator.assessmentQuestion')
     .populate('masteryQuestions')
     .populate('examQuestions');
   if (!concept) return res.status(404).json({ error: 'Not found' });

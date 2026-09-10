@@ -16,6 +16,7 @@ export type TurnEvent =
   | { type: 'text';        content: string }
   | { type: 'tool_call';   name: string; args: unknown }
   | { type: 'tool_result'; name: string; result: unknown }
+  | { type: 'action';      action: unknown }
   | { type: 'error';       message: string };
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
@@ -76,6 +77,11 @@ export class TurnEngine {
           : { error: `unknown tool: ${call.name}` };
 
         yield { type: 'tool_result', name: call.name!, result };
+
+        // If the tool result carries an action signal, emit it for the transport
+        if ((result as any)?.action) {
+          yield { type: 'action', action: (result as any).action };
+        }
 
         functionResponses.push({
           functionResponse: {

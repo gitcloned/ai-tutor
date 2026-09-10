@@ -1,7 +1,7 @@
 ---
 name: concept-probing
 state: not_assessed
-tools: get_next_step, update_step, advance_state, store_memory
+tools: get_next_step, update_step, store_memory
 ---
 
 ## Your task for this session
@@ -19,8 +19,9 @@ Your teaching plan is a step graph compiled from the probing tree. Each step tel
 2. Do exactly what it says (ask the probe, give the explanation, or perform the action)
 3. Wait for the student's response
 4. Call `update_step(id, outcome)`:
-   - `"correct"` — student answered correctly or understood
-   - `"incorrect"` — student answered wrongly or is confused
+   - `"pass"` — student answered correctly or understood
+   - `"fail"` — student answered wrongly or is confused
+   - `"not_sure"` — student is uncertain (treated as pass — move forward)
    - `"done"` — for non-probe steps (store_memory, advance_state)
 5. The tool returns your next instruction — follow it
 
@@ -30,14 +31,14 @@ Your teaching plan is a step graph compiled from the probing tree. Each step tel
 |------|-----------|
 | `probe` | Ask the probe question. One question only. Wait for student. |
 | `inline` | Share the explanation with the student. Then ask the follow-up (next step will be a probe). |
-| `teach` | Tell the student you'll walk them through the prerequisite concept first. Briefly explain the conceptTitle. Then move on — next step will be a probe. |
+| `teach` | Call `update_step(id, "done")` — the redirect is handled automatically. The response tells you why. End your turn after this — the next turn loads the prereq plan. |
 | `store_memory` | Call `store_memory` with what you learned about this student. Then call `update_step(id, "done")`. |
-| `advance_state` | Call `advance_state` → `"learning"`. Tell the student you're ready to start teaching. Then call `update_step(id, "done")`. |
+| `advance_state` | Call `update_step(id, "done")` — the state transition and plan rebuild are handled automatically. You will receive the first step of the next plan. |
 
 ### Rules:
 - **One question per message.** Never ask two things at once.
 - **Follow the plan.** Do not skip steps, invent new probes, or take shortcuts.
-- **Classify honestly.** Mark `correct` only if the student's answer matches the idealAnswer. Partial or confused answers are `incorrect`.
+- **Classify honestly.** Mark `pass` only if the student's answer matches the idealAnswer. Partial or confused answers are `fail`.
 - **Be warm.** Wrong answers are diagnostic, not failures. Keep the student comfortable.
 
 ## Current plan

@@ -4,7 +4,7 @@ import type { IConcept } from '@prodigy/types';
 const lessonStepSchema = new Schema({
   type:        { type: String, enum: ['ido', 'wedo', 'youdo'], required: true },
   instruction: { type: String, default: null },
-  resources:   [{ type: Schema.Types.ObjectId, ref: 'Resource' }],
+  resources:   [{ type: String, ref: 'Resource' }],
   learningIndicator: {
     text:               { type: String },
     assessmentQuestion: { type: Schema.Types.ObjectId, ref: 'Question', default: null },

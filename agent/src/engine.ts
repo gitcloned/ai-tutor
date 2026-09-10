@@ -14,28 +14,37 @@ import type { Skill } from './skills.js';
 
 export type TurnEvent =
   | { type: 'text';        content: string }
+  | { type: 'text_chunk';  content: string }
   | { type: 'tool_call';   name: string; args: unknown }
   | { type: 'tool_result'; name: string; result: unknown }
-  | { type: 'action';      action: unknown }
+  | { type: 'action';      action: unknown } // any action being sent from the system like send-ok
   | { type: 'error';       message: string };
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
 
+// Suppress Gemini SDK warning triggered internally when streaming a function-call response.
+// The SDK accesses .text on the aggregated response to update chat history, which fires a
+// noisy warning when function calls are present. We already guard against this in our own code.
+const _warn = console.warn.bind(console);
+console.warn = (...args: unknown[]) => {
+  if (typeof args[0] === 'string' && args[0].includes('non-text parts')) return;
+  _warn(...args);
+};
+
 export class TurnEngine {
-  constructor(private tools: ToolRegistry, private basePrompt: string) {}
+  constructor(private tools: ToolRegistry, private basePrompt: string) { }
 
   async *run(skill: Skill, ctx: AgentContext): AsyncGenerator<TurnEvent> {
     const toolDefs = this.tools.forSkill(skill.tools).map(t => ({
-      name:        t.name,
+      name: t.name,
       description: t.description,
-      parameters:  t.schema,
+      parameters: t.schema,
     }));
 
     // Build history: all but last message goes into chat history,
-    // last message is sent via sendMessage.
-    // If history is empty (agent initiates), seed with 'Begin the session.'
+    // last message is sent via sendMessageStream.
     const history = ctx.session.history.map(m => ({
-      role:  m.role === 'agent' ? 'model' : 'user',
+      role: m.role === 'agent' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
 
@@ -43,25 +52,39 @@ export class TurnEngine {
     const lastMessage = history.at(-1)?.parts?.[0]?.text ?? 'Begin the session.';
 
     const chat = ai.chats.create({
-      model:   'gemini-3.6-flash',
+      model: 'gemini-3.6-flash',
       history: chatHistory as any,
-      config:  {
+      config: {
         systemInstruction: `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}`,
         tools: toolDefs.length > 0 ? [{ functionDeclarations: toolDefs }] as any : undefined,
       },
     });
 
-    // Agentic loop: send → handle tool calls → repeat until no more tool calls
     ctx.log({ level: 'debug', message: `history length: ${chatHistory.length} | last msg: ${lastMessage.slice(0, 60)}` });
-    let response = await chat.sendMessage({ message: lastMessage });
+
+    // Agentic loop: stream → handle tool calls → repeat until no more tool calls
+    let message: any = lastMessage;
 
     while (true) {
-      const calls = response.functionCalls;
+      const stream = await chat.sendMessageStream({ message });
 
-      // Only access .text when there are no function calls — accessing it
-      // alongside function calls triggers a noisy SDK warning.
-      if (!calls || calls.length === 0) {
-        if (response.text) yield { type: 'text', content: response.text };
+      let accText = '';
+      let calls: any[] = [];
+
+      for await (const chunk of stream) {
+        const chunkCalls = chunk.functionCalls;
+        if (chunkCalls && chunkCalls.length > 0) {
+          // Function calls arrive complete — collect from whichever chunk carries them
+          calls = chunkCalls;
+        } else if (chunk.text) {
+          accText += chunk.text;
+          yield { type: 'text_chunk', content: chunk.text };
+        }
+      }
+
+      if (calls.length === 0) {
+        // No tool calls — streaming is done, emit full text for history accumulation
+        if (accText) yield { type: 'text', content: accText };
         break;
       }
 
@@ -71,7 +94,7 @@ export class TurnEngine {
       for (const call of calls) {
         yield { type: 'tool_call', name: call.name!, args: call.args };
 
-        const tool   = this.tools.get(call.name!);
+        const tool = this.tools.get(call.name!);
         const result = tool
           ? await tool.run(call.args as Record<string, unknown>, ctx)
           : { error: `unknown tool: ${call.name}` };
@@ -85,14 +108,14 @@ export class TurnEngine {
 
         functionResponses.push({
           functionResponse: {
-            id:       call.id,
-            name:     call.name,
+            id: call.id,
+            name: call.name,
             response: result,
           },
         });
       }
 
-      response = await chat.sendMessage({ message: functionResponses as any });
+      message = functionResponses;
     }
   }
 }

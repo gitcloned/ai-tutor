@@ -37,6 +37,7 @@ export class StdinTransport implements Transport {
 
   private rl: readline.Interface | null = null;
   private pendingAutoSend = false;
+  private streamingActive = false;
 
   on(event: 'message', handler: Handler<string>): void;
   on(event: 'connected', handler: Handler<void>): void;
@@ -48,8 +49,22 @@ export class StdinTransport implements Transport {
   }
 
   handle(event: TurnEvent): void {
+    if (event.type === 'text_chunk') {
+      if (!this.streamingActive) {
+        process.stdout.write(`\nTutor: `);
+        this.streamingActive = true;
+      }
+      process.stdout.write(event.content);
+      return;
+    }
     if (event.type === 'text') {
-      process.stdout.write(`\nTutor: ${event.content}\n`);
+      if (this.streamingActive) {
+        process.stdout.write('\n');
+        this.streamingActive = false;
+      } else {
+        process.stdout.write(`\nTutor: ${event.content}\n`);
+      }
+      return;
     }
     if (event.type === 'tool_call' && !this.hideToolCalls) {
       process.stdout.write(`  → [${event.name}] ${JSON.stringify(event.args ?? {})}\n`);

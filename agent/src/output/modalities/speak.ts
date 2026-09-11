@@ -53,17 +53,13 @@ export class Speak extends BaseModality {
   }
 
   private async *synthesise(text: string, attrs: Record<string, string>): AsyncGenerator<TurnEvent> {
-    console.log(`[speak] synthesising: "${text.slice(0, 60)}${text.length > 60 ? '…' : ''}"`);
     const chunks: Buffer[] = [];
     let mimeType = 'audio/mpeg';
     for await (const chunk of this.tts!(text)) {
       chunks.push(Buffer.from(chunk.data, 'base64'));
       mimeType = chunk.mimeType;
-      console.log(`[speak]   chunk ${chunks.length}: ${chunk.data.length} base64 chars (${mimeType})`);
     }
-    if (chunks.length === 0) { console.log('[speak]   → no chunks, skipping'); return; }
-    const combined = Buffer.concat(chunks);
-    console.log(`[speak]   → combined ${combined.length} bytes, sending audio_chunk`);
-    yield { type: 'audio_chunk', content: combined.toString('base64'), attrs: { mimeType, ...attrs } };
+    if (chunks.length === 0) return;
+    yield { type: 'audio_chunk', content: Buffer.concat(chunks).toString('base64'), attrs: { mimeType, ...attrs } };
   }
 }

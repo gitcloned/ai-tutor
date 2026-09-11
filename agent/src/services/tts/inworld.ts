@@ -40,14 +40,11 @@ export function createInworldTTS(): TTSProvider {
       throw new Error(`Inworld TTS HTTP ${res.status}: ${body}`);
     }
 
-    console.log(`[inworld] HTTP ${res.status}, content-type: ${res.headers.get('content-type')}`);
-
-    if (!res.body) { console.log('[inworld] no response body'); return; }
+    if (!res.body) return;
 
     const reader  = res.body.getReader();
     const decoder = new TextDecoder();
     let   pending = '';
-    let   lineCount = 0;
 
     while (true) {
       const { value, done } = await reader.read();
@@ -59,15 +56,12 @@ export function createInworldTTS(): TTSProvider {
       pending = lines.pop() ?? '';
 
       for (const raw of lines) {
-        lineCount++;
         const line = raw.trim();
         if (!line || line === 'data: [DONE]') continue;
 
-        console.log(`[inworld] line ${lineCount}: ${line.slice(0, 120)}`);
-
         const json = line.startsWith('data: ') ? line.slice(6) : line;
         let parsed: unknown;
-        try { parsed = JSON.parse(json); } catch (e) { console.log(`[inworld]   parse error: ${e}`); continue; }
+        try { parsed = JSON.parse(json); } catch { continue; }
 
         const chunk =
           (parsed as any)?.result?.audioContent ??
@@ -75,8 +69,6 @@ export function createInworldTTS(): TTSProvider {
           (parsed as any)?.audioContent         ??
           (parsed as any)?.audio_chunk          ??
           (parsed as any)?.data;
-
-        console.log(`[inworld]   keys: ${Object.keys(parsed as any).join(', ')} → chunk: ${chunk ? chunk.slice(0,20)+'…' : 'none'}`);
 
         if (typeof chunk === 'string' && chunk.length > 0) {
           yield { data: chunk, mimeType: 'audio/mpeg' };
@@ -87,7 +79,6 @@ export function createInworldTTS(): TTSProvider {
     // Flush remaining buffer
     const last = pending.trim();
     if (last && last !== 'data: [DONE]') {
-      console.log(`[inworld] flush: ${last.slice(0, 120)}`);
       const json = last.startsWith('data: ') ? last.slice(6) : last;
       try {
         const parsed = JSON.parse(json) as any;
@@ -97,7 +88,5 @@ export function createInworldTTS(): TTSProvider {
         }
       } catch {}
     }
-
-    console.log(`[inworld] done, ${lineCount} lines processed`);
   };
 }

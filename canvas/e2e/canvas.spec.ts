@@ -1,0 +1,45 @@
+import { test, expect } from '@playwright/test';
+test('real replay renders both lessons and preserves notebook pages',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Big ideas start with a little scribble.'})).toBeVisible();
+  await page.screenshot({path:'artifacts/welcome.png'});
+  await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:8093');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  await expect(page.locator('.orb-label')).toHaveText('Your turn',{timeout:60000});
+
+  await expect(page.locator('.lesson-breadcrumb')).toContainText('Biology',{timeout:60000});
+  await expect(page.locator('.orb-label')).toHaveText('Your turn',{timeout:60000});
+  await page.getByRole('button',{name:'Fit lesson',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Fit lesson',exact:true})).not.toHaveText('100%');
+  await page.screenshot({path:'artifacts/heart.png'});
+  await expect(page.locator('.tl-shape[data-shape-type="image"]')).toHaveCount(1);
+  await expect(page.locator('.tl-shape[data-shape-type="embed"]')).toHaveCount(1);
+  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.locator('.page-list')).toContainText('Algebra');
+  await expect(page.locator('.page-list')).toContainText('Biology');
+  await page.locator('.page-list button').filter({hasText:'Algebra'}).click();
+  await expect(page.locator('.tl-shape[data-shape-type="text"]')).toHaveCount(5);
+  await expect(page.locator('.lesson-breadcrumb')).toContainText('Algebra');
+  await page.screenshot({path:'artifacts/algebra.png'});
+  await page.getByRole('button',{name:'Pencil (D)',exact:true}).click();
+  await page.mouse.move(900,350);await page.mouse.down();await page.mouse.move(970,400,{steps:10});await page.mouse.up();
+  await expect(page.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(page.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(0);
+  await page.getByRole('button',{name:'Redo',exact:true}).click();
+  await expect(page.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
+  // Wait for the actual IndexedDB write, rather than racing tldraw's persistence throttle.
+  await expect.poll(()=>page.evaluate(()=>new Promise<number>((resolve,reject)=>{
+    const request=indexedDB.open('TLDRAW_DOCUMENT_v2prodigy-canvas-v1');
+    request.onsuccess=()=>{const db=request.result;const read=db.transaction('records').objectStore('records').getAll();read.onsuccess=()=>{resolve(read.result.filter((record:{type?:string})=>record.type==='draw').length);db.close();};read.onerror=()=>reject(read.error);};request.onerror=()=>reject(request.error);
+  }))).toBe(1);
+  await page.reload();
+  await expect(page.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'artifacts/mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});

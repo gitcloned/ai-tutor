@@ -15,22 +15,42 @@
  *   --port      port number                     (default: 8080)
  */
 
-import { resolve }      from 'path';
+import { resolve } from 'path';
 import { readFileSync } from 'fs';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 
-const args     = process.argv.slice(2);
-const flag     = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
+// Auto-load .env from agent root (same as cli.mjs)
+try {
+  const env = readFileSync(resolve(new URL('.', import.meta.url).pathname, '../.env'), 'utf8');
+  for (const line of env.split('\n')) {
+    const [key, ...rest] = line.split('=');
+    if (key?.trim() && !key.startsWith('#')) process.env[key.trim()] ??= rest.join('=').trim();
+  }
+} catch { }
+
+const args = process.argv.slice(2);
+const flag = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
 const scenario = flag('--scenario') ?? 'both';
 const charDelay = parseInt(flag('--delay') ?? '10', 10);
-const port     = parseInt(flag('--port')  ?? '8080', 10);
+const port = parseInt(flag('--port') ?? '8080', 10);
+const ttsFlag = flag('--tts'); // inworld | test | (unset = auto-detect)
 
-const __dir    = new URL('.', import.meta.url).pathname;
+// Resolve TTS provider: explicit --tts wins; otherwise auto-detect from env.
+if (ttsFlag) {
+  process.env.USE_TTS_PROVIDER = ttsFlag;
+} else if (!process.env.USE_TTS_PROVIDER) {
+  // Auto-detect: use inworld if keys present, else fall back to visual test TTS.
+  process.env.USE_TTS_PROVIDER =
+    (process.env.INWORLD_API_KEY && process.env.INWORLD_VOICE_ID) ? 'inworld' : 'test';
+}
+const activeTTS = process.env.USE_TTS_PROVIDER;
+
+const __dir = new URL('.', import.meta.url).pathname;
 const htmlPath = resolve(__dir, '../src/transports/test-ws.html');
 
-const { Canvas }        = await import('../dist/output/canvas.js');
-const { Parser }        = await import('../dist/output/parser.js');
+const { Canvas } = await import('../dist/output/canvas.js');
+const { Parser } = await import('../dist/output/parser.js');
 const { DefaultOutput } = await import('../dist/output/default.js');
 
 // ── Text scenario ─────────────────────────────────────────────────────────────
@@ -80,9 +100,11 @@ draw:
 </svg>
 /position: 300,260
 /anchor: center
+parallel:start
 speak: x equals 2 is marked in red. Now let's check our answer. If we substitute 2 back into the original equation, do we get 7?
 ask: What do you get when you substitute x equals 2 into 2x plus 3?
 /position: 300,360
+parallel:end
 `,
   },
 
@@ -152,15 +174,9 @@ async function streamText(ws, text) {
  *  - All other lines stream character-by-character at `charDelay` ms each,
  *    which gives a natural typewriter feel for speak/write/ask content.
  */
-// Visual TTS: instead of real audio, base64-encodes the sentence text.
-// The test page detects mimeType:'text/plain' and streams it as 🎤 text.
-const visualTTS = async text => ({
-  data: Buffer.from(text).toString('base64'),
-  mimeType: 'text/plain',
-});
-
 async function replay(ws, response) {
-  const canvas = Canvas.create({ tts: visualTTS });
+  // Canvas.create() reads USE_TTS_PROVIDER from env (set above).
+  const canvas = Canvas.create();
   const parser = new Parser(canvas);
 
   const feedChunk = async chunk => {
@@ -176,7 +192,7 @@ async function replay(ws, response) {
     const lineWithNewline = line + '\n';
 
     // Track whether we're inside a draw: SVG block
-    if (/^draw:/.test(line))      inSvg = true;
+    if (/^draw:/.test(line)) inSvg = true;
     if (/^[a-z_]+:/.test(line) && !/^draw:/.test(line)) inSvg = false;
 
     if (inSvg && line.trim().startsWith('<') || line.trim().startsWith('<!--')) {
@@ -252,14 +268,15 @@ wss.on('connection', async ws => {
         console.log(`Replaying (triggered by: "${msg.text}")`);
         await play(ws, queue);
       }
-    } catch {}
+    } catch { }
   });
 });
 
 http.listen(port, () => {
   console.log(`\nCanvas test server`);
-  console.log(`  Open   : http://localhost:${port}`);
-  console.log(`  WS     : ws://localhost:${port}`);
+  console.log(`  Open    : http://localhost:${port}`);
+  console.log(`  WS      : ws://localhost:${port}`);
   console.log(`  Scenario: ${scenario}  delay: ${charDelay}ms/char`);
+  console.log(`  TTS     : ${activeTTS === 'inworld' ? 'Inworld (real audio)' : activeTTS === 'test' ? 'visual (🎤 text)' : 'none'}`);
   console.log(`\nConnect in the browser — playback starts automatically.\n`);
 });

@@ -27,10 +27,14 @@ import type { BaseModality } from './modalities/base.js';
  *
  * Non-text events (tool_call, action, error, etc.) pass through unchanged.
  */
+const PARALLEL_MAX_BLOCKS = 4;
+
 export class Parser {
   private lineBuffer = '';
   private currentModality: BaseModality | null = null;
   private currentAttrs: Record<string, string> = {};
+  private inParallel = false;
+  private parallelBlockCount = 0;
 
   constructor(private readonly output: BaseOutput) {}
 
@@ -72,6 +76,12 @@ export class Parser {
     }
   }
 
+  private async *closeParallel(): AsyncGenerator<TurnEvent> {
+    this.inParallel = false;
+    this.parallelBlockCount = 0;
+    yield { type: 'action', action: { type: 'parallel-end' } };
+  }
+
   private async *processLine(line: string): AsyncGenerator<TurnEvent> {
     // Attribute line: /key: value — attach to current block, not forwarded as content
     const attrMatch = line.match(/^\/([a-z_]+):\s?(.*)\n?$/);
@@ -79,6 +89,21 @@ export class Parser {
       if (this.currentModality) {
         this.currentAttrs[attrMatch[1]] = attrMatch[2].trim();
       }
+      return;
+    }
+
+    // Parallel control lines — structural, not modality keys
+    if (/^parallel:start\s*\n?$/.test(line)) {
+      if (!this.inParallel) {
+        this.inParallel = true;
+        this.parallelBlockCount = 0;
+        yield { type: 'action', action: { type: 'parallel-start' } };
+      }
+      return;
+    }
+    if (/^parallel:end\s*\n?$/.test(line)) {
+      if (this.inParallel) yield* this.closeParallel();
+      // stray parallel:end outside a parallel block → silently ignore
       return;
     }
 
@@ -92,6 +117,15 @@ export class Parser {
         this.currentAttrs = {};
       }
       this.currentModality = modality;
+
+      // Count blocks inside a parallel zone; auto-close at the limit
+      if (this.inParallel) {
+        this.parallelBlockCount++;
+        if (this.parallelBlockCount >= PARALLEL_MAX_BLOCKS) {
+          yield* this.closeParallel();
+        }
+      }
+
       const rest = keyMatch![2];
       if (rest) yield* modality.handle(rest + '\n');
     } else if (this.currentModality) {

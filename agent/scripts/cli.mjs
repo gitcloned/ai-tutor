@@ -32,9 +32,18 @@ const hideToolCalls = hasFlag('--hide-tool-calls');
 const outputMode    = flag('--output')     ?? 'default';
 const transportMode = flag('--transport')  ?? 'stdin';
 const wsPort        = parseInt(flag('--port') ?? '8080', 10);
+const ttsFlag       = flag('--tts'); // inworld | test | none
+
+// Set TTS provider before any modules load (Speak reads env in constructor).
+if (ttsFlag === 'none') {
+  delete process.env.USE_TTS_PROVIDER;
+} else if (ttsFlag) {
+  process.env.USE_TTS_PROVIDER = ttsFlag;
+}
+// If --tts not given, USE_TTS_PROVIDER from .env (already loaded above) is used.
 
 if (!conceptId) {
-  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--transport stdin|ws] [--port 8080]');
+  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--transport stdin|ws] [--port 8080] [--tts inworld|test|none]');
   process.exit(1);
 }
 
@@ -63,6 +72,7 @@ console.log('Type your message and press Enter. Type /exit to quit.\n');
 
 // ── Join with selected transport ──────────────────────────────────────────────
 
+// Speak modality auto-wires Inworld TTS from INWORLD_API_KEY + INWORLD_VOICE_ID env vars.
 const output = outputMode === 'canvas' ? Canvas.create() : undefined;
 
 let transport;

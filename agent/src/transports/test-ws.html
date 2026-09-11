@@ -343,6 +343,12 @@
   // gets its own repaint and streaming is actually visible.
   const eventQueue = [];
   let draining = false;
+  let inParallel = false; // when true, audio_chunk does not block the drain queue
+
+  // Typing speed: characters per minute → ms per character delay in the drain queue.
+  // 600 CPM ≈ 100 wpm — feels natural. Adjust to taste.
+  const TYPING_CPM = 600;
+  const MS_PER_CHAR = Math.round(60_000 / TYPING_CPM);
 
   function enqueue(event) {
     eventQueue.push(event);
@@ -354,20 +360,56 @@
     draining = true;
     const event = eventQueue.shift();
     handleEvent(event);
-    // Yield to browser — allows repaint before processing next event.
-    // text_chunk and _stream (internal char events) get a frame delay so
-    // streaming is actually visible. Structural events process immediately.
-    const delay = (event.type === 'text_chunk' || event.type === '_stream') ? 16 : 0;
+
+    if (event.type === 'audio_chunk' && !inParallel) {
+      // Sequential mode: pause drain until audio finishes so visuals stay in sync.
+      audioQueue.then(drain);
+      return;
+    }
+
+    if (event.type === 'action' && event.action?.type === 'parallel-start') {
+      inParallel = true;
+      setTimeout(drain, 0);
+      return;
+    }
+
+    if (event.type === 'action' && event.action?.type === 'parallel-end') {
+      inParallel = false;
+      // Sync point: wait for all in-flight audio before continuing.
+      audioQueue.then(drain);
+      return;
+    }
+
+    const delay = (event.type === 'text_chunk' || event.type === '_stream') ? MS_PER_CHAR : 0;
     setTimeout(drain, delay);
   }
 
   // ── Audio (base64 chunks via Web Audio API) ───────────────────────────────
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   let audioQueue = Promise.resolve();
+  let audioGeneration = 0; // increments with each chunk; used to detect when the last chunk finishes
+
+  // Resume AudioContext on first user gesture (browsers suspend it by default).
+  document.addEventListener('click', () => audioCtx.resume(), { once: true });
+
+  function showSpeakingPill() {
+    if (document.querySelector('.audio-pill')) return;
+    const pill = el('div', 'audio-pill');
+    pill.innerHTML = '<span class="dot"></span> Speaking…';
+    msgs().appendChild(pill);
+    scrollBottom();
+  }
+
+  function hideSpeakingPill() {
+    document.querySelector('.audio-pill')?.remove();
+  }
 
   function playAudioChunk(base64) {
+    const gen = ++audioGeneration;
+    showSpeakingPill();
     audioQueue = audioQueue.then(async () => {
       try {
+        await audioCtx.resume();
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
         const buffer = await audioCtx.decodeAudioData(bytes.buffer);
         const src = audioCtx.createBufferSource();
@@ -375,7 +417,9 @@
         src.connect(audioCtx.destination);
         src.start();
         await new Promise(r => { src.onended = r; });
-      } catch { /* partial chunks may fail to decode — that's ok */ }
+      } catch (e) { console.error('[audio] decode/play error:', e); }
+      // Hide pill only if no newer chunk was queued after this one
+      if (audioGeneration === gen) hideSpeakingPill();
     });
   }
 
@@ -419,11 +463,19 @@
     switch (event.type) {
 
       // ── Text streaming ──────────────────────────────────────────────────
-      case 'text_chunk':
+      case 'text_chunk': {
         if (!currentAgentBubble) currentAgentBubble = addBubble('agent');
-        currentAgentBubble.textContent += event.content;
-        scrollBottom();
+        if (event.content.length > 1) {
+          // Multi-char chunk (e.g. from write: modality) — break into per-char
+          // _stream events so the drain queue renders each at MS_PER_CHAR pace.
+          const node = currentAgentBubble;
+          eventQueue.unshift(...[...event.content].map(ch => ({ type: '_stream', node, ch })));
+        } else {
+          currentAgentBubble.textContent += event.content;
+          scrollBottom();
+        }
         break;
+      }
 
       case 'text':
         currentAgentBubble = null;
@@ -539,12 +591,6 @@
           eventQueue.unshift(...chars);
         } else {
           playAudioChunk(event.content);
-          if (!document.querySelector('.audio-pill')) {
-            const pill = el('div', 'audio-pill');
-            pill.innerHTML = '<span class="dot"></span> Speaking…';
-            msgs().appendChild(pill);
-            scrollBottom();
-          }
         }
         break;
 
@@ -570,6 +616,8 @@
       // ── Action (including send-ok) ───────────────────────────────────────
       case 'action': {
         const action = event.action;
+        // parallel-start/end are internal flow control — don't render as UI cards
+        if (action?.type === 'parallel-start' || action?.type === 'parallel-end') break;
         appendToolRow('⚡ action', JSON.stringify(action, null, 2));
 
         // Mirror StdinTransport: send-ok → auto-send 'Ok'

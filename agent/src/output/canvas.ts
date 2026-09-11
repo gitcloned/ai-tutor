@@ -1,36 +1,27 @@
 import { BaseOutput } from './base.js';
-import { Speak, type TTSProvider } from './modalities/speak.js';
-import { Write } from './modalities/write.js';
-import { Draw } from './modalities/draw.js';
-import { Ask } from './modalities/ask.js';
-import { Play } from './modalities/play.js';
-
-export type { TTSProvider };
-
-export interface CanvasOptions {
-  /** Server-side TTS provider. Without it, speak: blocks are silently dropped. */
-  tts?: TTSProvider;
-}
+import { Speak }      from './modalities/speak.js';
+import { Write }      from './modalities/write.js';
+import { Draw }       from './modalities/draw.js';
+import { Ask }        from './modalities/ask.js';
+import { Play }       from './modalities/play.js';
 
 /**
  * Canvas output — structured format for the interactive tldraw canvas client.
  *
  * The LLM responds using known keys (speak:, write:, draw:, ask:, play:).
- * Each key is handled by its own modality, which decides how to stream or
- * buffer content before emitting typed canvas events to the transport.
+ * Each key is handled by its own modality. The speak: modality auto-resolves
+ * its TTS provider from the USE_TTS_PROVIDER environment variable.
  *
  * Private constructor: use Canvas.create() to get a properly wired instance.
  * One instance per transport connection (modalities are stateful across turns).
  */
 export class Canvas extends BaseOutput {
-  private constructor() {
-    super();
-  }
+  private constructor() { super(); }
 
-  static create(opts: CanvasOptions = {}): Canvas {
+  static create(): Canvas {
     const c = new Canvas();
     c.modalities
-      .add(new Speak(opts.tts))
+      .add(new Speak())
       .add(new Write())
       .add(new Draw())
       .add(new Ask())
@@ -52,13 +43,16 @@ Key behaviours:
 - \`draw:\` — a complete SVG diagram. Use \`viewBox="0 0 400 300"\`. Buffered and rendered once the block ends.
 - \`ask:\` — a question for the student. Canvas pauses and waits for their response. One question per ask block.
 - \`play:\` — a YouTube or video URL to embed. One URL per line.
+- \`parallel:start\` / \`parallel:end\` — wrap blocks that should render simultaneously (e.g. speak + write appearing at the same time). At most 4 blocks per parallel zone. Always close with \`parallel:end\`.
 
 Example:
 \`\`\`
 speak: Let's look at this equation together.
 write: 5x - 2 = 3
+parallel:start
 speak: To solve for x, we isolate it on one side. First, add 2 to both sides.
 write: 5x = 5
+parallel:end
 draw:
 <svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
   <line x1="40" y1="150" x2="360" y2="150" stroke="black" stroke-width="2"/>

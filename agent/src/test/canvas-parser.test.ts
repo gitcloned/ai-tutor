@@ -10,19 +10,22 @@
  * Lower-level unit tests cover attrs, passthrough, and edge cases.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Canvas }  from '../output/canvas.js';
 import { Parser }  from '../output/parser.js';
 import type { TurnEvent } from '../engine.js';
-import type { TTSProvider } from '../output/canvas.js';
+
+// Use test TTS so speak: blocks emit audio_chunk events with base64-encoded text.
+// mimeType 'text/plain' lets assertions decode content without real audio.
+beforeAll(() => { process.env.USE_TTS_PROVIDER = 'test'; });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async function parse(
   response: string,
-  opts: { chunks?: string[]; tts?: TTSProvider } = {},
+  opts: { chunks?: string[] } = {},
 ): Promise<TurnEvent[]> {
-  const canvas = Canvas.create({ tts: opts.tts });
+  const canvas = Canvas.create();
   const parser = new Parser(canvas);
   const results: TurnEvent[] = [];
 
@@ -64,12 +67,6 @@ function collectWriteBlocks(events: TurnEvent[]): Array<{ content: string; attrs
   }
   return blocks;
 }
-
-/** Minimal TTS stub — base64-encodes the sentence text for easy decoding in assertions. */
-const stubTTS: TTSProvider = async (text) => ({
-  data: Buffer.from(text).toString('base64'),
-  mimeType: 'audio/mpeg',
-});
 
 function ttsText(event: Extract<TurnEvent, { type: 'audio_chunk' }>): string {
   return Buffer.from(event.content, 'base64').toString();
@@ -114,7 +111,7 @@ ask: What do you get when you substitute x equals 2 into 2x plus 3?
 
 describe('algebra session — solving 2x + 3 = 7', () => {
   it('produces audio for every spoken sentence in the right order', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     const audio = ofType(events, 'audio_chunk');
 
     // Teacher speaks across several blocks — all audio should be present
@@ -127,7 +124,7 @@ describe('algebra session — solving 2x + 3 = 7', () => {
   });
 
   it('emits each equation step as a separate write event', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     const blocks = collectWriteBlocks(events);
 
     const combined = blocks.map(b => b.content).join('\n');
@@ -138,7 +135,7 @@ describe('algebra session — solving 2x + 3 = 7', () => {
   });
 
   it('attaches positional attrs to each equation write', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     const blocks = collectWriteBlocks(events);
     const positioned = blocks.filter(b => b.attrs['position']);
     // All four equation writes carry a /position
@@ -149,7 +146,7 @@ describe('algebra session — solving 2x + 3 = 7', () => {
   });
 
   it('emits exactly one number-line SVG with position and anchor', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     const svgs = ofType(events, 'svg');
     expect(svgs).toHaveLength(1);
     expect(svgs[0].content).toContain('<circle'); // the red dot at x=2
@@ -158,7 +155,7 @@ describe('algebra session — solving 2x + 3 = 7', () => {
   });
 
   it('ends the turn with a single ask carrying the substitution question', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     const asks = ofType(events, 'ask');
     expect(asks).toHaveLength(1);
     expect(asks[0].content).toContain('substitute x equals 2');
@@ -166,13 +163,13 @@ describe('algebra session — solving 2x + 3 = 7', () => {
   });
 
   it('preserves event order: speak → write steps → draw → speak → ask', async () => {
-    const events = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
+    const events = await parse(ALGEBRA_RESPONSE, {});
     expect(eventOrder(events, 'audio_chunk', 'text_chunk', 'svg', 'ask')).toBe(true);
   });
 
   it('produces the same output whether streamed character-by-character or line-by-line', async () => {
-    const byChar  = await parse(ALGEBRA_RESPONSE, { tts: stubTTS });
-    const byLine  = await parse(ALGEBRA_RESPONSE, { chunks: ALGEBRA_RESPONSE.split('\n').map(l => l + '\n'), tts: stubTTS });
+    const byChar  = await parse(ALGEBRA_RESPONSE, {});
+    const byLine  = await parse(ALGEBRA_RESPONSE, { chunks: ALGEBRA_RESPONSE.split('\n').map(l => l + '\n') });
 
     const summarise = (evs: TurnEvent[]) => ({
       audioCount: ofType(evs, 'audio_chunk').length,
@@ -228,7 +225,7 @@ ask: Which side of the heart — right or left — carries oxygenated blood?
 
 describe('biology session — the human heart', () => {
   it('draws exactly one heart SVG with chamber labels', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     const svgs = ofType(events, 'svg');
     expect(svgs).toHaveLength(1);
 
@@ -242,14 +239,14 @@ describe('biology session — the human heart', () => {
   });
 
   it('places the heart diagram at the specified position', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     const svg = ofType(events, 'svg')[0];
     expect(svg.attrs['position']).toBe('400,100');
     expect(svg.attrs['anchor']).toBe('top-left');
   });
 
   it('emits a play event for the blood-flow video with sizing attrs', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     const plays = ofType(events, 'play');
     expect(plays).toHaveLength(1);
     expect(plays[0].content).toContain('youtube.com');
@@ -259,7 +256,7 @@ describe('biology session — the human heart', () => {
   });
 
   it('speaks all three narration passages in full', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     const allSpoken = ofType(events, 'audio_chunk').map(ttsText).join(' ');
 
     expect(allSpoken).toContain('four-chambered muscle');
@@ -272,7 +269,7 @@ describe('biology session — the human heart', () => {
   });
 
   it('ends with a single ask about oxygenated blood', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     const asks = ofType(events, 'ask');
     expect(asks).toHaveLength(1);
     expect(asks[0].content).toContain('oxygenated blood');
@@ -280,7 +277,7 @@ describe('biology session — the human heart', () => {
   });
 
   it('event order mirrors teaching flow: speak → draw → speak → play → speak → ask', async () => {
-    const events = await parse(HEART_RESPONSE, { tts: stubTTS });
+    const events = await parse(HEART_RESPONSE, {});
     expect(eventOrder(events, 'audio_chunk', 'svg', 'play', 'ask')).toBe(true);
   });
 });
@@ -317,29 +314,32 @@ describe('attribute parsing', () => {
 
 describe('speak modality', () => {
   it('is a no-op when no TTS provider is given', async () => {
+    const prev = process.env.USE_TTS_PROVIDER;
+    delete process.env.USE_TTS_PROVIDER;
     expect(ofType(await parse('speak: Hello.\n'), 'audio_chunk')).toHaveLength(0);
+    process.env.USE_TTS_PROVIDER = prev;
   });
 
   it('splits on . and emits each sentence separately', async () => {
-    const events = await parse('speak: First sentence. Second sentence. Third.\n', { tts: stubTTS });
+    const events = await parse('speak: First sentence. Second sentence. Third.\n', {});
     expect(ofType(events, 'audio_chunk')).toHaveLength(3);
   });
 
   it('splits on ? and !', async () => {
-    const events = await parse('speak: Really? Yes! Good.\n', { tts: stubTTS });
+    const events = await parse('speak: Really? Yes! Good.\n', {});
     expect(ofType(events, 'audio_chunk')).toHaveLength(3);
   });
 
   it('flushes trailing text with no terminal punctuation', async () => {
-    const events = await parse('speak: No punctuation here\n', { tts: stubTTS });
+    const events = await parse('speak: No punctuation here\n', {});
     const chunks = ofType(events, 'audio_chunk');
     expect(chunks).toHaveLength(1);
     expect(ttsText(chunks[0])).toBe('No punctuation here');
   });
 
   it('carries mimeType from TTS provider in attrs', async () => {
-    const events = await parse('speak: Test.\n', { tts: stubTTS });
-    expect(ofType(events, 'audio_chunk')[0].attrs['mimeType']).toBe('audio/mpeg');
+    const events = await parse('speak: Test.\n', {});
+    expect(ofType(events, 'audio_chunk')[0].attrs['mimeType']).toBe('text/plain');
   });
 });
 
@@ -368,6 +368,37 @@ describe('non-text event passthrough', () => {
   });
 });
 
+// ── parallel blocks ────────────────────────────────────────────────────────────
+
+describe('parallel blocks', () => {
+  const parallelActions = (events: TurnEvent[]) =>
+    events.filter(e => e.type === 'action').map(e => (e as any).action.type);
+
+  it('emits parallel-start and parallel-end around a block', async () => {
+    const events = await parse('parallel:start\nspeak: Hello.\nwrite: Hi\nparallel:end\n');
+    expect(parallelActions(events)).toEqual(['parallel-start', 'parallel-end']);
+  });
+
+  it('auto-closes parallel zone after 4 blocks', async () => {
+    const response = 'parallel:start\nspeak: A.\nwrite: B\nspeak: C.\nwrite: D\nspeak: E.\n';
+    const events = await parse(response);
+    const actions = parallelActions(events);
+    expect(actions[0]).toBe('parallel-start');
+    expect(actions[1]).toBe('parallel-end'); // auto-closed at block 4
+    // block 5 (speak: E.) is outside the parallel zone
+  });
+
+  it('ignores stray parallel:end outside a parallel block', async () => {
+    const events = await parse('write: Hello\nparallel:end\nwrite: World\n');
+    expect(parallelActions(events)).toHaveLength(0);
+  });
+
+  it('normal content still emits inside a parallel block', async () => {
+    const events = await parse('parallel:start\nwrite: x = 2\nparallel:end\n');
+    expect(ofType(events, 'text_chunk').length).toBeGreaterThan(0);
+  });
+});
+
 // ── edge cases ─────────────────────────────────────────────────────────────────
 
 describe('edge cases', () => {
@@ -380,7 +411,7 @@ describe('edge cases', () => {
   });
 
   it('parser state resets cleanly between turns on the same instance', async () => {
-    const canvas = Canvas.create({ tts: stubTTS });
+    const canvas = Canvas.create();
     const parser = new Parser(canvas);
 
     async function turn(response: string) {

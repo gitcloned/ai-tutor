@@ -14,7 +14,13 @@ importers:
       '@google/genai':
         specifier: ^2.21.0
         version: 2.21.0
+      ws:
+        specifier: ^8.21.3
+        version: 8.21.3
     devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -192,6 +198,9 @@ packages:
 
   '@types/retry@0.12.0':
     resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@vitest/mocker@5.0.0':
     resolution: {integrity: sha512-66PGTMIiVJP3t4a5yxU9qPtf7MdTBs8jmToMvy+HVflB3Yy13WJZTtPePdvU+wjRV02SKK5doLbSA6o9pwOmiA==}
@@ -826,6 +835,10 @@ snapshots:
       undici-types: 5.26.5
 
   '@types/retry@0.12.0': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 18.19.130
 
   '@vitest/mocker@5.0.0(vite@8.2.2)':
     dependencies:

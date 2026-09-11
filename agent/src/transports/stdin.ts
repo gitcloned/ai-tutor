@@ -2,15 +2,17 @@ import * as readline from 'readline';
 import type { Transport } from '../transport.js';
 import type { LogEntry, LogLevel } from '../types.js';
 import type { TurnEvent } from '../engine.js';
+import type { BaseOutput } from '../output/base.js';
 
 type Handler<T> = (arg: T) => void | Promise<void>;
 
 const LOG_LEVELS: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3, none: 4 };
 
 export interface StdinTransportOptions {
-  studentName?: string;
-  logLevel?: LogLevel | 'none';
+  studentName?:   string;
+  logLevel?:      LogLevel | 'none';
   hideToolCalls?: boolean;
+  output?:        BaseOutput;
 }
 
 /**
@@ -25,14 +27,16 @@ export class StdinTransport implements Transport {
   private connectedHandlers: Handler<void>[] = [];
   private disconnectedHandlers: Handler<void>[] = [];
 
-  private readonly studentName: string;
-  private readonly logLevel: LogLevel | 'none';
+  private readonly studentName:   string;
+  private readonly logLevel:      LogLevel | 'none';
   private readonly hideToolCalls: boolean;
+  readonly output?: BaseOutput;
 
   constructor(opts: StdinTransportOptions = {}) {
-    this.studentName = opts.studentName ?? 'You';
-    this.logLevel = opts.logLevel ?? 'debug';
+    this.studentName   = opts.studentName   ?? 'You';
+    this.logLevel      = opts.logLevel      ?? 'debug';
     this.hideToolCalls = opts.hideToolCalls ?? false;
+    this.output        = opts.output;
   }
 
   private rl: readline.Interface | null = null;
@@ -49,12 +53,42 @@ export class StdinTransport implements Transport {
   }
 
   handle(event: TurnEvent): void {
+    // ── Canvas output events ──────────────────────────────────────────────────
+    if (event.type === 'audio_chunk') {
+      this.debug('audio_chunk', `mimeType=${event.attrs['mimeType'] ?? '?'} bytes=${event.content.length}` +
+        (Object.keys(event.attrs).filter(k => k !== 'mimeType').length
+          ? ` attrs=${JSON.stringify(event.attrs)}` : ''));
+      return;
+    }
+    if (event.type === 'svg') {
+      const lines = event.content.split('\n').length;
+      this.debug('svg', `${lines} lines` + (Object.keys(event.attrs).length ? ` attrs=${JSON.stringify(event.attrs)}` : ''));
+      return;
+    }
+    if (event.type === 'play') {
+      this.debug('play', event.content + (Object.keys(event.attrs).length ? ` attrs=${JSON.stringify(event.attrs)}` : ''));
+      return;
+    }
+    if (event.type === 'ask') {
+      process.stdout.write(`\n❓ ${event.content}\n`);
+      this.debug('ask', Object.keys(event.attrs).length ? `attrs=${JSON.stringify(event.attrs)}` : '(no attrs)');
+      return;
+    }
+    if (event.type === 'annotate') {
+      this.debug('annotate', event.content.slice(0, 80));
+      return;
+    }
+
+    // ── Streaming text (default output or write: modality) ────────────────────
     if (event.type === 'text_chunk') {
       if (!this.streamingActive) {
         process.stdout.write(`\nTutor: `);
         this.streamingActive = true;
       }
       process.stdout.write(event.content);
+      if (event.attrs && Object.keys(event.attrs).length) {
+        this.debug('text_chunk', `attrs=${JSON.stringify(event.attrs)}`);
+      }
       return;
     }
     if (event.type === 'text') {
@@ -66,15 +100,33 @@ export class StdinTransport implements Transport {
       }
       return;
     }
-    if (event.type === 'tool_call' && !this.hideToolCalls) {
-      process.stdout.write(`  → [${event.name}] ${JSON.stringify(event.args ?? {})}\n`);
+
+    // ── Internal agent events ─────────────────────────────────────────────────
+    if (event.type === 'tool_call') {
+      if (!this.hideToolCalls) {
+        process.stdout.write(`  → [${event.name}] ${JSON.stringify(event.args ?? {})}\n`);
+      }
+      this.debug('tool_call', `${event.name} ${JSON.stringify(event.args ?? {})}`);
+      return;
+    }
+    if (event.type === 'tool_result') {
+      this.debug('tool_result', `${event.name} → ${JSON.stringify(event.result).slice(0, 120)}`);
+      return;
+    }
+    if (event.type === 'action') {
+      this.debug('action', JSON.stringify(event.action));
+      if ((event.action as any)?.type === 'send-ok') this.pendingAutoSend = true;
+      return;
     }
     if (event.type === 'error') {
       process.stdout.write(`\n[Error] ${event.message}\n`);
+      return;
     }
-    if (event.type === 'action' && (event.action as any)?.type === 'send-ok') {
-      this.pendingAutoSend = true;
-    }
+  }
+
+  private debug(type: string, detail: string): void {
+    if (LOG_LEVELS[this.logLevel] > LOG_LEVELS['debug']) return;
+    process.stderr.write(`\x1b[90m[DEBUG] [${type}] ${detail}\x1b[0m\n`);
   }
 
   onLog(entry: LogEntry): void {

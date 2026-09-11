@@ -2,7 +2,7 @@
  * Prodigy agent CLI
  *
  * Usage:
- *   node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--log-level debug|info|warn|error|none] [--hide-tool-calls]
+ *   node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--log-level debug|info|warn|error|none] [--hide-tool-calls] [--output default|canvas]
  *
  * Prerequisites:
  *   pnpm build
@@ -29,14 +29,19 @@ const conceptId     = flag('--concept');
 const studentId     = flag('--student')    ?? 'test-student-1';
 const logLevel      = flag('--log-level')  ?? 'debug';
 const hideToolCalls = hasFlag('--hide-tool-calls');
+const outputMode    = flag('--output')     ?? 'default';
+const transportMode = flag('--transport')  ?? 'stdin';
+const wsPort        = parseInt(flag('--port') ?? '8080', 10);
 
 if (!conceptId) {
-  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>]');
+  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--transport stdin|ws] [--port 8080]');
   process.exit(1);
 }
 
-const { SessionManager } = await import('../dist/session-manager.js');
-const { StdinTransport } = await import('../dist/transports/stdin.js');
+const { SessionManager }      = await import('../dist/session-manager.js');
+const { StdinTransport }      = await import('../dist/transports/stdin.js');
+const { WebSocketTransport }  = await import('../dist/transports/ws.js');
+const { Canvas }              = await import('../dist/output/canvas.js');
 
 const sm = new SessionManager();
 
@@ -56,9 +61,21 @@ console.log(`State     : ${state}`);
 console.log('─'.repeat(55));
 console.log('Type your message and press Enter. Type /exit to quit.\n');
 
-// ── Join with stdin transport ─────────────────────────────────────────────────
+// ── Join with selected transport ──────────────────────────────────────────────
 
-const transport = new StdinTransport({ studentName: studentId, logLevel, hideToolCalls });
+const output = outputMode === 'canvas' ? Canvas.create() : undefined;
+
+let transport;
+if (transportMode === 'ws') {
+  const { createRequire } = await import('module');
+  const { resolve }       = await import('path');
+  const __dirname         = new URL('.', import.meta.url).pathname;
+  const serveHtml         = resolve(__dirname, '../src/transports/test-ws.html');
+  transport = new WebSocketTransport({ port: wsPort, logLevel, output, serveHtml });
+} else {
+  transport = new StdinTransport({ studentName: studentId, logLevel, hideToolCalls, output });
+}
+
 await sm.join(sessionId, transport);
 transport.start();
 

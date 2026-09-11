@@ -1,6 +1,9 @@
 import { newAgent }        from './agent.js';
 import { lp, cms }        from './api.js';
 import type { Transport }  from './transport.js';
+import type { TurnEvent }  from './engine.js';
+import { DefaultOutput }   from './output/default.js';
+import { Parser }          from './output/parser.js';
 import type { Session, Journey, JourneyNode, Concept } from './types.js';
 
 type Agent = Awaited<ReturnType<typeof newAgent>>;
@@ -88,6 +91,18 @@ export class SessionManager {
 
     agent.ctx.log = entry => transport.onLog(entry);
 
+    const output = transport.output ?? new DefaultOutput();
+    if (output.modalities.size > 0) {
+      agent.ctx.outputPrompt = output.promptTemplate();
+    }
+    const parser = new Parser(output);
+
+    const pipe = async (event: TurnEvent): Promise<void> => {
+      for await (const result of parser.parse(event)) {
+        transport.handle(result);
+      }
+    };
+
     transport.on('disconnected', () => {
       transport.onLog({ level: 'info', message: `session disconnected: ${sessionId}` });
       this.end(sessionId).catch(console.error);
@@ -96,7 +111,7 @@ export class SessionManager {
     transport.on('message', async (text) => {
       try {
         for await (const event of agent.send(text)) {
-          transport.handle(event);
+          await pipe(event);
         }
         persistSession(agent.ctx).catch(() => {});
       } catch (err) {
@@ -108,7 +123,7 @@ export class SessionManager {
       transport.onLog({ level: 'info', message: `session connected: ${sessionId}` });
       try {
         for await (const event of agent.initiate()) {
-          transport.handle(event);
+          await pipe(event);
         }
         persistSession(agent.ctx).catch(() => {});
       } catch (err) {

@@ -13,12 +13,31 @@ import type { ToolRegistry } from './tools/index.js';
 import type { Skill } from './skills.js';
 
 export type TurnEvent =
-  | { type: 'text';        content: string }
-  | { type: 'text_chunk';  content: string }
-  | { type: 'tool_call';   name: string; args: unknown }
-  | { type: 'tool_result'; name: string; result: unknown }
-  | { type: 'action';      action: unknown } // any action being sent from the system like send-ok
-  | { type: 'error';       message: string };
+  // Internal agent events
+  | { type: 'text';         content: string }
+  | { type: 'text_chunk';   content: string; attrs?: Record<string, string> }
+  | { type: 'tool_call';    name: string; args: unknown }
+  | { type: 'tool_result';  name: string; result: unknown }
+  | { type: 'action';       action: unknown }
+  | { type: 'error';        message: string }
+  // Output events — emitted by Parser when an output modality is active.
+  // All share the same shape: { type, content, attrs }.
+  //   type    — discriminates what content means
+  //   content — the payload (base64 audio, SVG, URL, question text, equation…)
+  //   attrs   — open-ended metadata from /key: value lines in the LLM block
+  | { type: 'audio_chunk'; content: string; attrs: Record<string, string> }
+  | { type: 'audio';       content: string; attrs: Record<string, string> }
+  | { type: 'svg';         content: string; attrs: Record<string, string> }
+  | { type: 'play';        content: string; attrs: Record<string, string> }
+  | { type: 'ask';         content: string; attrs: Record<string, string> }
+  | { type: 'annotate';    content: string; attrs: Record<string, string> };
+
+/** Union of all output event type strings. */
+export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'play' | 'ask' | 'annotate' | 'text_chunk';
+
+/** A single output event — the shape every modality produces. */
+export type OutputEvent = Extract<TurnEvent, { attrs: Record<string, string> }>
+  | { type: 'text_chunk'; content: string; attrs: Record<string, string> };
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
 
@@ -55,7 +74,7 @@ export class TurnEngine {
       model: 'gemini-3.6-flash',
       history: chatHistory as any,
       config: {
-        systemInstruction: `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}`,
+        systemInstruction: `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}${ctx.outputPrompt ? `\n\n---\n\n${ctx.outputPrompt}` : ''}`,
         tools: toolDefs.length > 0 ? [{ functionDeclarations: toolDefs }] as any : undefined,
       },
     });

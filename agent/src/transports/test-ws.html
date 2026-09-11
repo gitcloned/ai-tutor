@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prodigy WS Test</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #6c8ef5;
+      --accent-dim:#3a4a8a;
+      --text:      #e2e4ef;
+      --muted:     #6b7280;
+      --green:     #34d399;
+      --red:       #f87171;
+      --yellow:    #fbbf24;
+      --ask-bg:    #1e2a1e;
+      --ask-border:#2d4a2d;
+      --tool-bg:   #1a1a2e;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 15px; font-weight: 600; color: var(--accent); flex: 1; }
+
+    #url-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 10px;
+      font-size: 13px;
+      width: 220px;
+      outline: none;
+    }
+    #url-input:focus { border-color: var(--accent); }
+
+    #connect-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    #connect-btn:hover { opacity: .85; }
+    #connect-btn.connected { background: var(--red); }
+
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+    #status-dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    #status-dot.connecting   { background: var(--yellow); }
+    #status-dot.disconnected { background: var(--red); }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg { max-width: 78%; line-height: 1.55; }
+    .msg.agent  { align-self: flex-start; }
+    .msg.user   { align-self: flex-end; }
+    .msg.system { align-self: center; max-width: 100%; }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .agent .bubble  { background: var(--surface); border: 1px solid var(--border); border-top-left-radius: 3px; }
+    .user  .bubble  { background: var(--accent-dim); border-top-right-radius: 3px; }
+    .system .bubble { background: transparent; color: var(--muted); font-size: 12px; text-align: center; }
+    .error  .bubble { background: #2a1a1a; border: 1px solid var(--red); color: var(--red); }
+
+    /* send-ok auto-send notice */
+    .send-ok-notice {
+      align-self: center;
+      font-size: 11px;
+      color: var(--green);
+      opacity: .75;
+      font-style: italic;
+    }
+
+    /* Ask card */
+    .ask-card {
+      align-self: flex-start;
+      max-width: 78%;
+      background: var(--ask-bg);
+      border: 1px solid var(--ask-border);
+      border-radius: 10px;
+      border-left: 3px solid var(--green);
+      padding: 10px 14px;
+    }
+    .ask-card .label {
+      font-size: 11px; color: var(--green); font-weight: 600;
+      margin-bottom: 4px; letter-spacing: .05em; text-transform: uppercase;
+    }
+
+    /* SVG card */
+    .svg-card {
+      align-self: flex-start;
+      max-width: 90%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .svg-card .svg-label {
+      font-size: 11px; color: var(--muted); padding: 6px 12px;
+      border-bottom: 1px solid var(--border); font-weight: 600;
+    }
+    .svg-card .svg-body {
+      padding: 12px;
+      background: #fff;   /* SVGs assume white canvas */
+      border-radius: 0 0 10px 10px;
+    }
+    .svg-card svg { max-width: 100%; height: auto; display: block; }
+
+    /* Play card */
+    .play-card {
+      align-self: flex-start;
+      width: min(560px, 90%);   /* explicit width so % padding-top works for 16:9 */
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .play-card .play-label {
+      font-size: 11px; color: var(--yellow); font-weight: 600;
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+    }
+    .play-card .play-body { padding: 10px 12px; }
+
+    /* 16:9 embed wrapper */
+    .embed-wrap {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .embed-wrap iframe,
+    .embed-wrap video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 6px;
+    }
+    video { background: #000; }
+
+    .play-card a { color: var(--accent); text-decoration: none; font-size: 13px; word-break: break-all; }
+    .play-card a:hover { text-decoration: underline; }
+
+    /* Audio indicator */
+    .audio-pill {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .audio-pill .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent); animation: pulse 1s ease infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Tool / debug rows */
+    .tool-row { align-self: flex-start; max-width: 90%; width: 100%; }
+    .tool-row details {
+      background: var(--tool-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .tool-row summary {
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+    .tool-row summary::before { content: '▶'; font-size: 9px; transition: transform .15s; }
+    .tool-row details[open] summary::before { transform: rotate(90deg); }
+    .tool-row pre {
+      padding: 8px 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      overflow-x: auto;
+      border-top: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .attrs { font-size: 11px; color: var(--muted); margin-top: 5px; font-family: monospace; }
+
+    /* ── Input bar ── */
+    #input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #msg-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      max-height: 120px;
+    }
+    #msg-input:focus { border-color: var(--accent); }
+    #send-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      align-self: flex-end;
+    }
+    #send-btn:hover { opacity: .85; }
+    #send-btn:disabled { opacity: .4; cursor: default; }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── SVG draw-on animation ── */
+    /* Applied to every path/line/circle inside a freshly inserted svg-body */
+    @keyframes draw-path {
+      from { stroke-dashoffset: var(--path-len, 2000); }
+      to   { stroke-dashoffset: 0; }
+    }
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .svg-body.animating path,
+    .svg-body.animating line,
+    .svg-body.animating polyline,
+    .svg-body.animating polygon,
+    .svg-body.animating rect,
+    .svg-body.animating ellipse,
+    .svg-body.animating circle {
+      stroke-dasharray: var(--path-len, 2000);
+      stroke-dashoffset: var(--path-len, 2000);
+      animation: draw-path 1.2s ease forwards;
+    }
+    .svg-body.animating text,
+    .svg-body.animating image {
+      animation: fade-in 0.4s ease forwards;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="status-dot"></div>
+  <h1>Prodigy WS Test</h1>
+  <input id="url-input" type="text" value="ws://localhost:8080" spellcheck="false">
+  <button id="connect-btn" onclick="toggleConnection()">Connect</button>
+</header>
+
+<div id="messages">
+  <div class="msg system"><div class="bubble">Enter the WebSocket URL and click Connect.</div></div>
+</div>
+
+<div id="input-bar">
+  <textarea id="msg-input" rows="1" placeholder="Type a message…" disabled
+    onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+  <button id="send-btn" disabled onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+  let ws = null;
+  let currentAgentBubble = null;
+
+  // ── Event drain queue ─────────────────────────────────────────────────────
+  // WebSocket messages arrive faster than the browser repaints. Without a queue,
+  // all onmessage handlers fire in one JS task → DOM batches → single repaint.
+  // Using setTimeout(0) between events yields to the browser so each text_chunk
+  // gets its own repaint and streaming is actually visible.
+  const eventQueue = [];
+  let draining = false;
+
+  function enqueue(event) {
+    eventQueue.push(event);
+    if (!draining) drain();
+  }
+
+  function drain() {
+    if (eventQueue.length === 0) { draining = false; return; }
+    draining = true;
+    const event = eventQueue.shift();
+    handleEvent(event);
+    // Yield to browser — allows repaint before processing next event.
+    // text_chunk and _stream (internal char events) get a frame delay so
+    // streaming is actually visible. Structural events process immediately.
+    const delay = (event.type === 'text_chunk' || event.type === '_stream') ? 16 : 0;
+    setTimeout(drain, delay);
+  }
+
+  // ── Audio (base64 chunks via Web Audio API) ───────────────────────────────
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioQueue = Promise.resolve();
+
+  function playAudioChunk(base64) {
+    audioQueue = audioQueue.then(async () => {
+      try {
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        const buffer = await audioCtx.decodeAudioData(bytes.buffer);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(audioCtx.destination);
+        src.start();
+        await new Promise(r => { src.onended = r; });
+      } catch { /* partial chunks may fail to decode — that's ok */ }
+    });
+  }
+
+  // ── Connection ────────────────────────────────────────────────────────────
+  function toggleConnection() {
+    ws && ws.readyState === WebSocket.OPEN ? ws.close() : connect();
+  }
+
+  function connect() {
+    const url = document.getElementById('url-input').value.trim();
+    setStatus('connecting');
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setStatus('connected');
+      addSystem('Connected to ' + url);
+      document.getElementById('msg-input').disabled = false;
+      document.getElementById('send-btn').disabled = false;
+      document.getElementById('msg-input').focus();
+    };
+
+    ws.onmessage = e => {
+      let event;
+      try { event = JSON.parse(e.data); } catch { return; }
+      enqueue(event);
+    };
+
+    ws.onclose = () => {
+      setStatus('disconnected');
+      addSystem('Disconnected.');
+      document.getElementById('msg-input').disabled = true;
+      document.getElementById('send-btn').disabled = true;
+      currentAgentBubble = null;
+    };
+
+    ws.onerror = () => addError('WebSocket error — check the server is running.');
+  }
+
+  // ── Event rendering ───────────────────────────────────────────────────────
+  function handleEvent(event) {
+    switch (event.type) {
+
+      // ── Text streaming ──────────────────────────────────────────────────
+      case 'text_chunk':
+        if (!currentAgentBubble) currentAgentBubble = addBubble('agent');
+        currentAgentBubble.textContent += event.content;
+        scrollBottom();
+        break;
+
+      case 'text':
+        currentAgentBubble = null;
+        scrollBottom();
+        break;
+
+      // ── Ask ─────────────────────────────────────────────────────────────
+      case 'ask': {
+        currentAgentBubble = null;
+        const card = el('div', 'ask-card');
+        const lbl = el('div', 'label');
+        lbl.textContent = '❓ Question';
+        card.appendChild(lbl);
+        // Text node that chars will be streamed into
+        const textNode = document.createTextNode('');
+        card.appendChild(textNode);
+        if (hasAttrs(event.attrs)) card.appendChild(attrsEl(event.attrs));
+        msgs().appendChild(card);
+        scrollBottom();
+        // Stream question text char-by-char via _stream events
+        const chars = [...event.content].map(ch => ({ type: '_stream', node: textNode, ch }));
+        eventQueue.unshift(...chars);
+        break;
+      }
+
+      // ── SVG / draw ──────────────────────────────────────────────────────
+      case 'svg': {
+        currentAgentBubble = null;
+        const card = el('div', 'svg-card');
+        const lbl = el('div', 'svg-label');
+        lbl.textContent = 'draw' + (hasAttrs(event.attrs) ? ' — ' + fmtAttrs(event.attrs) : '');
+        const body = el('div', 'svg-body');
+        body.innerHTML = event.content;
+        card.appendChild(lbl);
+        card.appendChild(body);
+        msgs().appendChild(card);
+        scrollBottom();
+        // Trigger draw-on animation: measure each path length, set CSS var, add class
+        requestAnimationFrame(() => {
+          body.querySelectorAll('path, line, polyline, polygon, rect, ellipse, circle').forEach((el, i) => {
+            const len = el.getTotalLength ? Math.ceil(el.getTotalLength()) : 2000;
+            el.style.setProperty('--path-len', len);
+            el.style.animationDelay = `${i * 80}ms`;
+          });
+          body.querySelectorAll('text, image').forEach((el, i) => {
+            el.style.animationDelay = `${300 + i * 60}ms`;
+          });
+          body.classList.add('animating');
+        });
+        break;
+      }
+
+      // ── Play (YouTube / video / link) ────────────────────────────────────
+      case 'play': {
+        currentAgentBubble = null;
+        const url = event.content.trim();
+        const card = el('div', 'play-card');
+        const lbl = el('div', 'play-label');
+        lbl.textContent = '▶ Play';
+        card.appendChild(lbl);
+
+        const body = el('div', 'play-body');
+        const ytId = youtubeId(url);
+
+        if (ytId) {
+          // YouTube → embed iframe
+          const wrap = el('div', 'embed-wrap');
+          const iframe = document.createElement('iframe');
+          iframe.src = `https://www.youtube.com/embed/${ytId}?autoplay=0`;
+          iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+          iframe.setAttribute('referrerpolicy', 'origin');
+          iframe.allowFullscreen = true;
+          wrap.appendChild(iframe);
+          body.appendChild(wrap);
+        } else if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+          // Direct video file
+          const wrap = el('div', 'embed-wrap');
+          const video = document.createElement('video');
+          video.src = url;
+          video.controls = true;
+          wrap.appendChild(video);
+          body.appendChild(wrap);
+        } else {
+          // Generic link fallback
+          const a = document.createElement('a');
+          a.href = url;
+          a.textContent = url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          body.appendChild(a);
+        }
+
+        if (hasAttrs(event.attrs)) body.appendChild(attrsEl(event.attrs));
+        card.appendChild(body);
+        msgs().appendChild(card);
+        scrollBottom();
+        break;
+      }
+
+      // ── Audio ────────────────────────────────────────────────────────────
+      case 'audio_chunk':
+        if (event.attrs?.mimeType === 'text/plain') {
+          // Visual TTS (canvas.mjs dev mode): stream spoken text with 🎤
+          const sentence = atob(event.content);
+          if (!currentAgentBubble) {
+            currentAgentBubble = addBubble('agent');
+            currentAgentBubble.textContent = '🎤 ';
+          }
+          // Re-enqueue each char as an internal _stream event so the drain
+          // queue gives each char its own repaint — same as text_chunk streaming
+          const node = currentAgentBubble;
+          const chars = [...sentence + ' '].map(ch => ({ type: '_stream', node, ch }));
+          eventQueue.unshift(...chars);
+        } else {
+          playAudioChunk(event.content);
+          if (!document.querySelector('.audio-pill')) {
+            const pill = el('div', 'audio-pill');
+            pill.innerHTML = '<span class="dot"></span> Speaking…';
+            msgs().appendChild(pill);
+            scrollBottom();
+          }
+        }
+        break;
+
+      case 'audio':
+        document.querySelector('.audio-pill')?.remove();
+        break;
+
+      // ── Internal: stream a single char into a DOM node ───────────────────
+      case '_stream':
+        event.node.textContent += event.ch;
+        scrollBottom();
+        break;
+
+      // ── Tool calls / results ─────────────────────────────────────────────
+      case 'tool_call':
+        appendToolRow(`🔧 tool_call: ${escHtml(event.name)}`, JSON.stringify(event.args, null, 2));
+        break;
+
+      case 'tool_result':
+        appendToolRow(`↩ tool_result: ${escHtml(event.name)}`, JSON.stringify(event.result, null, 2));
+        break;
+
+      // ── Action (including send-ok) ───────────────────────────────────────
+      case 'action': {
+        const action = event.action;
+        appendToolRow('⚡ action', JSON.stringify(action, null, 2));
+
+        // Mirror StdinTransport: send-ok → auto-send 'Ok'
+        if (action && typeof action === 'object' && action.type === 'send-ok') {
+          const notice = el('div', 'send-ok-notice');
+          notice.textContent = '↩ auto-sending Ok…';
+          msgs().appendChild(notice);
+          scrollBottom();
+          // Small delay so agent turn fully settles before next message
+          setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'message', text: 'Ok' }));
+            }
+          }, 300);
+        }
+        break;
+      }
+
+      // ── Error ────────────────────────────────────────────────────────────
+      case 'error':
+        currentAgentBubble = null;
+        addError(event.message);
+        break;
+    }
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    addBubble('user').textContent = text;
+    ws.send(JSON.stringify({ type: 'message', text }));
+    input.value = '';
+    input.style.height = '';
+    scrollBottom();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function autoResize(el) {
+    el.style.height = '';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function msgs() { return document.getElementById('messages'); }
+  function scrollBottom() { const m = msgs(); m.scrollTop = m.scrollHeight; }
+
+  function el(tag, cls) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  function addBubble(role) {
+    const row = el('div', `msg ${role}`);
+    const b = el('div', 'bubble');
+    row.appendChild(b);
+    msgs().appendChild(row);
+    return b;
+  }
+
+  function addSystem(text) {
+    const row = el('div', 'msg system');
+    const b = el('div', 'bubble');
+    b.textContent = text;
+    row.appendChild(b);
+    msgs().appendChild(row);
+    scrollBottom();
+  }
+
+  function addError(text) {
+    const row = el('div', 'msg error');
+    const b = el('div', 'bubble');
+    b.textContent = '⚠ ' + text;
+    row.appendChild(b);
+    msgs().appendChild(row);
+    scrollBottom();
+  }
+
+  function appendToolRow(summary, json) {
+    const row = el('div', 'tool-row');
+    const details = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.innerHTML = summary;
+    const pre = document.createElement('pre');
+    pre.textContent = json;
+    details.appendChild(sum);
+    details.appendChild(pre);
+    row.appendChild(details);
+    msgs().appendChild(row);
+    scrollBottom();
+  }
+
+  function setStatus(state) {
+    document.getElementById('status-dot').className = state;
+    const btn = document.getElementById('connect-btn');
+    btn.textContent = state === 'connected' ? 'Disconnect' : 'Connect';
+    btn.className   = state === 'connected' ? 'connected'  : '';
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function hasAttrs(attrs) { return attrs && Object.keys(attrs).length > 0; }
+
+  function fmtAttrs(attrs) {
+    return Object.entries(attrs).map(([k, v]) => `${k}=${v}`).join(' ');
+  }
+
+  function attrsEl(attrs) {
+    const d = el('div', 'attrs');
+    d.textContent = fmtAttrs(attrs);
+    return d;
+  }
+
+  /** Extract YouTube video ID from watch or short URLs. Returns null if not YouTube. */
+  function youtubeId(url) {
+    try {
+      const u = new URL(url);
+      if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0];
+      if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+    } catch {}
+    return null;
+  }
+</script>
+</body>
+</html>

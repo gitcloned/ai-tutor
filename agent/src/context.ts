@@ -3,12 +3,13 @@ import { buildPlan } from './plan-builder.js';
 import { cms, lp } from './api.js';
 
 export interface AgentContext {
-  session:     Session;
-  concept:     Concept;
-  journeyNode: JourneyNode;
-  memories:    Memory[];
-  plan:        PlanStep[];   // compiled fresh each session, lives in memory only
-  log:         (entry: LogEntry) => void;
+  session:       Session;
+  concept:       Concept;
+  journeyNode:   JourneyNode;
+  memories:      Memory[];
+  plan:          PlanStep[];   // compiled fresh each session, lives in memory only
+  log:           (entry: LogEntry) => void;
+  outputPrompt?: string;       // injected by session manager from transport.output.promptTemplate()
 }
 
 export async function buildContext(studentId: string, conceptId: string, journeyNodeId: string): Promise<AgentContext> {

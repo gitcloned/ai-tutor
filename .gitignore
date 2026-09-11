@@ -5,3 +5,4 @@ ka-session.json
 .env
 .DS_Store
 ka-session.json
+.gstack/

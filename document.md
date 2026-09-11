@@ -32,26 +32,27 @@ categories: [system,data,api,decisions]
 |---|---|---|---|
 | prodigy.md | 26 | 2026-09-09 | unchanged |
 | system.md | 108 | 2026-09-09 | unchanged |
-| data.md | 416 | 2026-09-10 | +18 lines |
-| decisions.md | 190 | 2026-09-10 | +28 lines |
+| data.md | 429 | 2026-09-10 | +13 lines |
+| decisions.md | 205 | 2026-09-10 | +15 lines |
 | agent/overview.md | 164 | 2026-09-09 | unchanged |
-| agent/harness.md | 167 | 2026-09-09 | unchanged |
+| agent/harness.md | 199 | 2026-09-10 | +32 lines |
 | agent/skills.md | 120 | 2026-09-09 | unchanged |
-| agent/tools.md | 121 | 2026-09-09 | unchanged |
-| agent/transport.md | 173 | 2026-09-10 | +64 lines |
+| agent/tools.md | 125 | 2026-09-10 | +4 lines |
+| agent/transport.md | 183 | 2026-09-10 | +10 lines |
 | api/lp.md | 178 | 2026-09-09 | unchanged |
 | api/cms.md | 22 | 2026-09-09 | unchanged |
+| rough.md | 102 | 2026-09-10 | new (scratch notes — not a category file) |
 
 ### Semantic Map
 
 | Category | File(s) | Topics | Last synced |
 |---|---|---|---|
 | system | system.md | Overview, Monorepo structure (cms/ + agent/), KA import pipeline, Tech stack (Gemini, Transport) | 2026-09-09 |
-| data | data.md | Board, Class, Strand, Exam, Resource, Question, HintStep, Concept, LearningJourney, LearningJourneyNode (goTo/cameFrom/preReqToLearn/learn-pre-req-before), Session, TeachingPlan, Memory, Relationships | 2026-09-10 |
+| data | data.md | Board, Class, Strand, Exam, Resource, Question, HintStep, Concept, LearningJourney, LearningJourneyNode, Session, PlanHistoryEntry, TeachingPlan, Memory, Relationships | 2026-09-10 |
 | api | api/lp.md, api/cms.md | LP: Journeys, JourneyNodes, Sessions, Memories; CMS: Concepts | 2026-09-09 |
 | decisions | decisions.md | Content Model, Tech Stack, Content Sourcing, Question Format, Hint Trees, Student State, Agent LLM (Gemini), Session Lifecycle, Agent Architecture, Journey Navigation | 2026-09-10 |
 | agent/overview | agent/overview.md | Architecture diagram, Session lifecycle, Turn flow, History format | 2026-09-09 |
-| agent/harness | agent/harness.md | AgentContext, TurnEngine, SessionManager, Agent, PlanStep, Plan compilation | 2026-09-09 |
+| agent/harness | agent/harness.md | AgentContext, TurnEngine (action event), SessionManager (fire-and-forget persist), Agent, PlanStep (practice/resource types), Plan compilation (probing + teaching) | 2026-09-10 |
 | agent/skills | agent/skills.md | SkillLoader, SKILL.md format, State→skill mapping, Probing skill detail | 2026-09-09 |
-| agent/tools | agent/tools.md | read_plan, get_next_step, update_step, advance_state, store_memory | 2026-09-09 |
-| agent/transport | agent/transport.md | Transport interface (handle/onLog), LogEntry, TurnEvent types, StdinTransportOptions, log levels, ANSI colors, CLI flags, Adding transports | 2026-09-10 |
+| agent/tools | agent/tools.md | read_plan, get_next_step, update_step (internal redirect/state), store_memory | 2026-09-10 |
+| agent/transport | agent/transport.md | Transport interface, LogEntry, TurnEvent (incl. action), StdinTransport (pendingAutoSend), CLI flags, Adding transports | 2026-09-10 |

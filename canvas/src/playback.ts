@@ -4,22 +4,70 @@ export class Playback {
   private queue: Block[] = [];
   private running = false;
   private controller = new AbortController();
+  private parallelDepth = 0;
+  private parallelTasks: Promise<void>[] = [];
+  private previousKind: Block['kind'] | null = null;
   paused = false;
-  constructor(private present:(block:Block,signal:AbortSignal)=>Promise<void>,private failed:(error:unknown)=>void,private idle:()=>void=()=>{}) {}
+  constructor(
+    private present:(block:Block,signal:AbortSignal)=>Promise<void>,
+    private failed:(error:unknown)=>void,
+    private idle:()=>void=()=>{},
+    private waitBefore:(ms:number,signal:AbortSignal)=>Promise<void> = (ms, signal) => delay(ms, signal, () => this.paused),
+  ) {}
   add(blocks:Block[]) { this.queue.push(...blocks); void this.drain(); }
   setPaused(value:boolean) { this.paused=value; if(!value) void this.drain(); }
-  cancel() { this.queue=[]; this.controller.abort(); this.controller=new AbortController(); this.paused=false; }
+  cancel() {
+    this.queue=[];
+    this.controller.abort();
+    this.controller=new AbortController();
+    this.parallelDepth=0;
+    this.parallelTasks=[];
+    this.previousKind=null;
+    this.paused=false;
+  }
   private async drain() {
     if(this.running || this.paused) return;
     this.running=true;
     try {
       while(this.queue.length && !this.paused) {
         const block=this.queue.shift()!;
-        try { await this.present(block,this.controller.signal); } catch(error) { if((error as Error).name!=='AbortError') this.failed(error); }
+        const action = block.action;
+        if (block.kind === 'action' && action && typeof action === 'object' && 'type' in action) {
+          if (action.type === 'parallel-start') { this.parallelDepth++; continue; }
+          if (action.type === 'parallel-end') {
+            this.parallelDepth = Math.max(0, this.parallelDepth - 1);
+            if (this.parallelDepth === 0) await Promise.all(this.parallelTasks.splice(0));
+            continue;
+          }
+        }
+        if (this.parallelDepth > 0) {
+          this.parallelTasks.push(this.run(block));
+        } else {
+          const pause = transitionPause(this.previousKind, block.kind);
+          if (pause) await this.waitBefore(pause, this.controller.signal);
+          await this.run(block);
+        }
+        if (isPresentationBlock(block)) this.previousKind = block.kind;
       }
+      if (this.parallelDepth === 0 && this.parallelTasks.length) await Promise.all(this.parallelTasks.splice(0));
     } finally { this.running=false; if(!this.queue.length) this.idle(); }
   }
+  private async run(block: Block) {
+    try { await this.present(block,this.controller.signal); } catch(error) { if((error as Error).name!=='AbortError') this.failed(error); }
+  }
 }
+
+function isPresentationBlock(block: Block) {
+  return ['write','svg','ask','play','speech','audio'].includes(block.kind);
+}
+
+export function transitionPause(previous: Block['kind'] | null, next: Block['kind']) {
+  if (next !== 'speech' && next !== 'audio') return 0;
+  if (previous === 'write') return 1200;
+  if (previous === 'svg') return 1600;
+  return 0;
+}
+
 export async function delay(ms:number,signal:AbortSignal,paused:()=>boolean=()=>false) {
   let elapsed=0; let last=performance.now();
   while(elapsed<ms) {

@@ -80,12 +80,9 @@ write: 2x + 3 = 7
 /position: 300,80
 speak: Our goal is to get x by itself. The first thing we do is get rid of that plus 3. We do this by subtracting 3 from both sides.
 write: 2x + 3 - 3 = 7 - 3
-/position: 300,140
 write: 2x = 4
-/position: 300,180
-speak: Now we have 2x equals 4. To find x, we divide both sides by 2.
+speak: Now we have 2 times x equals 4. To find x, we divide both sides by 2.
 write: x = 2
-/position: 300,220
 /size: large
 speak: Let's see where x equals 2 sits on a number line.
 draw:
@@ -98,13 +95,8 @@ draw:
   <circle cx="290" cy="40" r="7" fill="#e74c3c"/>
   <text x="286" y="68" font-size="12" fill="#e74c3c">2</text>
 </svg>
-/position: 300,260
-/anchor: center
-parallel:start
 speak: x equals 2 is marked in red. Now let's check our answer. If we substitute 2 back into the original equation, do we get 7?
-ask: What do you get when you substitute x equals 2 into 2x plus 3?
-/position: 300,360
-parallel:end
+ask: What do you get when you substitute x equals 2 into 2x + 3?
 `,
   },
 
@@ -242,13 +234,12 @@ async function play(ws, q) {
   for (let i = 0; i < q.length; i++) {
     const s = q[i];
     if (s === 'text') {
-      send(ws, { type: 'text_chunk', content: `\n📖 ${TEXT_SCENARIO.label}\n` });
-      send(ws, { type: 'text', content: '' });
+      send(ws, { type: 'session', sessionId: 'replay-text', conceptId: 'replay-text', title: TEXT_SCENARIO.label });
       await sleep(600);
       await streamText(ws, TEXT_SCENARIO.text);
     } else {
-      send(ws, { type: 'text_chunk', content: `\n📖 ${s.label}\n` });
-      send(ws, { type: 'text', content: '' });
+      const slug = s.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      send(ws, { type: 'session', sessionId: `replay-${slug}`, conceptId: `replay-${slug}`, title: s.label });
       await sleep(600);
       await replay(ws, s.response);
     }

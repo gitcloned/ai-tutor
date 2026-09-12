@@ -19,6 +19,9 @@ export function useLesson(editor:Editor|null) {
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
     const playback=new Playback(async(block:Block,signal)=>{
       if(signal.aborted) return;
+      if(block.kind==='session') {
+        renderer.current!.newLesson(block.content);setTitle(block.content);setQuestion('');waiting.current=false;setFollow(true);log('lesson',block.content);return;
+      }
       if(block.kind==='write' && block.content.startsWith('📖')) {
         const name=block.content.replace(/^📖\s*/,''); renderer.current!.newLesson(name); setTitle(name);setQuestion(''); waiting.current=false;setFollow(true);log('lesson',name);return;
       }
@@ -56,7 +59,10 @@ export function useLesson(editor:Editor|null) {
     ws.onopen=()=>{if(socket.current!==ws)return;setConnected(true);setPhase('ready');setCaption('Your tutor is getting ready.');};
     ws.onmessage=e=>{
       if(socket.current!==ws)return;
-      try {const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error(); player.current!.add(adapter.current.accept(event));}
+      try {
+        const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
+        player.current!.add(adapter.current.accept(event));
+      }
       catch {notify('One tutor event could not be read. You can reconnect if the lesson stops.');}
     };
     ws.onerror=()=>{if(socket.current===ws)notify('Could not reach the tutor. Check the replay server and connection address.');};

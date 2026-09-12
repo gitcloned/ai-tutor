@@ -310,6 +310,18 @@ describe('attribute parsing', () => {
   });
 });
 
+describe('canvas flow control', () => {
+  it('emits parallel boundaries as actions instead of narration text', async () => {
+    const events = await parse('speak: Watch this appear.\nparallel:start\ndraw:\n<svg viewBox="0 0 40 40"></svg>\nparallel:end\n');
+    const actions = ofType(events, 'action');
+    expect(actions.map(event => event.action)).toEqual([
+      { type: 'parallel-start' },
+      { type: 'parallel-end' },
+    ]);
+    expect(ofType(events, 'svg')).toHaveLength(1);
+  });
+});
+
 // ── speak unit tests ───────────────────────────────────────────────────────────
 
 describe('speak modality', () => {

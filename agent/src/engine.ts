@@ -12,13 +12,20 @@ import type { AgentContext } from './context.js';
 import type { ToolRegistry } from './tools/index.js';
 import type { Skill } from './skills.js';
 
+/** Typed lifecycle events emitted by the agent (not actions, not output). */
+export type AgentEvent =
+  | { type: 'tutor-started' }
+  | { type: 'tutor-ended' };
+
 export type TurnEvent =
   // Internal agent events
+  | { type: 'session';      sessionId: string; conceptId: string; title: string }
   | { type: 'text';         content: string }
   | { type: 'text_chunk';   content: string; attrs?: Record<string, string> }
   | { type: 'tool_call';    name: string; args: unknown }
   | { type: 'tool_result';  name: string; result: unknown }
   | { type: 'action';       action: unknown }
+  | { type: 'event';        event: AgentEvent }
   | { type: 'error';        message: string }
   // Output events — emitted by Parser when an output modality is active.
   // All share the same shape: { type, content, attrs }.
@@ -54,6 +61,14 @@ export class TurnEngine {
   constructor(private tools: ToolRegistry, private basePrompt: string) { }
 
   async *run(skill: Skill, ctx: AgentContext): AsyncGenerator<TurnEvent> {
+    yield { type: 'event', event: { type: 'tutor-started' } };
+
+    yield* this.#run(skill, ctx);
+
+    yield { type: 'event', event: { type: 'tutor-ended' } };
+  }
+
+  async *#run(skill: Skill, ctx: AgentContext): AsyncGenerator<TurnEvent> {
     const toolDefs = this.tools.forSkill(skill.tools).map(t => ({
       name: t.name,
       description: t.description,

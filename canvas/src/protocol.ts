@@ -1,6 +1,7 @@
 export type Attrs = Record<string, string>;
-export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown };
-export type Block = { kind: 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown };
+export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; sessionId?: string; conceptId?: string; title?: string };
+export type LessonMetadata = { sessionId: string; conceptId: string; title: string };
+export type Block = { kind: 'session' | 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown };
 export class BlockAdapter {
   private pending = '';
   reset() { this.pending = ''; }
@@ -16,6 +17,12 @@ export class BlockAdapter {
       return result;
     }
     if (event.type === 'text') { flush(); return result; }
+    if (event.type === 'session') {
+      flush();
+      const metadata=lessonMetadata(event);
+      if(metadata) result.push({kind:'session',content:metadata.title,attrs:{sessionId:metadata.sessionId,conceptId:metadata.conceptId}});
+      return result;
+    }
     if (['svg','ask','play','audio_chunk','error','action'].includes(event.type)) flush();
     const attrs = event.attrs ?? {};
     if (['svg','ask','play'].includes(event.type)) result.push({kind:event.type as 'svg'|'ask'|'play',content:event.content ?? '',attrs});
@@ -26,6 +33,10 @@ export class BlockAdapter {
   }
 }
 export function decodeNarration(base64: string) { return new TextDecoder().decode(Uint8Array.from(atob(base64), ch => ch.charCodeAt(0))); }
+export function lessonMetadata(event: WireEvent): LessonMetadata | null {
+  if(event.type!=='session' || !event.title?.trim()) return null;
+  return {sessionId:event.sessionId ?? '',conceptId:event.conceptId ?? '',title:event.title.trim()};
+}
 export function position(attrs: Attrs, width: number, height: number) {
   if (!attrs.position) return null;
   const coordinates = attrs.position.split(',').map(Number);

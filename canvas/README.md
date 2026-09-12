@@ -1,6 +1,6 @@
 # Prodigy canvas
 
-A shared learning notebook connected to the agent's existing WebSocket event stream. Built with React, TypeScript, Vite, and tldraw. No changes to the backend are required for replay.
+A shared learning notebook connected to the agent's existing WebSocket event stream. Built with React, TypeScript, Vite, and tldraw.
 
 ## Run with the teaching replay
 
@@ -38,9 +38,13 @@ The current verification instance uses port **8093**. Connect to `ws://localhost
 
 `BlockAdapter` buffers writes until the empty `text_chunk` with `attrs` sentinel. This keeps adjacent equations separate and allows final positional attributes to apply before rendering. Baseline `text` closes plain text. SVGs and questions are already complete blocks.
 
+The server sends `{type: 'session', sessionId, conceptId, title}` immediately after a WebSocket connection. Canvas uses the concept title for the notebook page before teaching begins. The replay script emits the same event contract.
+
 `Playback` preserves incoming order. Real audio is awaited until playback ends, then subsequent visuals render. `audio_chunk` with `attrs.mimeType: text/plain` is the replay tool's UTF-8 caption simulation. It uses a bounded reading delay, not TTS. Pause suspends both visual timing and Web Audio playback. Disconnect discards queued presentation. The backend still owns LLM parsing, transformations, and event sequencing.
 
-Explicit position and center/top-left anchors are honored in canvas coordinates. Missing positions use vertical placement. SVGs are sanitized and stored as vector image assets. Videos use tldraw embeds/video shapes. HTTP(S) links are validated before rendering.
+Writing appears one character at a time at a 45ms cadence. Sequential write → speech and diagram → speech transitions add 1200ms and 1600ms pauses respectively, after the visual is fully rendered. Explicit `parallel-start` / `parallel-end` groups bypass these pauses and continue to present their contents together.
+
+Explicit position and center/top-left anchors are honored exactly in canvas coordinates. Missing positions use vertical placement with collision avoidance. Camera following preserves zoom and pans only enough to bring new material into a focus zone slightly above center. SVGs are sanitized and stored as vector image assets. Videos use tldraw embeds/video shapes. HTTP(S) links are validated before rendering.
 
 ## Current limits
 

@@ -1,7 +1,8 @@
 import { Box, Editor, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
-import { position, safeMedia, type Block } from './protocol';
+import { safeMedia, type Block } from './protocol';
 import { sanitizeDiagram } from './diagram';
 import { delay } from './playback';
+import { cameraShift, resolvePlacement, textStyle, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
 
 export class CanvasRenderer {
   follow=true;
@@ -19,35 +20,42 @@ export class CanvasRenderer {
     this.editor.setCamera({x:80,y:50,z:1});
   }
   private locate(block:Block,w:number,h:number) {
-    const explicit=position(block.attrs,w,h);
-    const point=explicit?{x:explicit.x,y:explicit.y+this.origin}:{x:260,y:this.cursor};
-    // Model coordinates are preferred, but never place a new block over existing work.
-    const obstacles=this.editor.getCurrentPageShapes().map(shape=>this.editor.getShapePageBounds(shape.id)).filter((bounds):bounds is Box=>!!bounds);
-    for(let tries=0;tries<=obstacles.length;tries++) {
-      const overlap=obstacles.find(bounds=>point.x<bounds.maxX && point.x+w>bounds.x && point.y<bounds.maxY+12 && point.y+h>bounds.y-12);
-      if(!overlap)break; point.y=overlap.maxY+18;
-    }
+    const obstacles=this.editor.getCurrentPageShapes()
+      .map(shape=>this.editor.getShapePageBounds(shape.id))
+      .filter((bounds):bounds is Box=>!!bounds)
+      .map(bounds=>({x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h}));
+    const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
+    if(block.attrs.position) point.y+=this.origin;
     this.cursor=Math.max(this.cursor,point.y+h+38); return point;
   }
   private focus(id:TLShapeId) {
     if(!this.follow) return;
     const bounds=this.editor.getShapePageBounds(id); if(!bounds) return;
     const view=this.editor.getViewportPageBounds();
-    if(!view.contains(bounds.clone().expandBy(70))) this.editor.zoomToBounds(bounds.clone().expandBy(130),{targetZoom:Math.min(1,this.editor.getZoomLevel()),animation:{duration:350}});
+    const shift=cameraShift(
+      {x:view.x,y:view.y,w:view.w,h:view.h},
+      {x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h},
+    );
+    if(!shift) return;
+    const camera=this.editor.getCamera();
+    this.editor.setCamera(
+      {x:camera.x-shift.x,y:camera.y-shift.y,z:camera.z},
+      {animation:{duration:350}},
+    );
   }
   async render(block:Block,signal:AbortSignal) {
     if(signal.aborted) return;
     const id=createShapeId(); const meta={author:'tutor',kind:block.kind};
     if(block.kind==='write' || block.kind==='ask') {
-      const size=block.kind==='ask'?'m':block.attrs.size==='large'?'xl':'l';
-      const point=this.locate(block,block.kind==='ask'?560:500,size==='xl'?70:54);
-      this.editor.createShape({id,type:'text',...point,meta,props:{richText:toRichText(' '),font:block.kind==='ask'?'sans':'draw',color:block.kind==='ask'?'green':'black',size,autoSize:false,w:block.kind==='ask'?560:500}});
+      const style=textStyle(block.kind);
+      const point=this.locate(block,block.kind==='ask'?560:500,54);
+      this.editor.createShape({id,type:'text',...point,meta,props:{richText:toRichText(' '),...style,autoSize:false,w:block.kind==='ask'?560:500}});
       const text=block.content.trim(); const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const count=reduced?text.length:Math.max(2,Math.ceil(text.length/35));
-      for(let end=count;end<text.length+count;end+=count) {
+      const frames=reduced?[text]:writingFrames(text);
+      for(const frame of frames) {
         if(signal.aborted) return;
-        this.editor.updateShape({id,type:'text',props:{richText:toRichText(text.slice(0,end))}});
-        if(!reduced) await delay(16,signal,this.paused);
+        this.editor.updateShape({id,type:'text',props:{richText:toRichText(frame)}});
+        if(!reduced) await delay(WRITE_CHARACTER_DELAY_MS,signal,this.paused);
       }
       const bounds=this.editor.getShapePageBounds(id); if(bounds) this.cursor=Math.max(this.cursor,bounds.maxY+35);
       this.focus(id); return;
@@ -59,7 +67,7 @@ export class CanvasRenderer {
       const point=this.locate(block,width,height); const assetId=AssetRecordType.createId();
       this.editor.createAssets([{id:assetId,type:'image',typeName:'asset',meta:{},props:{name:'Tutor diagram',src:`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.content)}`,w:width,h:height,mimeType:'image/svg+xml',isAnimated:false}}]);
       this.editor.createShape({id,type:'image',...point,meta,props:{assetId,w:width,h:height}});
-      this.focus(id); await delay(250,signal,this.paused); return;
+      this.focus(id); return;
     }
     if(block.kind==='play') {
       const media=safeMedia(block.content); if(!media) throw new Error('This video link could not be opened safely.');

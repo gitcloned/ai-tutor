@@ -60,6 +60,6 @@ export class Speak extends BaseModality {
       mimeType = chunk.mimeType;
     }
     if (chunks.length === 0) return;
-    yield { type: 'audio_chunk', content: Buffer.concat(chunks).toString('base64'), attrs: { mimeType, ...attrs } };
+    yield { type: 'audio_chunk', content: Buffer.concat(chunks).toString('base64'), attrs: { mimeType, sentence: text, ...attrs } };
   }
 }

@@ -109,6 +109,13 @@ export class Parser {
 
     // Modality key line: key: <rest>
     const keyMatch = line.match(/^([a-z_]+):\s?([\s\S]*)\n?$/);
+    // Flow-control directives coordinate modalities without becoming canvas content.
+    // They are intentionally emitted as actions so transports can decide how to
+    // present concurrent blocks while preserving the parser's event order.
+    if (keyMatch?.[1] === 'parallel' && (keyMatch[2].trim() === 'start' || keyMatch[2].trim() === 'end')) {
+      yield { type: 'action', action: { type: `parallel-${keyMatch[2].trim()}` } };
+      return;
+    }
     const modality = keyMatch ? this.output.modalities.get(keyMatch[1]) : null;
 
     if (modality) {

@@ -392,11 +392,13 @@
   // Resume AudioContext on first user gesture (browsers suspend it by default).
   document.addEventListener('click', () => audioCtx.resume(), { once: true });
 
-  function showSpeakingPill() {
-    if (document.querySelector('.audio-pill')) return;
-    const pill = el('div', 'audio-pill');
-    pill.innerHTML = '<span class="dot"></span> Speaking…';
-    msgs().appendChild(pill);
+  function showSpeakingPill(sentence) {
+    let pill = document.querySelector('.audio-pill');
+    if (!pill) {
+      pill = el('div', 'audio-pill');
+      msgs().appendChild(pill);
+    }
+    pill.innerHTML = `<span class="dot"></span> ${sentence ? escHtml(sentence) : 'Speaking…'}`;
     scrollBottom();
   }
 
@@ -404,9 +406,9 @@
     document.querySelector('.audio-pill')?.remove();
   }
 
-  function playAudioChunk(base64) {
+  function playAudioChunk(base64, sentence) {
     const gen = ++audioGeneration;
-    showSpeakingPill();
+    showSpeakingPill(sentence);
     audioQueue = audioQueue.then(async () => {
       try {
         await audioCtx.resume();
@@ -461,6 +463,11 @@
   // ── Event rendering ───────────────────────────────────────────────────────
   function handleEvent(event) {
     switch (event.type) {
+
+      case 'session':
+        document.title = event.title + ' · Prodigy';
+        addSystem('Lesson: ' + event.title);
+        break;
 
       // ── Text streaming ──────────────────────────────────────────────────
       case 'text_chunk': {
@@ -590,7 +597,7 @@
           const chars = [...sentence + ' '].map(ch => ({ type: '_stream', node, ch }));
           eventQueue.unshift(...chars);
         } else {
-          playAudioChunk(event.content);
+          playAudioChunk(event.content, event.attrs?.sentence);
         }
         break;
 

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { BlockAdapter, decodeNarration, position, safeMedia } from '../src/protocol';
+import { BlockAdapter, decodeNarration, lessonMetadata, position, safeMedia } from '../src/protocol';
 import { sanitizeDiagram } from '../src/diagram';
 
 describe('the backend canvas stream', () => {
+  it('reads lesson metadata sent when a socket session connects', () => {
+    const event = {
+      type:'session',
+      sessionId:'session-1',
+      conceptId:'linear-equations',
+      title:'Linear equations',
+    };
+    expect(lessonMetadata(event)).toEqual({sessionId:'session-1',conceptId:'linear-equations',title:'Linear equations'});
+    expect(new BlockAdapter().accept(event)).toEqual([{
+      kind:'session',content:'Linear equations',attrs:{sessionId:'session-1',conceptId:'linear-equations'},
+    }]);
+    expect(lessonMetadata({type:'session',title:''})).toBeNull();
+  });
   it('keeps consecutive writes distinct, including empty attribute sentinels', () => {
     const adapter = new BlockAdapter();
     expect(adapter.accept({type:'text_chunk',content:'2x'})).toEqual([]);

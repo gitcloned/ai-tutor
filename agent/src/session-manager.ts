@@ -4,6 +4,7 @@ import type { Transport }  from './transport.js';
 import type { TurnEvent }  from './engine.js';
 import { DefaultOutput }   from './output/default.js';
 import { Parser }          from './output/parser.js';
+import { makeSessionEvent } from './session-meta.js';
 import type { Session, Journey, JourneyNode, Concept } from './types.js';
 
 type Agent = Awaited<ReturnType<typeof newAgent>>;
@@ -122,6 +123,7 @@ export class SessionManager {
     transport.on('connected', async () => {
       transport.onLog({ level: 'info', message: `session connected: ${sessionId}` });
       try {
+        transport.handle(makeSessionEvent(agent.ctx));
         for await (const event of agent.initiate()) {
           await pipe(event);
         }

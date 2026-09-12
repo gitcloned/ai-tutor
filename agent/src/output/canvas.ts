@@ -43,6 +43,7 @@ Key behaviours:
 - \`draw:\` — a complete SVG diagram. Use \`viewBox="0 0 400 300"\`. Buffered and rendered once the block ends.
 - \`ask:\` — a question for the student. Canvas pauses and waits for their response. One question per ask block.
 - \`play:\` — a YouTube or video URL to embed. One URL per line.
+- \`parallel:start\` / \`parallel:end\` — let speech and the following visual/question overlap, then wait at the end marker.
 - \`parallel:start\` / \`parallel:end\` — wrap blocks that should render simultaneously (e.g. speak + write appearing at the same time). At most 4 blocks per parallel zone. Always close with \`parallel:end\`.
 
 Example:

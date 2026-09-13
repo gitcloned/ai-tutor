@@ -58,13 +58,14 @@ export class Playback {
 }
 
 function isPresentationBlock(block: Block) {
-  return ['write','svg','ask','play','speech','audio'].includes(block.kind);
+  return ['model3d','write','svg','ask','play','speech','audio'].includes(block.kind);
 }
 
 export function transitionPause(previous: Block['kind'] | null, next: Block['kind']) {
   if (next !== 'speech' && next !== 'audio') return 0;
   if (previous === 'write') return 1200;
   if (previous === 'svg') return 1600;
+  if (previous === 'model3d') return 1200;
   return 0;
 }
 
@@ -80,16 +81,18 @@ export class AudioPlayer {
   private context:AudioContext|null=null;
   unlock() { this.context??=new AudioContext(); return this.context.resume(); }
   pause(value:boolean) { if(this.context) void (value?this.context.suspend():this.context.resume()); }
-  async play(base64:string,signal:AbortSignal) {
+  async play(base64:string,signal:AbortSignal,progress?:(elapsed:number,duration:number)=>void) {
     await this.unlock();
     const bytes=Uint8Array.from(atob(base64),ch=>ch.charCodeAt(0));
     const buffer=await this.context!.decodeAudioData(bytes.buffer);
     if(signal.aborted) return;
     await new Promise<void>((resolve,reject)=>{
       const source=this.context!.createBufferSource(); source.buffer=buffer; source.connect(this.context!.destination);
-      const stop=()=>{source.stop();reject(new DOMException('Cancelled','AbortError'));};
+      const startTime=this.context!.currentTime;
+      const timer=setInterval(()=>{if(!signal.aborted)progress?.(this.context!.currentTime-startTime,buffer.duration);},30);
+      const stop=()=>{clearInterval(timer);source.onended=null;source.stop();source.disconnect();reject(new DOMException('Cancelled','AbortError'));};
       signal.addEventListener('abort',stop,{once:true});
-      source.onended=()=>{signal.removeEventListener('abort',stop);resolve();}; source.start();
+      source.onended=()=>{clearInterval(timer);signal.removeEventListener('abort',stop);source.disconnect();if(!signal.aborted)progress?.(buffer.duration,buffer.duration);resolve();}; source.start();
     });
   }
   close() { void this.context?.close(); this.context=null; }

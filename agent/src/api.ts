@@ -1,5 +1,5 @@
-const CMS_BASE = process.env['CMS_URL'] ?? 'http://localhost:3001';
-const LP_BASE  = process.env['LP_URL']  ?? 'http://localhost:3002';
+const CMS_BASE = process.env['CMS_URL'] ?? 'http://localhost:32001';
+const LP_BASE  = process.env['LP_URL']  ?? 'http://localhost:32002';
 
 async function req<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${base}${path}`, {

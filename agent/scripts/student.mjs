@@ -8,11 +8,11 @@
  *   node student.mjs flushAll --student <id>
  *
  * Env:
- *   LP_URL   (default: http://localhost:3002)
- *   CMS_URL  (default: http://localhost:3001)
+ *   LP_URL   (default: http://localhost:32002)
+ *   CMS_URL  (default: http://localhost:32001)
  */
 
-const LP  = process.env.LP_URL  ?? 'http://localhost:3002';
+const LP  = process.env.LP_URL  ?? 'http://localhost:32002';
 
 const args   = process.argv.slice(2);
 const cmd    = args[0];
@@ -282,8 +282,8 @@ function usage() {
     node student.mjs flushAll        --student <id>
 
   Env:
-    LP_URL   (default: http://localhost:3002)
-    CMS_URL  (default: http://localhost:3001)
+    LP_URL   (default: http://localhost:32002)
+    CMS_URL  (default: http://localhost:32001)
   `);
   process.exit(0);
 }

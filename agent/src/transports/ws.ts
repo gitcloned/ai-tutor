@@ -45,7 +45,7 @@ export class WebSocketTransport implements Transport {
   private socket: WebSocket | null = null;
 
   constructor(opts: WebSocketTransportOptions = {}) {
-    this.port      = opts.port      ?? 8080;
+    this.port      = opts.port      ?? 32004;
     this.logLevel  = opts.logLevel  ?? 'info';
     this.output    = opts.output;
     this.serveHtml = opts.serveHtml;

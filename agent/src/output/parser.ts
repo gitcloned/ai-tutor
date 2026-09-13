@@ -108,7 +108,7 @@ export class Parser {
     }
 
     // Modality key line: key: <rest>
-    const keyMatch = line.match(/^([a-z_]+):\s?([\s\S]*)\n?$/);
+    const keyMatch = line.match(/^([a-z_][a-z0-9_]*):\s?([\s\S]*)\n?$/);
     // Flow-control directives coordinate modalities without becoming canvas content.
     // They are intentionally emitted as actions so transports can decide how to
     // present concurrent blocks while preserving the parser's event order.

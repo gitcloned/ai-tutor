@@ -60,8 +60,13 @@ export function cameraShift(viewport: Rect, active: Rect) {
   return x === 0 && y === 0 ? null : { x, y };
 }
 
-export function textStyle(_kind: Extract<Block['kind'], 'write' | 'ask'>) {
-  return { font: 'draw' as const, size: 'l' as const, color: 'black' as const };
+export function textStyle(kind: Extract<Block['kind'], 'write' | 'ask'>) {
+  return { font: 'draw' as const, size: 'l' as const, color: kind==='ask'?'green' as const:'black' as const };
+}
+
+export function questionText(text:string) {
+  const trimmed=text.trim();
+  return /^(?:q(?:uestion)?\s*[.:：)]|q\s*\d+[.:)])\s*/i.test(trimmed)?trimmed:`Q. ${trimmed}`;
 }
 
 export const WRITE_CHARACTER_DELAY_MS = 45;

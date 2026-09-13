@@ -16,8 +16,8 @@ const __dir  = dirname(fileURLToPath(import.meta.url));
 const args   = process.argv.slice(2);
 const flag   = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
 const kaSlug = flag('--concept') || 'plugging_in_values';
-const cmsUrl = flag('--cms')     || 'http://localhost:3001';
-const lpUrl  = flag('--lp')      || 'http://localhost:3002';
+const cmsUrl = flag('--cms')     || 'http://localhost:32001';
+const lpUrl  = flag('--lp')      || 'http://localhost:32002';
 
 process.env['CMS_URL'] = cmsUrl;
 process.env['LP_URL']  = lpUrl;

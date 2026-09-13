@@ -4,6 +4,7 @@ import { Write }      from './modalities/write.js';
 import { Draw }       from './modalities/draw.js';
 import { Ask }        from './modalities/ask.js';
 import { Play }       from './modalities/play.js';
+import { Model3d }    from './modalities/model3d.js';
 
 /**
  * Canvas output — structured format for the interactive tldraw canvas client.
@@ -25,7 +26,8 @@ export class Canvas extends BaseOutput {
       .add(new Write())
       .add(new Draw())
       .add(new Ask())
-      .add(new Play());
+      .add(new Play())
+      .add(new Model3d());
     return c;
   }
 
@@ -38,6 +40,7 @@ Respond using ONLY the following keys: ${keyList}
 Each key starts on a new line followed by a colon. Content continues on the same line and on subsequent lines until the next key is encountered at the start of a line.
 
 Key behaviours:
+- \`model3d:\` — load a known teaching model by ID; optional /action names a prepared routine. Available: cuboid-volume-01 (4 × 3 × 2 centimetre cubes), actions: build-base, build-volume, same-volume, reset. Reuse the ID to operate on the existing model. /action: remove removes that model from the canvas. End your turn after asking a student a question.
 - \`speak:\` — words spoken aloud to the student via text-to-speech. Emitted sentence by sentence. Use natural spoken language.
 - \`write:\` — text or equations displayed on the canvas. Streamed as typed. Use for mathematical expressions, short labels.
 - \`draw:\` — a complete SVG diagram. Use \`viewBox="0 0 400 300"\`. Buffered and rendered once the block ends.

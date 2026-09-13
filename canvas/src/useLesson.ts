@@ -3,6 +3,7 @@ import type { Editor } from 'tldraw';
 import { BlockAdapter, type WireEvent, type Block } from './protocol';
 import { CanvasRenderer } from './renderer';
 import { AudioPlayer, Playback, delay } from './playback';
+import { spokenPrefix } from './captions';
 export type Phase='offline'|'connecting'|'ready'|'thinking'|'speaking'|'writing'|'waiting'|'paused';
 export type Entry={kind:string;text:string};
 export function useLesson(editor:Editor|null) {
@@ -15,6 +16,12 @@ export function useLesson(editor:Editor|null) {
   const notify=useCallback((text:string)=>setNotice(text),[]);
   const log=(kind:string,text:string)=>setEntries(old=>[...old.slice(-199),{kind,text}]);
   useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>;
+    const resize=()=>{clearTimeout(timer);timer=setTimeout(()=>renderer.current?.refocus(),200);};
+    window.addEventListener('resize',resize);
+    return()=>{clearTimeout(timer);window.removeEventListener('resize',resize);};
+  },[]);
+  useEffect(()=>{
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
     const playback=new Playback(async(block:Block,signal)=>{
@@ -26,12 +33,20 @@ export function useLesson(editor:Editor|null) {
         const name=block.content.replace(/^📖\s*/,''); renderer.current!.newLesson(name); setTitle(name);setQuestion(''); waiting.current=false;setFollow(true);log('lesson',name);return;
       }
       if(block.kind==='speech') {
-        setSimulated(true); setPhase('speaking');setCaption(block.content); log('tutor',block.content);
-        await delay(Math.min(4500,Math.max(1000,block.content.length*28)),signal,()=>paused.current);return;
+        waiting.current=false;setQuestion('');setSimulated(true);setPhase('speaking');log('tutor',block.content);
+        const duration=Math.min(4500,Math.max(1000,block.content.length*28));
+        for(let elapsed=0;elapsed<duration;elapsed+=40) {
+          if(signal.aborted)return;
+          setCaption(spokenPrefix(block.content,elapsed,duration));
+          await delay(Math.min(40,duration-elapsed),signal,()=>paused.current);
+        }
+        if(!signal.aborted)setCaption(block.content);return;
       }
       if(block.kind==='audio') {
-        setSimulated(false);setPhase('speaking');setCaption('Listen to your tutor…');
-        await audio.current.play(block.content,signal);return;
+        waiting.current=false;setQuestion('');setSimulated(false);setPhase('speaking');
+        const sentence=block.attrs.sentence;
+        if(sentence){setCaption('');log('tutor',sentence);}
+        await audio.current.play(block.content,signal,sentence?(elapsed,duration)=>setCaption(spokenPrefix(sentence,elapsed,duration)):undefined);return;
       }
       if(block.kind==='error') {notify(block.content);setPhase('ready');return;}
       if(block.kind==='action') {
@@ -48,7 +63,7 @@ export function useLesson(editor:Editor|null) {
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(waiting.current?'waiting':'ready');
     });
     player.current=playback;
-    return ()=>{socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
+    return ()=>{renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
     try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.');return false;}
@@ -82,5 +97,5 @@ export function useLesson(editor:Editor|null) {
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
   function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}
-  return {phase,connected,caption,question,title,notice,notify,entries,follow,simulated,connect,disconnect,send,togglePause,stopFollowing,resumeFollowing,fit:()=>renderer.current?.fit()};
+  return {phase,connected,caption,question,title,notice,notify,entries,follow,simulated,connect,disconnect,send,togglePause,stopFollowing,resumeFollowing,fit:resumeFollowing};
 }

@@ -318,7 +318,7 @@
 <header>
   <div id="status-dot"></div>
   <h1>Prodigy WS Test</h1>
-  <input id="url-input" type="text" value="ws://localhost:8080" spellcheck="false">
+  <input id="url-input" type="text" value="ws://localhost:32004" spellcheck="false">
   <button id="connect-btn" onclick="toggleConnection()">Connect</button>
 </header>
 
@@ -509,6 +509,10 @@
       }
 
       // ── SVG / draw ──────────────────────────────────────────────────────
+      case 'model3d':
+        addSystem('3D model: ' + event.content + (event.attrs?.action ? ' — ' + event.attrs.action : '') + '. Open the Canvas app to interact with this model.');
+        break;
+
       case 'svg': {
         currentAgentBubble = null;
         const card = el('div', 'svg-card');

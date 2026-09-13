@@ -5,20 +5,21 @@
  * sending each emitted event as JSON to the browser test page.
  *
  * Usage:
- *   node scripts/canvas.mjs [--scenario algebra|heart|both] [--delay <ms>] [--port <port>]
+ *   node scripts/canvas.mjs [--scenario algebra|heart|cuboid-volume|both] [--delay <ms>] [--port <port>]
  *
  * Then open http://localhost:<port> in your browser and watch.
  *
  * Options:
- *   --scenario  text | algebra | heart | both   (default: both — plays algebra then heart)
+ *   --scenario  text | algebra | heart | cuboid-volume | cuboid | both   (default: both)
  *   --delay     ms per character                (default: 10, use 0 for instant)
- *   --port      port number                     (default: 8080)
+ *   --port      port number                     (default: 32004)
  */
 
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { cuboidLesson } from './cuboid-lesson.mjs';
 
 // Auto-load .env from agent root (same as cli.mjs)
 try {
@@ -33,7 +34,7 @@ const args = process.argv.slice(2);
 const flag = n => { const i = args.indexOf(n); return i === -1 ? null : args[i + 1]; };
 const scenario = flag('--scenario') ?? 'both';
 const charDelay = parseInt(flag('--delay') ?? '10', 10);
-const port = parseInt(flag('--port') ?? '8080', 10);
+const port = parseInt(flag('--port') ?? process.env.WS_PORT ?? '32004', 10);
 const ttsFlag = flag('--tts'); // inworld | test | (unset = auto-detect)
 
 // Resolve TTS provider: explicit --tts wins; otherwise auto-detect from env.
@@ -213,7 +214,9 @@ const queue = scenario === 'text'
     ? [SCENARIOS.algebra, SCENARIOS.heart]
     : scenario === 'algebra'
       ? [SCENARIOS.algebra]
-      : [SCENARIOS.heart];
+      : scenario === 'cuboid' || scenario === 'cuboid-volume'
+        ? [cuboidLesson]
+        : [SCENARIOS.heart];
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 

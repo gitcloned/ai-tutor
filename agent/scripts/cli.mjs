@@ -31,7 +31,7 @@ const logLevel      = flag('--log-level')  ?? 'debug';
 const hideToolCalls = hasFlag('--hide-tool-calls');
 const outputMode    = flag('--output')     ?? 'default';
 const transportMode = flag('--transport')  ?? 'stdin';
-const wsPort        = parseInt(flag('--port') ?? '8080', 10);
+const wsPort        = parseInt(flag('--port') ?? process.env.WS_PORT ?? '32004', 10);
 const ttsFlag       = flag('--tts'); // inworld | test | none
 
 // Set TTS provider before any modules load (Speak reads env in constructor).
@@ -43,7 +43,7 @@ if (ttsFlag === 'none') {
 // If --tts not given, USE_TTS_PROVIDER from .env (already loaded above) is used.
 
 if (!conceptId) {
-  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--transport stdin|ws] [--port 8080] [--tts inworld|test|none]');
+  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--student <id>] [--transport stdin|ws] [--port 32004] [--tts inworld|test|none]');
   process.exit(1);
 }
 

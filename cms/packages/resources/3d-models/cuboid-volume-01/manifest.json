@@ -1,0 +1,18 @@
+{
+  "id":"cuboid-volume-01",
+  "version":1,
+  "title":"How many cubes are hiding inside?",
+  "renderer":"unit-cubes",
+  "unit":"cm",
+  "dimensions":[4,3,2],
+  "actions":{
+    "build-base":[{"dimensions":[4,3,2],"count":12,"duration":2400}],
+    "build-volume":[{"dimensions":[4,3,2],"count":24,"duration":2400}],
+    "same-volume":[
+      {"dimensions":[4,3,2],"count":24,"duration":800},
+      {"dimensions":[6,2,2],"count":24,"duration":2200},
+      {"dimensions":[8,3,1],"count":24,"duration":2200}
+    ],
+    "reset":[{"dimensions":[4,3,2],"count":0,"duration":500}]
+  }
+}

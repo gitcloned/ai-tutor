@@ -5,7 +5,7 @@ test('real replay renders both lessons and preserves notebook pages',async({page
   await expect(page.getByRole('heading',{name:'Big ideas start with a little scribble.'})).toBeVisible();
   await page.screenshot({path:'artifacts/welcome.png'});
   await page.getByRole('button',{name:'Start learning'}).click();
-  await page.getByLabel('Tutor address').fill(process.env.REPLAY_URL ?? 'ws://localhost:8093');
+  await page.getByLabel('Tutor address').fill(process.env.REPLAY_URL ?? 'ws://localhost:32004');
   await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
   await expect(page.locator('.connection')).toContainText('Connected');
   await expect(page.locator('.lesson-breadcrumb')).toContainText('Biology',{timeout:120000});

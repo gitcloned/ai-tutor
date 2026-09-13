@@ -36,14 +36,14 @@ echo "GEMINI_API_KEY=your_key_here" > agent/.env
 
 ## Running
 
-### CMS backend (port 3001)
+### CMS backend (port 32001)
 
 ```bash
 cd cms
 pnpm dev
 ```
 
-### Learning Progression service (port 3002)
+### Learning Progression service (port 32002)
 
 ```bash
 cd cms/packages/learning-progression
@@ -70,12 +70,26 @@ Type your messages and press Enter. Type `/exit` to end the session.
 
 ## Environment variables
 
+Prodigy application services use dedicated local ports:
+
+| Service | Port |
+|---|---|
+| Canvas development server | 32000 |
+| CMS | 32001 |
+| Learning progression | 32002 |
+| Model resources | 32003 |
+| Agent WebSocket / replay (run one at a time) | 32004 |
+| Canvas production preview | 32005 |
+
+Open Canvas at `http://127.0.0.1:32000` and connect to `ws://127.0.0.1:32004`. Vite uses strict ports. MongoDB is an external shared dependency and remains at its configured address (default port 27017).
+
 | Variable | Where | Required | Notes |
 |---|---|---|---|
 | `GEMINI_API_KEY` | `agent/.env` | Yes | Gemini Flash API key |
-| `CMS_URL` | `agent/.env` | No | Default: `http://localhost:3001` |
-| `LP_URL` | `agent/.env` | No | Default: `http://localhost:3002` |
-| `PORT` | env | No | CMS backend default: 3001; LP default: 3002 |
+| `CMS_URL` | `agent/.env` | No | Default: `http://localhost:32001` |
+| `LP_URL` | `agent/.env` | No | Default: `http://localhost:32002` |
+| `WS_PORT` | `agent/.env` | No | Agent CLI and replay default: 32004; `--port` overrides it |
+| `PORT` | env | No | CMS backend default: 32001; LP default: 32002 |
 | `MONGO_URI` | env | No | Default: `mongodb://127.0.0.1:27017/prodigy` |
 
 ---

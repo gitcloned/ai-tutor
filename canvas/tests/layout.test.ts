@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraShift, resolvePlacement, textStyle, writingFrames, WRITE_CHARACTER_DELAY_MS } from '../src/layout';
+import { cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from '../src/layout';
 
 describe('canvas placement', () => {
   it('honors an explicit position even when it overlaps existing content', () => {
@@ -31,7 +31,12 @@ describe('teaching camera', () => {
 
 it('uses one writing style for explanations and questions', () => {
   expect(textStyle('write')).toEqual({font:'draw',size:'l',color:'black'});
-  expect(textStyle('ask')).toEqual(textStyle('write'));
+  expect(textStyle('ask')).toEqual({font:'draw',size:'l',color:'green'});
+});
+
+it('prefixes questions without duplicating backend question labels',()=>{
+  expect(questionText(' How many cubes? ')).toBe('Q. How many cubes?');
+  for(const text of ['Q. How many?', 'Q: How many?', 'Question: How many?', 'Q1. How many?'])expect(questionText(text)).toBe(text);
 });
 
 it('reveals writing one character at a readable cadence', () => {

@@ -1,11 +1,15 @@
 import express from 'express';
+import { fileURLToPath } from 'node:url';
 import { connectDb } from './db.js';
 import { Strand, Unit, Topic, Concept, Resource, Question } from './models/index.js';
 
 const app  = express();
-const PORT = process.env.PORT ?? 3001;
+const PORT = Number(process.env.PORT ?? 32001);
 
 app.use(express.json());
+app.use('/3d-models', express.static(fileURLToPath(new URL('../../resources/3d-models/', import.meta.url)), {
+  setHeaders: res => res.setHeader('Access-Control-Allow-Origin', '*'),
+}));
 
 type AsyncHandler = (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<unknown>;
 function wrap(fn: AsyncHandler): express.RequestHandler {

@@ -3,7 +3,7 @@ import { connectDb } from './db.js';
 import { LearningJourney, LearningJourneyNode, Session, Memory } from './models/index.js';
 
 const app  = express();
-const PORT = process.env.PORT ?? 3002;
+const PORT = Number(process.env.PORT ?? 32002);
 
 app.use(express.json());
 

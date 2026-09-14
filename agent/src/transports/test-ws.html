@@ -274,8 +274,8 @@
     }
     #msg-input:focus { border-color: var(--accent); }
 
-    /* Image attach button */
-    #attach-btn {
+    /* Input icon buttons */
+    .icon-btn {
       background: none;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -284,12 +284,63 @@
       font-size: 16px;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      transition: border-color .15s, color .15s;
+      transition: border-color .15s, color .15s, background .15s;
       flex-shrink: 0;
     }
-    #attach-btn:hover { border-color: var(--accent); color: var(--accent); }
-    #attach-btn:disabled { opacity: .4; cursor: default; }
-    #image-input { display: none; }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .icon-btn:disabled { opacity: .4; cursor: default; }
+    .icon-btn:disabled:hover { border-color: var(--border); color: var(--muted); }
+    #image-input, #camera-input { display: none; }
+
+    /* Mic button recording state */
+    #mic-btn.recording {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+      animation: mic-pulse 1s ease infinite;
+    }
+    @keyframes mic-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,.5); }
+      50%      { box-shadow: 0 0 0 6px rgba(248,113,113,0); }
+    }
+
+    /* Staged audio preview */
+    .audio-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+      width: 100%;
+    }
+    .audio-preview audio {
+      flex: 1;
+      height: 28px;
+      min-width: 0;
+    }
+    .audio-preview .preview-remove {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px;
+      flex-shrink: 0;
+    }
+    .audio-preview .preview-remove:hover { color: var(--red); }
+    .audio-preview .rec-label {
+      font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0;
+    }
+
+    /* Recording timer badge on mic button */
+    #mic-btn .rec-timer {
+      position: absolute;
+      bottom: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--red);
+      white-space: nowrap;
+    }
+    #mic-btn { position: relative; }
 
     /* Image preview strip */
     #image-previews {
@@ -331,14 +382,6 @@
     #send-btn:hover  { opacity: .85; }
     #send-btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
     #send-btn.has-input { box-shadow: 0 0 0 4px rgba(99,102,241,.25); }
-    #send-btn.recording {
-      background: #e74c3c;
-      animation: orb-pulse 1s ease infinite;
-    }
-    @keyframes orb-pulse {
-      0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,.5); }
-      50%      { box-shadow: 0 0 0 8px rgba(231,76,60,0); }
-    }
 
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -390,8 +433,11 @@
     <textarea id="msg-input" rows="1" placeholder="Type a message…" disabled
       onkeydown="handleKey(event)" oninput="onInputChange(this)"></textarea>
     <input type="file" id="image-input" accept="image/*" multiple onchange="onImagesSelected(this)">
-    <button id="attach-btn" disabled title="Attach image" onclick="document.getElementById('image-input').click()">📎</button>
-    <button id="send-btn" disabled title="Send (tap) · Record (hold)">↑</button>
+    <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="onImagesSelected(this)">
+    <button id="attach-btn"  class="icon-btn" disabled title="Attach image from files"  onclick="document.getElementById('image-input').click()">📎</button>
+    <button id="camera-btn"  class="icon-btn" disabled title="Take a photo"              onclick="document.getElementById('camera-input').click()">📷</button>
+    <button id="mic-btn"     class="icon-btn" disabled title="Record voice message"      onclick="toggleMic()">🎤</button>
+    <button id="send-btn" disabled title="Send">↑</button>
   </div>
 </div>
 
@@ -504,6 +550,8 @@
       document.getElementById('msg-input').disabled = false;
       document.getElementById('send-btn').disabled = false;
       document.getElementById('attach-btn').disabled = false;
+      document.getElementById('camera-btn').disabled = false;
+      document.getElementById('mic-btn').disabled = false;
       document.getElementById('msg-input').focus();
     };
 
@@ -519,6 +567,8 @@
       document.getElementById('msg-input').disabled = true;
       document.getElementById('send-btn').disabled = true;
       document.getElementById('attach-btn').disabled = true;
+      document.getElementById('camera-btn').disabled = true;
+      document.getElementById('mic-btn').disabled = true;
       currentAgentBubble = null;
     };
 
@@ -722,10 +772,21 @@
 
   // ── Multimodal input state ────────────────────────────────────────────────
   let attachedImages = []; // [{ data: base64, mimeType, previewUrl }]
+  let stagedAudio    = null; // { data: base64, mimeType, objectUrl } — recorded audio
   let mediaRecorder  = null;
   let audioChunks    = [];
-  let pressTimer     = null;
   let isRecording    = false;
+  let recTimerInterval = null;
+  let recSeconds     = 0;
+
+  // ── Mic toggle (click to start / click to stop) ───────────────────────────
+  async function toggleMic() {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      await startRecording();
+    }
+  }
 
   // ── Image attach ──────────────────────────────────────────────────────────
   function onImagesSelected(input) {
@@ -759,79 +820,99 @@
     });
   }
 
-  // ── Audio recording (push-to-talk) ────────────────────────────────────────
+  // ── Audio recording ───────────────────────────────────────────────────────
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunks  = [];
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-      mediaRecorder.onstop = () => {
+      audioChunks   = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorder  = recorder;
+      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob   = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-        const reader = new FileReader();
+        const blob      = new Blob(audioChunks, { type: recorder.mimeType });
+        const objectUrl = URL.createObjectURL(blob);
+        const reader    = new FileReader();
         reader.onload = e => {
           const dataUrl = e.target.result;
-          const audio   = { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: blob.type };
-          sendInput(audio);
+          stagedAudio = { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: blob.type, objectUrl };
+          renderAudioPreview();
+          updateOrbState();
         };
         reader.readAsDataURL(blob);
       };
       mediaRecorder.start();
       isRecording = true;
-      document.getElementById('send-btn').classList.add('recording');
+      recSeconds  = 0;
+      const micBtn = document.getElementById('mic-btn');
+      micBtn.classList.add('recording');
+      // Show timer badge
+      const timer = el('span', 'rec-timer');
+      timer.id = 'rec-timer-badge';
+      timer.textContent = '0:00';
+      micBtn.appendChild(timer);
+      recTimerInterval = setInterval(() => {
+        recSeconds++;
+        const m = Math.floor(recSeconds / 60);
+        const s = String(recSeconds % 60).padStart(2, '0');
+        const badge = document.getElementById('rec-timer-badge');
+        if (badge) badge.textContent = `${m}:${s}`;
+      }, 1000);
     } catch { addError('Microphone access denied.'); }
   }
 
   function stopRecording() {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
-      mediaRecorder = null;
-      isRecording   = false;
-      document.getElementById('send-btn').classList.remove('recording');
-    }
+    if (!isRecording) return;
+    clearInterval(recTimerInterval);
+    mediaRecorder?.stop();
+    mediaRecorder = null;
+    isRecording   = false;
+    const micBtn  = document.getElementById('mic-btn');
+    micBtn.classList.remove('recording');
+    document.getElementById('rec-timer-badge')?.remove();
   }
 
-  // ── Orb press handling ────────────────────────────────────────────────────
-  const orbEl = () => document.getElementById('send-btn');
-
-  function orbDown(e) {
-    e.preventDefault();
-    pressTimer = setTimeout(() => {
-      pressTimer = null;
-      startRecording();
-    }, 250);
-  }
-
-  function orbUp(e) {
-    e.preventDefault();
-    if (pressTimer !== null) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-      sendInput(null); // tap = send text + images
-    } else {
-      stopRecording(); // release after hold = send audio
-    }
+  function renderAudioPreview() {
+    document.querySelector('.audio-preview')?.remove();
+    if (!stagedAudio) return;
+    const wrap = el('div', 'audio-preview');
+    const lbl  = el('span', 'rec-label');
+    lbl.textContent = '🎤';
+    const player = document.createElement('audio');
+    player.controls = true;
+    player.src = stagedAudio.objectUrl;
+    const rm = el('button', 'preview-remove');
+    rm.textContent = '×';
+    rm.title = 'Discard recording';
+    rm.onclick = () => {
+      URL.revokeObjectURL(stagedAudio?.objectUrl);
+      stagedAudio = null;
+      renderAudioPreview();
+      updateOrbState();
+    };
+    wrap.appendChild(lbl);
+    wrap.appendChild(player);
+    wrap.appendChild(rm);
+    document.getElementById('image-previews').prepend(wrap);
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
-  function sendInput(audio) {
+  function sendInput() {
     const inputEl = document.getElementById('msg-input');
     const text    = inputEl.value.trim();
-    if (!text && !audio && attachedImages.length === 0) return;
+    if (!text && !stagedAudio && attachedImages.length === 0) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    // Show user bubble with text or audio indicator
     const label = [
       text,
-      audio    ? '🎤 voice message' : null,
+      stagedAudio           ? '🎤 voice message' : null,
       attachedImages.length ? `📎 ${attachedImages.length} image(s)` : null,
     ].filter(Boolean).join(' · ');
     addBubble('user').textContent = label;
 
     const payload = { type: 'message', text };
-    if (audio)                    payload.audio  = audio;
-    if (attachedImages.length)    payload.images = attachedImages.map(({ data, mimeType }) => ({ data, mimeType }));
+    if (stagedAudio)           payload.audio  = { data: stagedAudio.data, mimeType: stagedAudio.mimeType };
+    if (attachedImages.length) payload.images = attachedImages.map(({ data, mimeType }) => ({ data, mimeType }));
 
     ws.send(JSON.stringify(payload));
 
@@ -839,15 +920,17 @@
     inputEl.value        = '';
     inputEl.style.height = '';
     attachedImages       = [];
+    if (stagedAudio) { URL.revokeObjectURL(stagedAudio.objectUrl); stagedAudio = null; }
     renderPreviews();
+    renderAudioPreview();
     updateOrbState();
     scrollBottom();
   }
 
   function updateOrbState() {
     const inputEl  = document.getElementById('msg-input');
-    const hasInput = inputEl.value.trim() || attachedImages.length > 0;
-    orbEl().classList.toggle('has-input', !!hasInput);
+    const hasInput = inputEl.value.trim() || attachedImages.length > 0 || stagedAudio;
+    document.getElementById('send-btn').classList.toggle('has-input', !!hasInput);
   }
 
   function onInputChange(el) {
@@ -857,7 +940,7 @@
   }
 
   function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(null); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(); }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -935,11 +1018,8 @@
     return d;
   }
 
-  // ── Orb button event listeners ────────────────────────────────────────────
-  orbEl().addEventListener('mousedown', orbDown);
-  orbEl().addEventListener('mouseup', orbUp);
-  orbEl().addEventListener('touchstart', orbDown, { passive: false });
-  orbEl().addEventListener('touchend', orbUp, { passive: false });
+  // ── Send button ───────────────────────────────────────────────────────────
+  document.getElementById('send-btn').addEventListener('click', () => sendInput());
 
   /** Extract YouTube video ID from watch or short URLs. Returns null if not YouTube. */
   function youtubeId(url) {

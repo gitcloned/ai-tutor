@@ -4,6 +4,7 @@ import { BlockAdapter, type WireEvent, type Block } from './protocol';
 import { CanvasRenderer } from './renderer';
 import { AudioPlayer, Playback, delay } from './playback';
 import { spokenPrefix } from './captions';
+import type {StudentInput} from './studentWork';
 export type Phase='offline'|'connecting'|'ready'|'thinking'|'speaking'|'writing'|'waiting'|'paused';
 export type Entry={kind:string;text:string};
 export function useLesson(editor:Editor|null) {
@@ -14,6 +15,7 @@ export function useLesson(editor:Editor|null) {
   const socket=useRef<WebSocket|null>(null), player=useRef<Playback|null>(null), renderer=useRef<CanvasRenderer|null>(null);
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
   const notify=useCallback((text:string)=>setNotice(text),[]);
+  const connectionVersion=useRef(0),recordingPause=useRef(false);
   const log=(kind:string,text:string)=>setEntries(old=>[...old.slice(-199),{kind,text}]);
   useEffect(()=>{
     let timer:ReturnType<typeof setTimeout>;
@@ -68,6 +70,7 @@ export function useLesson(editor:Editor|null) {
   function connect(url:string) {
     try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.');return false;}
     if(!player.current) return false;
+    connectionVersion.current++;
     socket.current?.close();player.current.cancel();adapter.current.reset();paused.current=false;audio.current.pause(false);
     void audio.current.unlock().catch(()=>notify('Sound is blocked. Tap the tutor to enable audio.'));
     const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setNotice('');setQuestion('');waiting.current=false;
@@ -84,11 +87,17 @@ export function useLesson(editor:Editor|null) {
     ws.onclose=()=>{if(socket.current!==ws)return;player.current?.cancel();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;};
     return true;
   }
-  function disconnect(){socket.current?.close();player.current?.cancel();setConnected(false);setPhase('offline');}
-  function send(text:string) {
+  function disconnect(){connectionVersion.current++;socket.current?.close();player.current?.cancel();setConnected(false);setPhase('offline');}
+  function send(value:string|StudentInput) {
     if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.');return false;}
-    if(!text.trim()) return false;
-    socket.current.send(JSON.stringify({type:'message',text:text.trim()}));log('you',text.trim());setQuestion('');waiting.current=false;setPhase('thinking');return true;
+    const input=typeof value==='string'?{text:value.trim()}:value;
+    if(!input.text?.trim()&&!input.audio&&!input.images?.length)return false;
+    try{socket.current.send(JSON.stringify({type:'message',...input}));}catch{notify('Could not send. Your work is still pending; tap to retry.');return false;}
+    log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
+  }
+  function recording(active:boolean){
+    if(active){recordingPause.current=!paused.current;if(recordingPause.current)togglePause();}
+    else if(recordingPause.current){recordingPause.current=false;if(paused.current)togglePause();}
   }
   function togglePause() {
     paused.current=!paused.current;
@@ -97,5 +106,5 @@ export function useLesson(editor:Editor|null) {
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
   function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}
-  return {phase,connected,caption,question,title,notice,notify,entries,follow,simulated,connect,disconnect,send,togglePause,stopFollowing,resumeFollowing,fit:resumeFollowing};
+  return {phase,connected,caption,question,title,notice,notify,entries,follow,simulated,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:resumeFollowing};
 }

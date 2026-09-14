@@ -65,7 +65,7 @@ CANVAS_URL=http://127.0.0.1:32000 npm exec -- playwright test e2e/cuboid.spec.ts
 ## Controls
 
 - Left toolbar: select, pencil, erase, text, shapes, pan, ink colors, undo/redo. Standard tldraw keyboard shortcuts remain available.
-- Tutor orb: tap to pause/resume during teaching; otherwise open a reply. Hold to dictate where browser speech recognition is available. Dictation opens a preview for review before sending. Move more than 90 pixels away to cancel the hold.
+- Tutor orb: tap to send pending student work. Hold for 420ms to start microphone recording; release to send audio together with pending text and drawings. Move more than 90 pixels away to cancel. Tutor playback pauses while recording. A tap with nothing pending shows a short notice.
 - Keyboard button: type a reply. Conversation button: review this connection's transcript.
 - Notebook: switch between saved pages or use the trash button to delete one. Undo restores deleted pages. Disconnect before deleting so incoming teaching cannot target a deleted page. Drawings and pages persist through tldraw IndexedDB, scoped to the browser origin (host and port). The tutor address uses localStorage; conversation text is in memory only.
 - Export: save the current page as PNG. Embedded third-party videos may not export.
@@ -87,8 +87,9 @@ Ordinary canvas content honors explicit positions and center/top-left anchors. W
 
 Narration captions reveal the `attrs.sentence` text over the decoded audio chunk's duration and pause with playback. This is approximate character timing; the stream does not provide word timestamps. Later audio chunks without sentence text retain the current caption.
 
-- The backend accepts `{type: 'message', text}` only. Canvas image submission is explicitly unavailable; the app never claims it sent handwritten work.
-- Browser dictation availability varies and may use the browser vendor's service. Raw microphone audio is not sent to the backend. No continuous listening.
+- The backend accepts `{type: 'message', text?, audio?, images?}`. Media fields use `{data: base64, mimeType}`. Recordings use MediaRecorder's supported audio MIME type; drawings export as cropped JPEG at quality 0.8 with a maximum target dimension of 1280px. The replay tool does not evaluate these inputs.
+- Student work is compared at the object-content level: new or changed student objects are included, tutor objects and unchanged objects are excluded, and moving an object alone does not resend it. Text objects become plain text; drawings and other visual objects become an image. Edited objects are resent in their current form, not as pixel patches. Deletions are not sent. Existing objects at app startup form the initial baseline; send tracking is in memory for that app visit.
+- The baseline advances only after WebSocket send succeeds. The protocol has no receipt acknowledgement, so successful queuing does not prove backend processing. Failed preparation or a disconnected socket leaves work pending. Microphone recording requires browser permission and a secure context (localhost is supported); there is no continuous listening or browser speech transcription.
 - Pausing is local presentation control, not server generation cancellation. Reconnection is explicit because the live session manager ends sessions on disconnect.
 - The `both` replay moves automatically from algebra to heart, including after questions, matching the script. Pages remain available in the notebook.
 - SVGs enter as complete vector objects, not independently editable diagram primitives.

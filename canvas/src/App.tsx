@@ -4,6 +4,7 @@ import { ArrowUpRight, BookOpen, ChevronRight, X, Keyboard, Send, Focus, Minus, 
 import { Toolbar } from './Toolbar';
 import { Orb } from './Orb';
 import { Notebook } from './Notebook';
+import {StudentWork,type MediaInput} from './studentWork';
 import { ModelShapeUtil } from './models/ModelShape';
 const modelShapeUtils=[ModelShapeUtil];
 function applyCanvasTheme(editor:Editor) {
@@ -27,6 +28,9 @@ export default function App() {
   const [url,setUrl]=useState(()=>localStorage.getItem('prodigy-ws')||'ws://localhost:32004');
   const [hasContent,setHasContent]=useState(false);
   const canvasPointer=useRef<{x:number;y:number}|null>(null);
+  const work=useRef<StudentWork|null>(null),sending=useRef(false),pendingAudio=useRef<MediaInput|undefined>(undefined);
+  const replyRef=useRef(reply);replyRef.current=reply;
+  useEffect(()=>{work.current=editor?new StudentWork(editor):null;},[editor]);
   const dialogRef=useRef<HTMLElement|null>(null);
   useEffect(()=>{
     if(!sheet)return;
@@ -38,7 +42,23 @@ export default function App() {
   useEffect(()=>{if(!editor)return;const refresh=()=>setHasContent(editor.getCurrentPageShapes().length>0);refresh();return editor.store.listen(refresh);},[editor]);
   useEffect(()=>{if(!lesson.notice)return;const timeout=setTimeout(()=>lesson.notify(''),9000);return()=>clearTimeout(timeout);},[lesson.notice]);
   useEffect(()=>{function escape(e:KeyboardEvent){if(e.key==='Escape'){setSheet(null);setNotebook(false);}}window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);},[]);
-  function tapOrb(){if(['speaking','writing','thinking','paused'].includes(lesson.phase))lesson.togglePause();else setSheet(lesson.connected?'reply':'connect');}
+  async function sendWork(audio?:MediaInput){
+    if(audio)pendingAudio.current=audio;
+    if(!lesson.connected){setSheet('connect');return;}
+    if(sending.current||!work.current||!editor)return;
+    sending.current=true;const version=lesson.connectionVersion.current,page=editor.getCurrentPageId(),draft=replyRef.current.trim(),voice=pendingAudio.current;
+    try{
+      editor.complete();
+      const delta=await work.current.prepare();
+      if(version!==lesson.connectionVersion.current||page!==editor.getCurrentPageId()){lesson.notify('The lesson changed. Your work is still pending.');return;}
+      const text=[draft,delta.text].filter(Boolean).join('\n');
+      if(!text&&!voice&&!delta.images.length){lesson.notify('No new work to send. Draw, type, or hold the orb to speak.');return;}
+      if(lesson.send({...(text?{text}:{}),...(voice?{audio:voice}:{}),...(delta.images.length?{images:delta.images}:{})})){
+        delta.commit();if(replyRef.current.trim()===draft)setReply('');if(pendingAudio.current===voice)pendingAudio.current=undefined;setSheet(null);
+      }
+    }catch{lesson.notify('Could not prepare your work. It is still pending; tap to retry.');}finally{sending.current=false;}
+  }
+  function tapOrb(){void sendWork();}
   async function exportPage(){
     if(!editor)return;const ids=[...editor.getCurrentPageShapeIds()];if(!ids.length){lesson.notify('Write or draw something first, then export your page.');return;}
     try{const result=await editor.toImageDataUrl(ids,{format:'png',background:true,padding:40});const link=document.createElement('a');link.href=result.url;link.download='prodigy-notebook.png';link.click();}catch{lesson.notify('This page could not be exported. Some embedded media may not support export.');}
@@ -54,12 +74,12 @@ export default function App() {
     {editor&&<CanvasControls editor={editor} fit={lesson.fit}/>}
     <div className="bottom-actions"><button title="Type a reply" aria-label="Type a reply" onClick={()=>setSheet('reply')}><Keyboard size={19}/></button><button title="Lesson conversation" aria-label="Lesson conversation" onClick={()=>setSheet('transcript')}><MessageCircle size={18}/></button><button title="Export page" aria-label="Export page" onClick={exportPage}><Download size={18}/></button></div>
     {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p>{lesson.caption}</p></div>}
-    <Orb phase={lesson.phase} onTap={tapOrb} onSpeech={text=>{setReply(text);setSheet('reply');}} notify={lesson.notify}/>
+    <Orb phase={lesson.phase} onTap={tapOrb} onAudio={audio=>{void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
     {lesson.notice&&<div className="toast" role="status">{lesson.notice}<button aria-label="Dismiss notification" onClick={()=>lesson.notify('')}><X size={16}/></button></div>}
     {notebook&&editor&&<Notebook editor={editor} connected={lesson.connected} close={()=>setNotebook(false)}/>}
     {sheet&&<div className="sheet-backdrop" onPointerDown={e=>{if(e.target===e.currentTarget)setSheet(null);}}><section ref={dialogRef} className={`sheet ${sheet==='transcript'?'transcript-sheet':''}`} role="dialog" aria-modal="true" aria-labelledby="sheet-title"><button className="close-sheet" aria-label="Close dialog" onClick={()=>setSheet(null)}><X size={20}/></button>
       {sheet==='connect'&&<><div className="sheet-symbol"><Plug size={24}/></div><h2 id="sheet-title">Meet on the canvas.</h2><p>Connect to a lesson and watch your tutor bring ideas to life.</p><form onSubmit={e=>{e.preventDefault();if(lesson.connect(url)){localStorage.setItem('prodigy-ws',url);setSheet(null);}}}><label htmlFor="ws-url">Tutor address</label><input autoFocus id="ws-url" value={url} onChange={e=>setUrl(e.target.value)} placeholder="ws://localhost:32004" spellCheck={false}/><button className="primary" type="submit">{lesson.connected?'Reconnect':'Connect to tutor'}<ArrowUpRight size={17}/></button></form><div className="connection-note"><Volume2 size={17}/><span>Sound is enabled when you connect. The replay tool displays narration as captions.</span></div>{lesson.connected&&<button className="text-button" onClick={()=>{lesson.disconnect();setSheet(null);}}>Disconnect and keep my notebook</button>}</>}
-      {sheet==='reply'&&<><div className="sheet-symbol"><PencilIcon/></div><h2 id="sheet-title">What are you thinking?</h2><p>{lesson.question||'Share a thought, ask a question, or tell your tutor where you got stuck.'}</p><form onSubmit={e=>{e.preventDefault();if(lesson.send(reply)){setReply('');setSheet(null);}}}><textarea aria-label="Your reply" autoFocus value={reply} onChange={e=>setReply(e.target.value)} placeholder="I think…" rows={4}/><button className="primary" disabled={!reply.trim()||!lesson.connected} type="submit">Send to tutor <Send size={17}/></button></form><p className="footnote">Your drawing stays in your notebook. This connection accepts text replies; image sharing is not supported yet.{!lesson.connected&&' Connect to your tutor to send.'}</p></>}
+      {sheet==='reply'&&<><div className="sheet-symbol"><PencilIcon/></div><h2 id="sheet-title">What are you thinking?</h2><p>{lesson.question||'Share a thought, ask a question, or tell your tutor where you got stuck.'}</p><form onSubmit={e=>{e.preventDefault();void sendWork();}}><textarea aria-label="Your reply" autoFocus value={reply} onChange={e=>setReply(e.target.value)} placeholder="I think…" rows={4}/><button className="primary" disabled={!reply.trim()||!lesson.connected} type="submit">Send to tutor <Send size={17}/></button></form><p className="footnote">New canvas work is included with your reply. Your notebook stays on this device.{!lesson.connected&&' Connect to your tutor to send.'}</p></>}
       {sheet==='transcript'&&<><h2 id="sheet-title">Our conversation</h2><p>Catch a thought you want to revisit.</p><div className="conversation">{lesson.entries.length?lesson.entries.map((entry,index)=><article className={entry.kind==='you'?'from-you':''} key={index}><span>{entry.kind==='you'?'You':entry.kind==='lesson'?'Lesson':'Prodigy'}</span><p>{entry.text}</p></article>):<p className="empty-conversation">Your lesson conversation will appear here when you connect.</p>}</div></>}
     </section></div>}
   </main>;

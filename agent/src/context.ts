@@ -1,15 +1,17 @@
 import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry } from './types.js';
-import { buildPlan } from './plan-builder.js';
-import { cms, lp } from './api.js';
+import type { ImageBlob }   from './medium/modalities/input/types.js';
+import { buildPlan }        from './plan-builder.js';
+import { cms, lp }          from './api.js';
 
 export interface AgentContext {
-  session:       Session;
-  concept:       Concept;
-  journeyNode:   JourneyNode;
-  memories:      Memory[];
-  plan:          PlanStep[];   // compiled fresh each session, lives in memory only
-  log:           (entry: LogEntry) => void;
-  outputPrompt?: string;       // injected by session manager from transport.output.promptTemplate()
+  session:        Session;
+  concept:        Concept;
+  journeyNode:    JourneyNode;
+  memories:       Memory[];
+  plan:           PlanStep[];   // compiled fresh each session, lives in memory only
+  log:            (entry: LogEntry) => void;
+  outputPrompt?:  string;       // injected by session manager from medium.promptTemplate()
+  currentImages?: ImageBlob[];  // set by agent.send() for the current turn; consumed by engine
 }
 
 export async function buildContext(studentId: string, conceptId: string, journeyNodeId: string): Promise<AgentContext> {
@@ -23,7 +25,6 @@ export async function buildContext(studentId: string, conceptId: string, journey
   const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
   const plan    = buildPlan(concept, journeyNode.state);
 
-  // Seed planHistory with the initial concept+plan if this is a brand-new session
   if (session.planHistory.length === 0) {
     const entry: PlanHistoryEntry = {
       conceptId:    concept.id,

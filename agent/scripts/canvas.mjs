@@ -50,9 +50,8 @@ const activeTTS = process.env.USE_TTS_PROVIDER;
 const __dir = new URL('.', import.meta.url).pathname;
 const htmlPath = resolve(__dir, '../src/transports/test-ws.html');
 
-const { Canvas } = await import('../dist/output/canvas.js');
-const { Parser } = await import('../dist/output/parser.js');
-const { DefaultOutput } = await import('../dist/output/default.js');
+const { CanvasMedium } = await import('../dist/medium/canvas.js');
+const { OutputParser } = await import('../dist/medium/modalities/output/parser.js');
 
 // ── Text scenario ─────────────────────────────────────────────────────────────
 // Plain streaming text — no canvas parser, no modalities.
@@ -168,9 +167,8 @@ async function streamText(ws, text) {
  *    which gives a natural typewriter feel for speak/write/ask content.
  */
 async function replay(ws, response) {
-  // Canvas.create() reads USE_TTS_PROVIDER from env (set above).
-  const canvas = Canvas.create();
-  const parser = new Parser(canvas);
+  const canvas = CanvasMedium.create();
+  const parser = new OutputParser(canvas);
 
   const feedChunk = async chunk => {
     for await (const event of parser.parse({ type: 'text_chunk', content: chunk })) {

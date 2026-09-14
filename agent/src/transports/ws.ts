@@ -1,11 +1,11 @@
-import { createServer }            from 'http';
-import { readFileSync }            from 'fs';
+import { createServer }              from 'http';
+import { readFileSync }              from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { Transport }          from '../transport.js';
-import type { LogEntry, LogLevel } from '../types.js';
-import type { TurnEvent }          from '../engine.js';
-import type { BaseOutput }         from '../output/base.js';
+import type { Transport, StudentInput } from '../transport.js';
+import type { LogEntry, LogLevel }      from '../types.js';
+import type { TurnEvent }               from '../engine.js';
+import type { BaseMedium }              from '../medium/base.js';
 
 type Handler<T> = (arg: T) => void | Promise<void>;
 
@@ -14,7 +14,7 @@ const LOG_LEVELS: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 
 export interface WebSocketTransportOptions {
   port?:      number;
   logLevel?:  LogLevel | 'none';
-  output?:    BaseOutput;
+  medium?:    BaseMedium;
   /** Path to an HTML file to serve at GET / (e.g. the test page). */
   serveHtml?: string;
 }
@@ -22,45 +22,37 @@ export interface WebSocketTransportOptions {
 /**
  * WebSocketTransport — listens for one WebSocket client at a time.
  *
- * Backed by a plain http.Server so static files can be served from the same
- * port (no cross-origin issues when embedding iframes in the test page).
- *
- * Client → server messages:   { type: 'message', text: string }
+ * Client → server messages:   { type: 'message', text?, audio?, images? }
  * Server → client events:     JSON-serialised TurnEvent
- *
- * Fires 'connected' when the first client connects.
- * Fires 'disconnected' when that client disconnects.
- * Rejects additional connections while a session is active.
  */
 export class WebSocketTransport implements Transport {
-  private messageHandlers:      Handler<string>[] = [];
-  private connectedHandlers:    Handler<void>[]   = [];
-  private disconnectedHandlers: Handler<void>[]   = [];
+  private messageHandlers:      Handler<StudentInput>[] = [];
+  private connectedHandlers:    Handler<void>[]         = [];
+  private disconnectedHandlers: Handler<void>[]         = [];
 
   private readonly port:      number;
   private readonly logLevel:  LogLevel | 'none';
   private readonly serveHtml: string | undefined;
-  readonly output?: BaseOutput;
+  readonly medium?: BaseMedium;
 
   private socket: WebSocket | null = null;
 
   constructor(opts: WebSocketTransportOptions = {}) {
     this.port      = opts.port      ?? 32004;
     this.logLevel  = opts.logLevel  ?? 'info';
-    this.output    = opts.output;
+    this.medium    = opts.medium;
     this.serveHtml = opts.serveHtml;
   }
 
-  on(event: 'message',      handler: Handler<string>): void;
-  on(event: 'connected',    handler: Handler<void>):   void;
-  on(event: 'disconnected', handler: Handler<void>):   void;
+  on(event: 'message',      handler: Handler<StudentInput>): void;
+  on(event: 'connected',    handler: Handler<void>):         void;
+  on(event: 'disconnected', handler: Handler<void>):         void;
   on(event: string, handler: Handler<any>): void {
     if (event === 'message')      this.messageHandlers.push(handler);
     if (event === 'connected')    this.connectedHandlers.push(handler);
     if (event === 'disconnected') this.disconnectedHandlers.push(handler);
   }
 
-  /** Send a TurnEvent to the connected client as JSON. */
   handle(event: TurnEvent): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
     this.socket.send(JSON.stringify(event));
@@ -76,7 +68,6 @@ export class WebSocketTransport implements Transport {
     process.stderr.write(`${c}[${entry.level.toUpperCase()}] ${entry.message}${reset}\n`);
   }
 
-  /** Start the HTTP + WebSocket server and wait for a client. */
   start(): void {
     const htmlContent = this.serveHtml ? readFileSync(this.serveHtml, 'utf8') : null;
 
@@ -126,14 +117,15 @@ export class WebSocketTransport implements Transport {
           return;
         }
 
-        if (
-          msg !== null && typeof msg === 'object' &&
-          (msg as any).type === 'message' &&
-          typeof (msg as any).text === 'string'
-        ) {
-          const text = ((msg as any).text as string).trim();
-          if (text) {
-            for (const h of this.messageHandlers) await h(text);
+        if (msg !== null && typeof msg === 'object' && (msg as any).type === 'message') {
+          const raw = msg as any;
+          const input: StudentInput = {
+            text:   typeof raw.text   === 'string' ? raw.text.trim() || undefined : undefined,
+            audio:  raw.audio  ?? undefined,
+            images: Array.isArray(raw.images) && raw.images.length ? raw.images : undefined,
+          };
+          if (input.text || input.audio || input.images) {
+            for (const h of this.messageHandlers) await h(input);
           }
         }
       });

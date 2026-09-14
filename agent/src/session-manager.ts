@@ -1,9 +1,10 @@
-import { newAgent }        from './agent.js';
-import { lp, cms }        from './api.js';
-import type { Transport }  from './transport.js';
-import type { TurnEvent }  from './engine.js';
-import { DefaultOutput }   from './output/default.js';
-import { Parser }          from './output/parser.js';
+import { newAgent }       from './agent.js';
+import { lp, cms }       from './api.js';
+import type { Transport } from './transport.js';
+import type { TurnEvent } from './engine.js';
+import { DefaultMedium }  from './medium/default.js';
+import { OutputParser }   from './medium/modalities/output/parser.js';
+import { InputParser }    from './medium/modalities/input/parser.js';
 import { makeSessionEvent } from './session-meta.js';
 import type { Session, Journey, JourneyNode, Concept } from './types.js';
 
@@ -15,7 +16,7 @@ async function persistSession(ctx: import('./context.js').AgentContext): Promise
     history:      ctx.session.history,
     planHistory:  ctx.session.planHistory,
     teachingPlan: ctx.session.teachingPlan,
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 interface ActiveSession {
@@ -28,16 +29,8 @@ export class SessionManager {
 
   /**
    * Create or resume a session for this student + concept.
-   *
-   * - Looks for an existing in-progress session in LP.
-   *   If found: reuses the session record (history is loaded via buildContext).
-   * - If not found: creates a fresh session.
-   * - Either way, plan is always compiled fresh from the concept's probingTree.
-   *
-   * Returns the session id and whether it was resumed.
    */
   async create(studentId: string, conceptId: string): Promise<{ sessionId: string; resumed: boolean }> {
-    // 1. Find or create the student's learning journey
     const journeys = await lp.get<Journey[]>(`/students/${studentId}/journeys`);
     let journey = journeys[0];
     if (!journey) {
@@ -46,13 +39,11 @@ export class SessionManager {
       });
     }
 
-    // 2. Find or create the journey node for this concept
     const nodes = await lp.get<JourneyNode[]>(
       `/journey-nodes?journeyId=${journey.id}&conceptId=${conceptId}`,
     );
     let node = nodes[0];
     if (!node) {
-      // Fetch the concept to determine goTo (next concept in linear sequence)
       const concept = await cms.get<Concept>(`/concepts/${conceptId}`);
       const goTo = concept.nextConcepts?.[0] ?? null;
 
@@ -68,14 +59,10 @@ export class SessionManager {
       });
     }
 
-    // Build the agent — buildContext handles finding or creating the LP session
-    const agent = await newAgent(studentId, conceptId, node.id);
-
-    // Check if this is a resumed session (history already exists)
+    const agent   = await newAgent(studentId, conceptId, node.id);
     const resumed = agent.ctx.session.history.length > 0;
 
     this.sessions.set(agent.ctx.session.id, { agent, resumed });
-
     return { sessionId: agent.ctx.session.id, resumed };
   }
 
@@ -92,14 +79,16 @@ export class SessionManager {
 
     agent.ctx.log = entry => transport.onLog(entry);
 
-    const output = transport.output ?? new DefaultOutput();
-    if (output.modalities.size > 0) {
-      agent.ctx.outputPrompt = output.promptTemplate();
+    const medium = transport.medium ?? new DefaultMedium();
+    if (medium.outputModalities.size > 0) {
+      agent.ctx.outputPrompt = medium.promptTemplate();
     }
-    const parser = new Parser(output);
+
+    const outputParser = new OutputParser(medium);
+    const inputParser  = new InputParser(medium);
 
     const pipe = async (event: TurnEvent): Promise<void> => {
-      for await (const result of parser.parse(event)) {
+      for await (const result of outputParser.parse(event)) {
         transport.handle(result);
       }
     };
@@ -109,12 +98,13 @@ export class SessionManager {
       this.end(sessionId).catch(console.error);
     });
 
-    transport.on('message', async (text) => {
+    transport.on('message', async (input) => {
       try {
-        for await (const event of agent.send(text)) {
+        const processed = await inputParser.parse(input);
+        for await (const event of agent.send(processed)) {
           await pipe(event);
         }
-        persistSession(agent.ctx).catch(() => {});
+        persistSession(agent.ctx).catch(() => { });
       } catch (err) {
         transport.handle({ type: 'error', message: String(err) });
       }
@@ -127,30 +117,26 @@ export class SessionManager {
         for await (const event of agent.initiate()) {
           await pipe(event);
         }
-        persistSession(agent.ctx).catch(() => {});
+        persistSession(agent.ctx).catch(() => { });
       } catch (err) {
         transport.handle({ type: 'error', message: String(err) });
       }
     });
   }
 
-  /**
-   * End a session: persist history + status to LP, remove from map.
-   */
   async end(sessionId: string): Promise<void> {
     const active = this.sessions.get(sessionId);
     if (!active) return;
 
     const { ctx } = active.agent;
 
-    // Only persist sessions where the agent actually spoke
     if (ctx.session.status !== 'initialised') {
       await lp.patch<Session>(`/sessions/${ctx.session.id}`, {
-        status:      'completed',
-        history:     ctx.session.history,
-        planHistory: ctx.session.planHistory,
+        status:       'completed',
+        history:      ctx.session.history,
+        planHistory:  ctx.session.planHistory,
         teachingPlan: ctx.session.teachingPlan,
-        endedAt:     new Date().toISOString(),
+        endedAt:      new Date().toISOString(),
       });
     }
 

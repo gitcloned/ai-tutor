@@ -11,8 +11,8 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { Canvas }  from '../output/canvas.js';
-import { Parser }  from '../output/parser.js';
+import { CanvasMedium }  from '../medium/canvas.js';
+import { OutputParser }  from '../medium/modalities/output/parser.js';
 import type { TurnEvent } from '../engine.js';
 
 // Use test TTS so speak: blocks emit audio_chunk events with base64-encoded text.
@@ -25,8 +25,8 @@ async function parse(
   response: string,
   opts: { chunks?: string[] } = {},
 ): Promise<TurnEvent[]> {
-  const canvas = Canvas.create();
-  const parser = new Parser(canvas);
+  const canvas = CanvasMedium.create();
+  const parser = new OutputParser(canvas);
   const results: TurnEvent[] = [];
 
   const chunks = opts.chunks ?? response.split('');
@@ -359,21 +359,21 @@ describe('speak modality', () => {
 
 describe('non-text event passthrough', () => {
   it('passes tool_call through unchanged', async () => {
-    const parser = new Parser(Canvas.create());
+    const parser = new OutputParser(CanvasMedium.create());
     const out: TurnEvent[] = [];
     for await (const e of parser.parse({ type: 'tool_call', name: 'read_plan', args: {} })) out.push(e);
     expect(out[0].type).toBe('tool_call');
   });
 
   it('passes action through unchanged', async () => {
-    const parser = new Parser(Canvas.create());
+    const parser = new OutputParser(CanvasMedium.create());
     const out: TurnEvent[] = [];
     for await (const e of parser.parse({ type: 'action', action: { type: 'send-ok' } })) out.push(e);
     expect(out[0].type).toBe('action');
   });
 
   it('passes error through unchanged', async () => {
-    const parser = new Parser(Canvas.create());
+    const parser = new OutputParser(CanvasMedium.create());
     const out: TurnEvent[] = [];
     for await (const e of parser.parse({ type: 'error', message: 'boom' })) out.push(e);
     expect(out[0].type).toBe('error');
@@ -423,8 +423,8 @@ describe('edge cases', () => {
   });
 
   it('parser state resets cleanly between turns on the same instance', async () => {
-    const canvas = Canvas.create();
-    const parser = new Parser(canvas);
+    const canvas = CanvasMedium.create();
+    const parser = new OutputParser(canvas);
 
     async function turn(response: string) {
       const results: TurnEvent[] = [];

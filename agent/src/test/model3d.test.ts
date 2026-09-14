@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
-import {Parser} from '../output/parser.js';
-import {Canvas} from '../output/canvas.js';
+import { OutputParser as Parser } from '../medium/modalities/output/parser.js';
+import { CanvasMedium as Canvas } from '../medium/canvas.js';
 it('parses model3d keys split over chunks and keeps actions on their blocks',async()=>{
   const parser=new Parser(Canvas.create());const result=[];
   for(const content of ['model','3d: cuboid-volume-01\n/action: build-base\nmodel3d: cuboid-volume-01\n/action: same-volume']) {

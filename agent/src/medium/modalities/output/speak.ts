@@ -1,7 +1,7 @@
-import type { TurnEvent } from '../../engine.js';
-import { getTTSProvider }  from '../../services/tts/index.js';
-import type { TTSProvider } from '../../services/tts/base.js';
-import { BaseModality }   from './base.js';
+import type { TurnEvent }    from '../../../engine.js';
+import { getTTSProvider }     from '../../../services/tts/index.js';
+import type { TTSProvider }   from '../../../services/tts/base.js';
+import { BaseOutputModality } from './base.js';
 
 export type { TTSProvider };
 
@@ -12,11 +12,8 @@ export type { TTSProvider };
  *   inworld  — Inworld streaming TTS (INWORLD_API_KEY + INWORLD_VOICE_ID required)
  *   test     — base64-encodes text, shown as 🎤 in the browser test page
  *   unset    — no TTS, speak: blocks are silent
- *
- * Emits audio_chunk per sentence. Streaming providers yield multiple chunks
- * per sentence so playback can start before the full sentence is encoded.
  */
-export class Speak extends BaseModality {
+export class Speak extends BaseOutputModality {
   readonly key = 'speak';
   private buffer = '';
   private readonly tts: TTSProvider | undefined;

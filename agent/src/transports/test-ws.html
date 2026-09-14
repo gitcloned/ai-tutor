@@ -247,11 +247,17 @@
     /* ── Input bar ── */
     #input-bar {
       display: flex;
+      flex-direction: column;
       gap: 8px;
       padding: 12px 16px;
       background: var(--surface);
       border-top: 1px solid var(--border);
       flex-shrink: 0;
+    }
+    #input-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
     }
     #msg-input {
       flex: 1;
@@ -267,20 +273,72 @@
       max-height: 120px;
     }
     #msg-input:focus { border-color: var(--accent); }
+
+    /* Image attach button */
+    #attach-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      width: 36px; height: 36px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color .15s, color .15s;
+      flex-shrink: 0;
+    }
+    #attach-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #attach-btn:disabled { opacity: .4; cursor: default; }
+    #image-input { display: none; }
+
+    /* Image preview strip */
+    #image-previews {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .img-preview {
+      position: relative;
+      width: 48px; height: 48px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .img-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .img-preview .remove {
+      position: absolute; top: 2px; right: 2px;
+      background: rgba(0,0,0,.6); color: #fff;
+      border: none; border-radius: 50%;
+      width: 14px; height: 14px; font-size: 9px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+
+    /* Orb send button */
     #send-btn {
       background: var(--accent);
       color: #fff;
       border: none;
-      border-radius: 8px;
-      padding: 8px 18px;
-      font-size: 14px;
-      font-weight: 600;
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      font-size: 16px;
       cursor: pointer;
-      transition: opacity .15s;
-      align-self: flex-end;
+      transition: background .15s, transform .1s, box-shadow .15s;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 0 0 rgba(99,102,241,.4);
     }
-    #send-btn:hover { opacity: .85; }
-    #send-btn:disabled { opacity: .4; cursor: default; }
+    #send-btn:hover  { opacity: .85; }
+    #send-btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
+    #send-btn.has-input { box-shadow: 0 0 0 4px rgba(99,102,241,.25); }
+    #send-btn.recording {
+      background: #e74c3c;
+      animation: orb-pulse 1s ease infinite;
+    }
+    @keyframes orb-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,.5); }
+      50%      { box-shadow: 0 0 0 8px rgba(231,76,60,0); }
+    }
 
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -327,9 +385,14 @@
 </div>
 
 <div id="input-bar">
-  <textarea id="msg-input" rows="1" placeholder="Type a message…" disabled
-    onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-  <button id="send-btn" disabled onclick="sendMessage()">Send</button>
+  <div id="image-previews"></div>
+  <div id="input-row">
+    <textarea id="msg-input" rows="1" placeholder="Type a message…" disabled
+      onkeydown="handleKey(event)" oninput="onInputChange(this)"></textarea>
+    <input type="file" id="image-input" accept="image/*" multiple onchange="onImagesSelected(this)">
+    <button id="attach-btn" disabled title="Attach image" onclick="document.getElementById('image-input').click()">📎</button>
+    <button id="send-btn" disabled title="Send (tap) · Record (hold)">↑</button>
+  </div>
 </div>
 
 <script>
@@ -440,6 +503,7 @@
       addSystem('Connected to ' + url);
       document.getElementById('msg-input').disabled = false;
       document.getElementById('send-btn').disabled = false;
+      document.getElementById('attach-btn').disabled = false;
       document.getElementById('msg-input').focus();
     };
 
@@ -454,6 +518,7 @@
       addSystem('Disconnected.');
       document.getElementById('msg-input').disabled = true;
       document.getElementById('send-btn').disabled = true;
+      document.getElementById('attach-btn').disabled = true;
       currentAgentBubble = null;
     };
 
@@ -655,25 +720,144 @@
     }
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────
-  function sendMessage() {
-    const input = document.getElementById('msg-input');
-    const text = input.value.trim();
-    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-    addBubble('user').textContent = text;
-    ws.send(JSON.stringify({ type: 'message', text }));
+  // ── Multimodal input state ────────────────────────────────────────────────
+  let attachedImages = []; // [{ data: base64, mimeType, previewUrl }]
+  let mediaRecorder  = null;
+  let audioChunks    = [];
+  let pressTimer     = null;
+  let isRecording    = false;
+
+  // ── Image attach ──────────────────────────────────────────────────────────
+  function onImagesSelected(input) {
+    for (const file of input.files) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const dataUrl = e.target.result;
+        const comma   = dataUrl.indexOf(',');
+        attachedImages.push({ data: dataUrl.slice(comma + 1), mimeType: file.type, previewUrl: dataUrl });
+        renderPreviews();
+        updateOrbState();
+      };
+      reader.readAsDataURL(file);
+    }
     input.value = '';
-    input.style.height = '';
+  }
+
+  function renderPreviews() {
+    const strip = document.getElementById('image-previews');
+    strip.innerHTML = '';
+    attachedImages.forEach((img, i) => {
+      const wrap = el('div', 'img-preview');
+      const image = document.createElement('img');
+      image.src = img.previewUrl;
+      const rm = el('button', 'remove');
+      rm.textContent = '×';
+      rm.onclick = () => { attachedImages.splice(i, 1); renderPreviews(); updateOrbState(); };
+      wrap.appendChild(image);
+      wrap.appendChild(rm);
+      strip.appendChild(wrap);
+    });
+  }
+
+  // ── Audio recording (push-to-talk) ────────────────────────────────────────
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks  = [];
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob   = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        const reader = new FileReader();
+        reader.onload = e => {
+          const dataUrl = e.target.result;
+          const audio   = { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: blob.type };
+          sendInput(audio);
+        };
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      document.getElementById('send-btn').classList.add('recording');
+    } catch { addError('Microphone access denied.'); }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      mediaRecorder = null;
+      isRecording   = false;
+      document.getElementById('send-btn').classList.remove('recording');
+    }
+  }
+
+  // ── Orb press handling ────────────────────────────────────────────────────
+  const orbEl = () => document.getElementById('send-btn');
+
+  function orbDown(e) {
+    e.preventDefault();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      startRecording();
+    }, 250);
+  }
+
+  function orbUp(e) {
+    e.preventDefault();
+    if (pressTimer !== null) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+      sendInput(null); // tap = send text + images
+    } else {
+      stopRecording(); // release after hold = send audio
+    }
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  function sendInput(audio) {
+    const inputEl = document.getElementById('msg-input');
+    const text    = inputEl.value.trim();
+    if (!text && !audio && attachedImages.length === 0) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Show user bubble with text or audio indicator
+    const label = [
+      text,
+      audio    ? '🎤 voice message' : null,
+      attachedImages.length ? `📎 ${attachedImages.length} image(s)` : null,
+    ].filter(Boolean).join(' · ');
+    addBubble('user').textContent = label;
+
+    const payload = { type: 'message', text };
+    if (audio)                    payload.audio  = audio;
+    if (attachedImages.length)    payload.images = attachedImages.map(({ data, mimeType }) => ({ data, mimeType }));
+
+    ws.send(JSON.stringify(payload));
+
+    // Reset state
+    inputEl.value        = '';
+    inputEl.style.height = '';
+    attachedImages       = [];
+    renderPreviews();
+    updateOrbState();
     scrollBottom();
   }
 
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  function updateOrbState() {
+    const inputEl  = document.getElementById('msg-input');
+    const hasInput = inputEl.value.trim() || attachedImages.length > 0;
+    orbEl().classList.toggle('has-input', !!hasInput);
   }
 
-  function autoResize(el) {
+  function onInputChange(el) {
     el.style.height = '';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    updateOrbState();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(null); }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -750,6 +934,12 @@
     d.textContent = fmtAttrs(attrs);
     return d;
   }
+
+  // ── Orb button event listeners ────────────────────────────────────────────
+  orbEl().addEventListener('mousedown', orbDown);
+  orbEl().addEventListener('mouseup', orbUp);
+  orbEl().addEventListener('touchstart', orbDown, { passive: false });
+  orbEl().addEventListener('touchend', orbUp, { passive: false });
 
   /** Extract YouTube video ID from watch or short URLs. Returns null if not YouTube. */
   function youtubeId(url) {

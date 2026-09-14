@@ -1,4 +1,5 @@
 import { dirname, join } from 'path';
+import type { ProcessedInput } from './medium/modalities/input/types.js';
 import { fileURLToPath } from 'url';
 import { readFileSync }  from 'fs';
 import { SkillLoader }   from './skills.js';
@@ -44,8 +45,11 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
     }
   }
 
-  function appendAndRun(role: 'student', content: string): AsyncGenerator<TurnEvent> {
-    ctx.session.history.push({ role, content, timestamp: new Date().toISOString() });
+  function appendAndRun(role: 'student', input: ProcessedInput): AsyncGenerator<TurnEvent> {
+    // Only text goes into history — images are referenced via [image] placeholders.
+    ctx.session.history.push({ role, content: input.text, timestamp: new Date().toISOString() });
+    // Pass images to the engine for this turn via context; engine consumes and clears them.
+    ctx.currentImages = input.images;
     return turn();
   }
 
@@ -61,6 +65,6 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
       return turn();
     },
     /** Student sends a message; agent responds. */
-    send:     (content: string) => appendAndRun('student', content),
+    send: (input: ProcessedInput) => appendAndRun('student', input),
   };
 }

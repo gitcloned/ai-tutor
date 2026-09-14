@@ -1,38 +1,50 @@
-import { BaseOutput } from './base.js';
-import { Speak }      from './modalities/speak.js';
-import { Write }      from './modalities/write.js';
-import { Draw }       from './modalities/draw.js';
-import { Ask }        from './modalities/ask.js';
-import { Play }       from './modalities/play.js';
-import { Model3d }    from './modalities/model3d.js';
+import { BaseMedium }            from './base.js';
+import { Speak }                 from './modalities/output/speak.js';
+import { Write }                 from './modalities/output/write.js';
+import { Draw }                  from './modalities/output/draw.js';
+import { Ask }                   from './modalities/output/ask.js';
+import { Play }                  from './modalities/output/play.js';
+import { Model3d }               from './modalities/output/model3d.js';
+import { TextInputModality }     from './modalities/input/text.js';
+import { AudioInputModality }    from './modalities/input/audio.js';
+import { ImageInputModality }    from './modalities/input/image.js';
 
 /**
- * Canvas output — structured format for the interactive tldraw canvas client.
+ * CanvasMedium — structured format for the interactive tldraw canvas client.
  *
- * The LLM responds using known keys (speak:, write:, draw:, ask:, play:).
- * Each key is handled by its own modality. The speak: modality auto-resolves
- * its TTS provider from the USE_TTS_PROVIDER environment variable.
+ * Output modalities: speak (TTS), write, draw (SVG), ask, play (video), model3d.
+ * Input modalities:  text (identity), audio (Groq Whisper STT), image (inline data).
  *
- * Private constructor: use Canvas.create() to get a properly wired instance.
- * One instance per transport connection (modalities are stateful across turns).
+ * Both TTS and STT providers are auto-resolved from environment variables at
+ * construction time — no runtime configuration needed.
+ *
+ * Private constructor: use CanvasMedium.create() to get a properly wired instance.
+ * One instance per transport connection (output modalities are stateful across turns).
  */
-export class Canvas extends BaseOutput {
+export class CanvasMedium extends BaseMedium {
   private constructor() { super(); }
 
-  static create(): Canvas {
-    const c = new Canvas();
-    c.modalities
+  static create(): CanvasMedium {
+    const m = new CanvasMedium();
+
+    m.outputModalities
       .add(new Speak())
       .add(new Write())
       .add(new Draw())
       .add(new Ask())
       .add(new Play())
       .add(new Model3d());
-    return c;
+
+    m.inputModalities
+      .add(new TextInputModality())
+      .add(new AudioInputModality())
+      .add(new ImageInputModality());
+
+    return m;
   }
 
   promptTemplate(): string {
-    const keyList = this.modalities.keys().map(k => `\`${k}:\``).join(', ');
+    const keyList = this.outputModalities.keys().map(k => `\`${k}:\``).join(', ');
     return `## Canvas Output Format
 
 Respond using ONLY the following keys: ${keyList}
@@ -46,7 +58,6 @@ Key behaviours:
 - \`draw:\` — a complete SVG diagram. Use \`viewBox="0 0 400 300"\`. Buffered and rendered once the block ends.
 - \`ask:\` — a question for the student. Canvas pauses and waits for their response. One question per ask block.
 - \`play:\` — a YouTube or video URL to embed. One URL per line.
-- \`parallel:start\` / \`parallel:end\` — let speech and the following visual/question overlap, then wait at the end marker.
 - \`parallel:start\` / \`parallel:end\` — wrap blocks that should render simultaneously (e.g. speak + write appearing at the same time). At most 4 blocks per parallel zone. Always close with \`parallel:end\`.
 
 Example:

@@ -1,11 +1,11 @@
-import type { TurnEvent } from '../engine.js';
-import type { BaseOutput } from './base.js';
-import type { BaseModality } from './modalities/base.js';
+import type { TurnEvent }        from '../../../engine.js';
+import type { BaseMedium }       from '../../base.js';
+import type { BaseOutputModality } from './base.js';
 
 /**
- * Parser — transforms raw LLM text_chunk / text events into typed output events.
+ * OutputParser — transforms raw LLM text_chunk / text events into typed output events.
  *
- * Constructed with an output instance that defines which modalities (keys) are active.
+ * Constructed with a medium that defines which output modality keys are active.
  * One instance per transport connection — stateful, reset between turns via end().
  *
  * ## Parsing rules
@@ -14,33 +14,22 @@ import type { BaseModality } from './modalities/base.js';
  * Attribute line:     `^/<key>:\s?<value>` — adds to the current block's attrs dict.
  * Any other line:     forwarded to the active modality's handle().
  *
- * Example LLM output:
- *   speak: Let's look at this.
- *   draw:
- *   <svg viewBox="0 0 400 300">...</svg>
- *   /position: 400,200
- *   /anchor: center
- *   ask: What type of shape is this?
- *
- * Attrs are collected throughout the block and passed to modality.end(attrs) when
- * the block closes (next key or stream end). Attr order relative to content doesn't matter.
- *
  * Non-text events (tool_call, action, error, etc.) pass through unchanged.
  */
 const PARALLEL_MAX_BLOCKS = 4;
 
-export class Parser {
+export class OutputParser {
   private lineBuffer = '';
-  private currentModality: BaseModality | null = null;
+  private currentModality: BaseOutputModality | null = null;
   private currentAttrs: Record<string, string> = {};
   private inParallel = false;
   private parallelBlockCount = 0;
 
-  constructor(private readonly output: BaseOutput) {}
+  constructor(private readonly medium: BaseMedium) {}
 
   async *parse(event: TurnEvent): AsyncGenerator<TurnEvent> {
-    // DefaultOutput has no modalities — pass everything through unchanged
-    if (this.output.modalities.size === 0) {
+    // No output modalities — pass everything through unchanged
+    if (this.medium.outputModalities.size === 0) {
       yield event;
       return;
     }
@@ -83,7 +72,6 @@ export class Parser {
   }
 
   private async *processLine(line: string): AsyncGenerator<TurnEvent> {
-    // Attribute line: /key: value — attach to current block, not forwarded as content
     const attrMatch = line.match(/^\/([a-z_]+):\s?(.*)\n?$/);
     if (attrMatch) {
       if (this.currentModality) {
@@ -92,7 +80,6 @@ export class Parser {
       return;
     }
 
-    // Parallel control lines — structural, not modality keys
     if (/^parallel:start\s*\n?$/.test(line)) {
       if (!this.inParallel) {
         this.inParallel = true;
@@ -103,20 +90,15 @@ export class Parser {
     }
     if (/^parallel:end\s*\n?$/.test(line)) {
       if (this.inParallel) yield* this.closeParallel();
-      // stray parallel:end outside a parallel block → silently ignore
       return;
     }
 
-    // Modality key line: key: <rest>
     const keyMatch = line.match(/^([a-z_][a-z0-9_]*):\s?([\s\S]*)\n?$/);
-    // Flow-control directives coordinate modalities without becoming canvas content.
-    // They are intentionally emitted as actions so transports can decide how to
-    // present concurrent blocks while preserving the parser's event order.
     if (keyMatch?.[1] === 'parallel' && (keyMatch[2].trim() === 'start' || keyMatch[2].trim() === 'end')) {
       yield { type: 'action', action: { type: `parallel-${keyMatch[2].trim()}` } };
       return;
     }
-    const modality = keyMatch ? this.output.modalities.get(keyMatch[1]) : null;
+    const modality = keyMatch ? this.medium.outputModalities.get(keyMatch[1]) : null;
 
     if (modality) {
       if (this.currentModality) {
@@ -125,7 +107,6 @@ export class Parser {
       }
       this.currentModality = modality;
 
-      // Count blocks inside a parallel zone; auto-close at the limit
       if (this.inParallel) {
         this.parallelBlockCount++;
         if (this.parallelBlockCount >= PARALLEL_MAX_BLOCKS) {
@@ -138,6 +119,5 @@ export class Parser {
     } else if (this.currentModality) {
       yield* this.currentModality.handle(line);
     }
-    // Lines before the first key are silently ignored
   }
 }

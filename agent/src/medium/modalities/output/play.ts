@@ -1,12 +1,12 @@
-import type { TurnEvent } from '../../engine.js';
-import { BaseModality } from './base.js';
+import type { TurnEvent }    from '../../../engine.js';
+import { BaseOutputModality } from './base.js';
 
 /**
  * play: — a video resource to embed on the canvas.
  *
- * content = the URL (YouTube or other). attrs carry width/height/position.
+ * content = URL (YouTube or other). attrs carry width/height/position.
  */
-export class Play extends BaseModality {
+export class Play extends BaseOutputModality {
   readonly key = 'play';
   private buffer = '';
 

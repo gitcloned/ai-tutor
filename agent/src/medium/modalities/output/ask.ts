@@ -1,12 +1,12 @@
-import type { TurnEvent } from '../../engine.js';
-import { BaseModality } from './base.js';
+import type { TurnEvent }    from '../../../engine.js';
+import { BaseOutputModality } from './base.js';
 
 /**
  * ask: — a question posed to the student.
  *
- * content = the question text. Canvas pauses and awaits student response.
+ * Buffers and emits one ask event. Canvas pauses and awaits student response.
  */
-export class Ask extends BaseModality {
+export class Ask extends BaseOutputModality {
   readonly key = 'ask';
   private buffer = '';
 

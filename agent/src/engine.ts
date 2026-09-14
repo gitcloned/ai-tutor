@@ -98,7 +98,17 @@ export class TurnEngine {
     ctx.log({ level: 'debug', message: `history length: ${chatHistory.length} | last msg: ${lastMessage.slice(0, 60)}` });
 
     // Agentic loop: stream → handle tool calls → repeat until no more tool calls
-    let message: any = lastMessage;
+    // First message may be multipart when the student attached images.
+    let message: any;
+    if (ctx.currentImages?.length) {
+      message = [
+        { text: lastMessage },
+        ...ctx.currentImages.map(img => ({ inlineData: { data: img.data, mimeType: img.mimeType } })),
+      ];
+      ctx.currentImages = undefined; // consumed for this turn
+    } else {
+      message = lastMessage;
+    }
 
     while (true) {
       const stream = await chat.sendMessageStream({ message });

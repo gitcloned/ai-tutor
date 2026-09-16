@@ -38,10 +38,11 @@ export type TurnEvent =
   | { type: 'model3d';     content: string; attrs: Record<string, string> }
   | { type: 'play';        content: string; attrs: Record<string, string> }
   | { type: 'ask';         content: string; attrs: Record<string, string> }
+  | { type: 'question';    content: string; attrs: Record<string, string> }
   | { type: 'annotate';    content: string; attrs: Record<string, string> };
 
 /** Union of all output event type strings. */
-export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'model3d' | 'play' | 'ask' | 'annotate' | 'text_chunk';
+export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'model3d' | 'play' | 'ask' | 'question' | 'annotate' | 'text_chunk';
 
 /** A single output event — the shape every modality produces. */
 export type OutputEvent = Extract<TurnEvent, { attrs: Record<string, string> }>
@@ -86,11 +87,15 @@ export class TurnEngine {
     const chatHistory = history.slice(0, -1);
     const lastMessage = history.at(-1)?.parts?.[0]?.text ?? 'Begin the session.';
 
+    const systemInstruction = `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}${ctx.outputPrompt ? `\n\n---\n\n${ctx.outputPrompt}` : ''}`;
+    // Record the system prompt the first time a turn runs in this session.
+    ctx.session.systemPrompt ??= systemInstruction;
+
     const chat = ai.chats.create({
       model: 'gemini-3.6-flash',
       history: chatHistory as any,
       config: {
-        systemInstruction: `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}${ctx.outputPrompt ? `\n\n---\n\n${ctx.outputPrompt}` : ''}`,
+        systemInstruction,
         tools: toolDefs.length > 0 ? [{ functionDeclarations: toolDefs }] as any : undefined,
       },
     });
@@ -135,6 +140,7 @@ export class TurnEngine {
 
       // Execute each tool call and collect responses
       const functionResponses: object[] = [];
+      let sendOk = false;
 
       for (const call of calls) {
         yield { type: 'tool_call', name: call.name!, args: call.args };
@@ -149,6 +155,7 @@ export class TurnEngine {
         // If the tool result carries an action signal, emit it for the transport
         if ((result as any)?.action) {
           yield { type: 'action', action: (result as any).action };
+          if ((result as any).action?.type === 'send-ok') sendOk = true;
         }
 
         functionResponses.push({
@@ -159,6 +166,11 @@ export class TurnEngine {
           },
         });
       }
+
+      // send-ok means: hand off to the auto-triggered next turn.
+      // Do not feed responses back to the LLM — any further text it generates
+      // would duplicate what the next turn will say.
+      if (sendOk) break;
 
       message = functionResponses;
     }

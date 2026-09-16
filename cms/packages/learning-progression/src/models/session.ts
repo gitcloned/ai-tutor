@@ -20,6 +20,13 @@ const messageSchema = new Schema({
   timestamp: { type: Date, default: Date.now },
 }, { _id: false });
 
+const rawTurnSchema = new Schema({
+  role:      { type: String, enum: ['student', 'agent', 'tool_call', 'tool_result'], required: true },
+  content:   { type: Schema.Types.Mixed, required: true },
+  name:      { type: String },
+  timestamp: { type: Date, default: Date.now },
+}, { _id: false });
+
 const sessionSchema = new Schema<ISession>({
   id:                  { type: String, required: true, unique: true },
   studentId:           { type: String, required: true },
@@ -31,6 +38,8 @@ const sessionSchema = new Schema<ISession>({
   teachingPlan:        { type: teachingPlanSchema, required: true },
   planHistory:         { type: [planHistoryEntrySchema], default: [] },
   history:             { type: [messageSchema], default: [] },
+  rawHistory:          { type: [rawTurnSchema], default: [] },
+  systemPrompt:        { type: String },
   memory:              [{ type: String }],
   createdAt:           { type: Date, default: Date.now },
   endedAt:             { type: Date, default: null },

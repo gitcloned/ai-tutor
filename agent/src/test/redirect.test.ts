@@ -20,7 +20,7 @@ import {
   makeNode,
   makeCtx,
 } from './fixtures.js';
-import { compileProbingTree } from '../plan-builder.js';
+import { compileProbingTree } from '../learning/plan-builder.js';
 import { update_step } from '../tools/plan.js';
 
 // ── Mock API clients ──────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
       expect(ctx.journeyNode.conceptId).toBe(CONCEPT_ORDERED_PAIRS.id);
     });
 
-    it('then update_step returns redirected: true and the first step of the prereq plan', async () => {
+    it('then update_step returns the first step of the prereq plan so the agent can deliver it in the same turn', async () => {
       const { probe, ctx } = setup();
 
       vi.mocked(lp.get).mockResolvedValueOnce([]);
@@ -168,7 +168,13 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
       const result = await update_step.run({ id: probe.id, outcome: 'fail' }, ctx) as any;
 
       expect(result.ok).toBe(true);
+      // nextStep lets the agent deliver the prereq content inline in the same turn
+      expect(result.nextStep).toBeDefined();
+      expect(result.nextStep.id).toBe(1);
       expect(result.message).toContain(CONCEPT_ORDERED_PAIRS.title);
+      // send-ok is the safety net: auto-triggers the next turn so the prereq
+      // content plays even if the agent skips nextStep
+      expect(result.action).toEqual({ type: 'send-ok' });
     });
 
     it('then a planHistory entry is appended for the prereq concept', async () => {

@@ -1,7 +1,8 @@
 import type { Tool } from './index.js';
 import type { ConceptState } from '../types.js';
-import { redirectToPrereq } from './redirect.js';
-import { transitionState }  from './state.js';
+import { redirectToPrereq }  from './redirect.js';
+import { transitionState }   from './state.js';
+import { nextConceptState, stateAction } from '../learning/types.js';
 
 // ── read_plan ──────────────────────────────────────────────────────────────────
 
@@ -50,10 +51,14 @@ export const update_step: Tool = {
         enum:        ['pass', 'fail', 'done', 'not_sure'],
         description: '"pass" if correct/understood, "fail" if wrong/confused, "done" for non-interactive steps (store_memory, advance_state), "not_sure" if unclear',
       },
+      nextStep: {
+        type:        'number',
+        description: 'Optional: explicitly set the next step id, overriding the plan\'s pass/fail routing. Use when the student\'s response warrants a specific path not captured by pass/fail alone.',
+      },
     },
     required: ['id', 'outcome'],
   },
-  run: async ({ id, outcome }, ctx) => {
+  run: async ({ id, outcome, nextStep }, ctx) => {
     const step = ctx.plan.find(s => s.id === id);
     if (!step) return { error: `Step ${id} not found` };
 
@@ -86,11 +91,38 @@ export const update_step: Tool = {
     }
 
     // ── navigate to next step ─────────────────────────────────────────────────
-    const nextId = outcome === 'fail' ? step.ifWrong : step.ifCorrect;
-    const next   = nextId != null ? ctx.plan.find(s => s.id === nextId) ?? null : null;
+    const nextId = nextStep ?? (outcome === 'fail' ? step.ifWrong : step.ifCorrect);
+    let next     = nextId != null ? ctx.plan.find(s => s.id === nextId) ?? null : null;
+
+    // Fallback: if no pointer resolved, find the next pending step in sequence.
+    // Prevents premature allDone in v2 plans where the LLM occasionally omits nextStep.
+    if (!next) {
+      const currentIdx = ctx.plan.findIndex(s => s.id === id);
+      next = ctx.plan.slice(currentIdx + 1).find(s => s.status === 'pending') ?? null;
+    }
+
     ctx.log({ level: 'debug', message: `update_step | next → ${next ? `[${next.id}] ${stepLabel(next)}` : 'null (terminal)'}` });
 
     if (!next) {
+      // Plan exhausted — auto-advance the node to its next state.
+      const nextState = nextConceptState(ctx.journeyNode.state);
+      if (nextState) {
+        await transitionState(nextState, ctx);
+        const firstStep = ctx.plan.find(s => s.status === 'in_progress')
+                       ?? ctx.plan.find(s => s.status === 'pending');
+        if (firstStep) {
+          firstStep.status = 'in_progress';
+          return {
+            ok:       true,
+            state:    ctx.journeyNode.state,
+            concept:  ctx.concept.title,
+            nextStep: formatStep(firstStep),
+            message:  `Plan complete. Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
+            reminder: 'Follow the plan. Do exactly what the next step says.',
+          };
+        }
+      }
+      // Terminal state — node is fully complete.
       return { ok: true, allDone: true, message: 'All steps complete. Session is done.' };
     }
 
@@ -101,12 +133,13 @@ export const update_step: Tool = {
     if (next.type === 'teach' && next.content.conceptId) {
       const prereqConceptId    = next.content.conceptId    as string;
       const prereqConceptTitle = next.content.conceptTitle as string;
+      const prereqMode         = (next.content.mode as 'teach' | 'probe') ?? 'teach';
 
       // Mark the teach step as in_progress then immediately done (it's handled internally)
       next.status  = 'done';
       next.outcome = 'done' as any;
 
-      await redirectToPrereq(prereqConceptId, prereqConceptTitle, ctx);
+      await redirectToPrereq(prereqConceptId, prereqConceptTitle, ctx, prereqMode);
       // ctx is now swapped to prereq concept
       const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                      ?? ctx.plan.find(s => s.status === 'pending');
@@ -114,9 +147,18 @@ export const update_step: Tool = {
 
       const reason = next.content.reason as string | null;
       const msg = reason
-        ? `${reason}. Now teaching "${prereqConceptTitle}" — end your turn here, next turn loads the prereq plan.`
-        : `Switching to teach "${prereqConceptTitle}" as a prerequisite — end your turn here, next turn loads the prereq plan.`;
-      return { ok: true, action: { type: 'send-ok' }, message: msg };
+        ? `${reason}. Now switching to teach "${prereqConceptTitle}" — follow nextStep to deliver the first step of the prereq plan in this same turn.`
+        : `Switching to teach "${prereqConceptTitle}" as a prerequisite — follow nextStep to deliver the first step of the prereq plan in this same turn.`;
+      return {
+        ok:       true,
+        message:  msg,
+        nextStep: firstStep ? formatStep(firstStep) : null,
+        // send-ok auto-triggers the next turn as a safety net — if the agent
+        // delivers nextStep inline the student sees it immediately; if not,
+        // the auto-turn fires get_next_step and plays it anyway.
+        action:   { type: 'send-ok' },
+        reminder: 'Acknowledge the topic switch naturally, then immediately follow nextStep — do it all in one response.',
+      };
     }
 
     // ── normal navigation ─────────────────────────────────────────────────────

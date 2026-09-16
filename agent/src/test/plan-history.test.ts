@@ -14,7 +14,7 @@ import {
   makeSession,
   makeCtx,
 } from './fixtures.js';
-import { compileProbingTree } from '../plan-builder.js';
+import { compileProbingTree } from '../learning/plan-builder.js';
 import { update_step } from '../tools/plan.js';
 
 // ── Mock API clients ──────────────────────────────────────────────────────────

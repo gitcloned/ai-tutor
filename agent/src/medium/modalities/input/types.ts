@@ -14,8 +14,9 @@ export interface StudentInput {
   images?: ImageBlob[];
 }
 
-/** Normalised input ready for the agent: plain text + optional image list. */
+/** Normalised input ready for the agent: plain text + optional image/audio blobs. */
 export interface ProcessedInput {
-  text:    string;
-  images?: ImageBlob[];
+  text:       string;
+  images?:    ImageBlob[];
+  audioBlob?: AudioBlob;   // original audio blob, preserved for storage
 }

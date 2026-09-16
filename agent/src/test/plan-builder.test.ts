@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { compileProbingTree, buildPlan } from '../plan-builder.js';
+import { compileProbingTree, buildPlan } from '../learning/plan-builder.js';
 import { get_next_step, update_step }    from '../tools/plan.js';
 
 // ── Fixture ────────────────────────────────────────────────────────────────────

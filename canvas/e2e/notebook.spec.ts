@@ -9,6 +9,38 @@ function silence(seconds:number) {
   return wav.toString('base64');
 }
 
+test('parallel narration never overlaps real audio sources and visuals still render',async({page})=>{
+  await page.addInitScript(()=>{
+    const stats={active:0,max:0,started:0,ended:0};
+    (window as any).audioStats=stats;
+    const create=AudioContext.prototype.createBufferSource;
+    AudioContext.prototype.createBufferSource=function(){
+      const source=create.call(this),start=source.start.bind(source);
+      source.start=(...args:Parameters<typeof start>)=>{stats.active++;stats.started++;stats.max=Math.max(stats.max,stats.active);start(...args);};
+      source.addEventListener('ended',()=>{stats.active--;stats.ended++;});
+      return source;
+    };
+  });
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/audio-order',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://127.0.0.1:32004/audio-order');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  send({type:'action',action:{type:'parallel-start'}});
+  send({type:'audio_chunk',content:silence(2),attrs:{mimeType:'audio/wav',sentence:'Take a look at this equation.'}});
+  send({type:'text_chunk',content:'x + 2 = 5',attrs:{}});
+  send({type:'audio_chunk',content:silence(1),attrs:{mimeType:'audio/wav',sentence:'Can you find the missing value?'}});
+  send({type:'action',action:{type:'parallel-end'}});
+  send({type:'ask',content:'Your answer?',attrs:{}});
+  await expect(page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'x + 2 = 5'})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).audioStats.started)).toBe(1);
+  await expect.poll(()=>page.evaluate(()=>(window as any).audioStats.ended)).toBe(2);
+  expect(await page.evaluate(()=>(window as any).audioStats.max)).toBe(1);
+  await expect(page.locator('.caption p')).toHaveText('Your answer?');
+});
+
 test('connection hides welcome, audio types captions, deleted notebook page can be undone',async({page})=>{
   let socket:WebSocketRoute;
   await page.routeWebSocket('**/test-tutor',ws=>{socket=ws;});

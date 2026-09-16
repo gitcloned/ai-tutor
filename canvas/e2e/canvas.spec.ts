@@ -9,6 +9,7 @@ test('real replay renders both lessons and preserves notebook pages',async({page
   await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
   await expect(page.locator('.connection')).toContainText('Connected');
   await expect(page.locator('.lesson-breadcrumb')).toContainText('Biology',{timeout:120000});
+  await page.getByRole('button',{name:'I’m done watching'}).click({timeout:120000});
   await expect(page.locator('.caption')).toContainText('oxygenated blood',{timeout:120000});
   await expect(page.locator('.orb-label')).toHaveText('Your turn',{timeout:120000});
   await page.getByRole('button',{name:'Fit lesson',exact:true}).click();

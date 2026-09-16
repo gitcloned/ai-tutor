@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prodigy LP Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #f5f6fa;
+      --surface:  #ffffff;
+      --border:   #e2e5ef;
+      --accent:   #4f6ef7;
+      --text:     #1a1d2e;
+      --muted:    #6b7280;
+      --green:    #16a34a;
+      --red:      #dc2626;
+      --yellow:   #d97706;
+      --cyan:     #0891b2;
+      --purple:   #7c3aed;
+      --orange:   #ea580c;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-size: 15px; font-weight: 700; color: var(--accent); }
+
+    #breadcrumb { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+    #breadcrumb .crumb { color: var(--accent); cursor: pointer; }
+    #breadcrumb .crumb:hover { text-decoration: underline; }
+    #breadcrumb .sep { color: var(--border); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+    .loading { color: var(--muted); font-style: italic; }
+    .error   { color: var(--red); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-header.clickable { cursor: pointer; user-select: none; }
+    .card-header.clickable:hover { background: var(--bg); }
+    .toggle-icon { margin-left: auto; font-size: 10px; color: var(--muted); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 9px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: var(--bg); }
+    tr:last-child td { border-bottom: none; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #f0f3ff; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-green  { background: #dcfce7; color: var(--green); }
+    .badge-yellow { background: #fef3c7; color: var(--yellow); }
+    .badge-cyan   { background: #e0f2fe; color: var(--cyan); }
+    .badge-muted  { background: #f3f4f6; color: var(--muted); }
+    .badge-red    { background: #fee2e2; color: var(--red); }
+    .badge-purple { background: #ede9fe; color: var(--purple); }
+    .badge-orange { background: #ffedd5; color: var(--orange); }
+
+    /* ── Meta grid ── */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 12px;
+      padding: 14px 16px;
+    }
+    .meta-item label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+    /* ── Plan steps ── */
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num { font-size: 11px; color: var(--muted); min-width: 22px; padding-top: 2px; }
+    .step-content { flex: 1; }
+    .step-type { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .step-text { font-size: 13px; line-height: 1.5; }
+    .step-status { margin-left: auto; flex-shrink: 0; }
+
+    /* ── System prompt ── */
+    .prompt-box {
+      padding: 14px 16px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .prompt-section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+    .prompt-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    .prompt-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+
+    /* ── Chat ── */
+    #chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+
+    .msg { display: flex; flex-direction: column; gap: 4px; max-width: 85%; }
+    .msg.student { align-self: flex-end; }
+    .msg.agent, .msg.tool_call, .msg.tool_result { align-self: flex-start; }
+
+    .msg-meta { font-size: 11px; color: var(--muted); }
+    .msg.student .msg-meta { text-align: right; }
+
+    .student-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 12px 12px 3px 12px;
+      padding: 9px 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Agent DSL blocks */
+    .agent-blocks { display: flex; flex-direction: column; gap: 5px; }
+
+    .block {
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.55;
+      border: 1px solid var(--border);
+    }
+    .block-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; margin-bottom: 4px; opacity: .55;
+    }
+    .block-speak    { background: #f8f9ff; border-left: 3px solid var(--accent); }
+    .block-write    { background: #f0fdfc; border-left: 3px solid var(--cyan); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; }
+    .block-ask      { background: #f0fdf4; border-left: 3px solid var(--green); }
+    .block-annotate { background: #fffbeb; border-left: 3px solid var(--yellow); font-size: 12px; }
+    .block-draw     { background: #fefce8; border-left: 3px solid var(--yellow); }
+    .block-draw svg { max-width: 100%; height: auto; display: block; background: #fff; border-radius: 4px; margin-top: 4px; border: 1px solid var(--border); }
+    .block-play     { background: #fff7ed; border-left: 3px solid var(--orange); }
+    .block-model3d  { background: #faf5ff; border-left: 3px solid var(--purple); }
+    .block-attrs    { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+    .question-marker {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 600; color: var(--green);
+      margin: 4px 0 2px;
+    }
+    .question-marker::before, .question-marker::after {
+      content: ''; flex: 1; height: 1px; background: #bbf7d0;
+    }
+
+    .block-parallel {
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      background: var(--bg);
+    }
+    .parallel-label { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 2px; }
+
+    /* Tool call / result bubbles */
+    .tool-bubble {
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .tool-bubble.call   { background: #faf5ff; border-left: 3px solid var(--purple); }
+    .tool-bubble.result { background: #f0fdf4; border-left: 3px solid var(--green); }
+    .tool-name { font-size: 11px; font-weight: 700; margin-bottom: 4px; opacity: .7; }
+
+    details > summary { list-style: none; }
+    details > summary::marker { display: none; }
+
+    /* ── Student media (images + audio) ── */
+    .student-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+    .img-thumb {
+      width: 72px; height: 72px; object-fit: cover;
+      border-radius: 6px; border: 1px solid rgba(255,255,255,.35);
+      cursor: pointer; transition: opacity .15s;
+    }
+    .img-thumb:hover { opacity: .8; }
+    .student-audio {
+      margin-top: 6px;
+      width: 100%;
+    }
+    .student-audio audio { width: 100%; height: 32px; border-radius: 6px; }
+
+    /* ── Image modal ── */
+    #img-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.72); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    #img-modal.open { display: flex; }
+    #img-modal img {
+      max-width: 90vw; max-height: 90vh;
+      border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    }
+
+    /* ── Raw JSON view ── */
+    .raw-turn {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+    .raw-turn summary {
+      cursor: pointer; padding: 6px 10px;
+      background: var(--surface); font-weight: 600;
+      font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
+      list-style: none; display: flex; align-items: center; gap: 8px;
+      user-select: none;
+    }
+    .raw-turn summary::-webkit-details-marker { display: none; }
+    .raw-turn summary::before { content: '▶'; font-size: 9px; color: var(--muted); transition: transform .15s; }
+    .raw-turn[open] summary::before { transform: rotate(90deg); }
+    .raw-turn pre {
+      margin: 0; padding: 10px 12px;
+      background: #fafafa; overflow-x: auto;
+      font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
+      line-height: 1.5; border-top: 1px solid var(--border);
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .raw-media { padding: 8px 12px; border-top: 1px solid var(--border); background: #fafafa; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .raw-media img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); }
+    .raw-media audio { height: 28px; flex: 1; min-width: 180px; }
+  </style>
+</head>
+<body>
+
+<div id="img-modal" onclick="this.classList.remove('open')">
+  <img id="img-modal-src" src="" alt="Student upload">
+</div>
+
+<header>
+  <h1>Prodigy LP Admin</h1>
+  <nav id="breadcrumb"></nav>
+</header>
+
+<main id="main">
+  <p class="loading">Loading…</p>
+</main>
+
+<script>
+  // ── Router ────────────────────────────────────────────────────────────────
+  function route() {
+    const p = new URLSearchParams(location.search);
+    const sessionId = p.get('session');
+    const studentId = p.get('student');
+    if (sessionId)      renderSession(sessionId);
+    else if (studentId) renderStudent(studentId);
+    else                renderStudents();
+  }
+
+  function navigate(params) {
+    history.pushState({}, '', params ? '?' + new URLSearchParams(params) : location.pathname);
+    route();
+  }
+
+  window.addEventListener('popstate', route);
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  async function api(path) {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r.json();
+  }
+
+  // ── DOM helpers ───────────────────────────────────────────────────────────
+  function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+  function setMain(html) { document.getElementById('main').innerHTML = html; }
+  function shortDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(); }
+
+  function stateBadge(state) {
+    if (!state) return '<span class="badge badge-muted">—</span>';
+    const cls = { mastered:'green', exam_ready:'green', learning:'cyan', clarity:'cyan', not_assessed:'muted', 'learn-pre-req-before':'yellow' }[state] ?? 'muted';
+    return `<span class="badge badge-${cls}">${state}</span>`;
+  }
+  function statusBadge(status) {
+    const cls = { completed:'green', started:'cyan', initialised:'muted' }[status] ?? 'muted';
+    return `<span class="badge badge-${cls}">${status}</span>`;
+  }
+  function stepStatusBadge(s) {
+    const cls = { done:'green', in_progress:'cyan', pending:'muted', failed:'red' }[s] ?? 'muted';
+    return `<span class="badge badge-${cls} step-status">${s}</span>`;
+  }
+
+  function setBreadcrumb(crumbs, title) {
+    document.getElementById('breadcrumb').innerHTML = crumbs.map((c, i) =>
+      i < crumbs.length - 1
+        ? `<span class="crumb" onclick="navigate(${JSON.stringify(c.params)})">${c.label}</span><span class="sep">/</span>`
+        : `<span>${c.label}</span>`
+    ).join('');
+    document.title = title ?? (crumbs.map(c => c.label).reverse().join(' | ') + ' | LP Admin');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Students list ─────────────────────────────────────────────────────────
+  async function renderStudents() {
+    setBreadcrumb([{ label: 'Students' }], 'Students | LP Admin');
+    setMain('<p class="loading">Loading students…</p>');
+    try {
+      const students = await api('/students');
+      if (!students.length) { setMain('<p class="loading">No students found.</p>'); return; }
+      setMain(`<div class="card">
+        <div class="card-header">Students (${students.length})</div>
+        <table>
+          <thead><tr><th>Student ID</th><th>Journeys</th><th>Sessions</th><th>Memories</th></tr></thead>
+          <tbody>${students.map(s => `
+            <tr class="clickable" onclick="navigate({student:'${s.studentId}'})">
+              <td style="color:var(--accent);font-weight:600">${s.studentId}</td>
+              <td>${s.journeyCount}</td><td>${s.sessionCount}</td><td>${s.memoryCount}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`);
+    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
+  }
+
+  // ── Student detail ────────────────────────────────────────────────────────
+  async function renderStudent(studentId) {
+    setBreadcrumb([{ label: 'Students', params: null }, { label: studentId }], `${studentId} | LP Admin`);
+    setMain('<p class="loading">Loading…</p>');
+    try {
+      const [journeys, sessions, memories] = await Promise.all([
+        api(`/students/${studentId}/journeys`),
+        api(`/students/${studentId}/sessions`),
+        api(`/students/${studentId}/memories`),
+      ]);
+      const nodes = (await Promise.all(journeys.map(j => api(`/journeys/${j.id}/nodes`).catch(() => [])))).flat();
+
+      let html = '';
+
+      for (const journey of journeys) {
+        const jnodes = nodes.filter(n => n.journeyId === journey.id);
+        html += `<div class="card">
+          <div class="card-header">Journey <span style="font-weight:400;font-size:11px">${journey.id}</span></div>
+          <table>
+            <thead><tr><th>Concept</th><th>State</th><th>Go To</th><th>Pre-req</th><th>Last Activity</th></tr></thead>
+            <tbody>${jnodes.map(n => `
+              <tr>
+                <td style="font-weight:600">${n.conceptId}</td>
+                <td>${stateBadge(n.state)}</td>
+                <td style="color:var(--muted)">${n.goTo ?? '—'}</td>
+                <td style="color:var(--yellow)">${n.preReqToLearn ?? '—'}</td>
+                <td style="color:var(--muted)">${shortDate(n.lastActivity)}</td>
+              </tr>`).join('')}
+            ${!jnodes.length ? '<tr><td colspan="5" style="color:var(--muted)">No nodes</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>`;
+      }
+
+      html += `<div class="card">
+        <div class="card-header">Sessions (${sessions.length})</div>
+        <table>
+          <thead><tr><th>Concept</th><th>Status</th><th>State</th><th>Turns</th><th>Started</th><th></th></tr></thead>
+          <tbody>${sessions.map(s => `
+            <tr class="clickable" onclick="navigate({session:'${s.id}'})">
+              <td style="font-weight:500">${s.conceptId}</td>
+              <td>${statusBadge(s.status)}</td>
+              <td>${stateBadge(s.conceptStateAtStart)} → ${stateBadge(s.conceptStateAtEnd)}</td>
+              <td style="color:var(--muted)">${(s.history ?? []).length}</td>
+              <td style="color:var(--muted)">${shortDate(s.createdAt)}</td>
+              <td style="color:var(--accent)">View →</td>
+            </tr>`).join('')}
+          ${!sessions.length ? '<tr><td colspan="6" style="color:var(--muted)">No sessions</td></tr>' : ''}
+          </tbody>
+        </table>
+      </div>`;
+
+      if (memories.length) {
+        html += `<div class="card">
+          <div class="card-header">Memories (${memories.length})</div>
+          <table>
+            <thead><tr><th>Type</th><th>Content</th></tr></thead>
+            <tbody>${memories.map(m => `
+              <tr><td><span class="badge badge-cyan">${m.type}</span></td><td style="color:var(--muted)">${m.content}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      }
+
+      setMain(html);
+    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
+  }
+
+  // ── Session detail ────────────────────────────────────────────────────────
+  async function renderSession(sessionId) {
+    setMain('<p class="loading">Loading session…</p>');
+    try {
+      const s = await api(`/sessions/${sessionId}`);
+      const shortId = '...' + sessionId.slice(-3);
+      setBreadcrumb([
+        { label: 'Students', params: null },
+        { label: s.studentId, params: { student: s.studentId } },
+        { label: s.conceptId.length > 44 ? s.conceptId.slice(0, 44) + '…' : s.conceptId },
+      ], `${shortId} | ${s.conceptId} | ${s.studentId}`);
+
+      // Meta
+      let html = `<div class="card">
+        <div class="meta-grid">
+          <div class="meta-item"><label>Student</label><span style="color:var(--accent);font-weight:600">${s.studentId}</span></div>
+          <div class="meta-item"><label>Concept</label><span>${s.conceptId}</span></div>
+          <div class="meta-item"><label>Status</label>${statusBadge(s.status)}</div>
+          <div class="meta-item"><label>State</label>${stateBadge(s.conceptStateAtStart)} → ${stateBadge(s.conceptStateAtEnd)}</div>
+          <div class="meta-item"><label>Started</label><span style="color:var(--muted)">${shortDate(s.createdAt)}</span></div>
+          ${s.endedAt ? `<div class="meta-item"><label>Ended</label><span style="color:var(--muted)">${shortDate(s.endedAt)}</span></div>` : ''}
+        </div>
+      </div>`;
+
+      // System prompt (collapsible)
+      if (s.systemPrompt) {
+        const sections = s.systemPrompt.split(/\n---\n/);
+        const labels = ['Base Prompt', 'Skill Prompt', 'Canvas Output Format'];
+        const sectionsHtml = sections.map((sec, i) =>
+          `<div class="prompt-section">
+            <div class="prompt-label">${labels[i] ?? `Section ${i+1}`}</div>
+            ${escHtml(sec.trim())}
+          </div>`
+        ).join('');
+        html += `<div class="card">
+          <div class="card-header clickable" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.querySelector('.toggle-icon').textContent=this.nextElementSibling.hidden?'▶':'▼'">
+            System Prompt <span class="toggle-icon">▶</span>
+          </div>
+          <div class="prompt-box" hidden>${sectionsHtml}</div>
+        </div>`;
+      }
+
+      // Teaching plan (collapsible)
+      const planHistory = s.planHistory ?? [];
+      if (planHistory.length) {
+        const latest = planHistory[planHistory.length - 1];
+        const steps  = latest.plan ?? [];
+        const stepsHtml = steps.map(step => {
+          const c = step.content ?? {};
+          const text = c.question ?? c.explanation ?? c.instruction ?? c.reason ?? (c.conceptTitle ? `Teach: ${c.conceptTitle}` : '');
+          return `<div class="step">
+            <span class="step-num">${step.id}</span>
+            <div class="step-content">
+              <div class="step-type">${step.type}${step.ifCorrect != null ? ` → ✓${step.ifCorrect} ✗${step.ifWrong}` : ''}</div>
+              ${text ? `<div class="step-text">${escHtml(text)}</div>` : ''}
+            </div>
+            ${stepStatusBadge(step.status)}
+          </div>`;
+        }).join('');
+        html += `<div class="card">
+          <div class="card-header clickable" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.querySelector('.toggle-icon').textContent=this.nextElementSibling.hidden?'▶':'▼'">
+            Teaching Plan — ${latest.conceptTitle ?? latest.conceptId} (${steps.length} steps)
+            <span class="toggle-icon">▶</span>
+          </div>
+          <div hidden>${stepsHtml}</div>
+        </div>`;
+      }
+
+      const hasRaw = (s.rawHistory ?? []).length > 0;
+      const chatTurns = s.history ?? [];
+      const rawTurns  = s.rawHistory ?? [];
+
+      html += `<div class="card">
+        <div class="card-header" style="justify-content:space-between;padding:0">
+          <div style="display:flex;gap:0">
+            <button id="tab-chat" onclick="switchTab('chat')"
+              style="padding:10px 18px;border:none;border-right:1px solid var(--border);background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer;border-radius:0">
+              Chat (${chatTurns.length} turns)
+            </button>
+            ${hasRaw ? `<button id="tab-raw" onclick="switchTab('raw')"
+              style="padding:10px 18px;border:none;background:var(--bg);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;border-radius:0">
+              Full with tool calls (${rawTurns.length} turns)
+            </button>` : ''}
+          </div>
+        </div>
+        <div id="chat"></div>
+      </div>`;
+
+      setMain(html);
+
+      const chat = document.getElementById('chat');
+      let activeTab = 'chat';
+
+      function buildChat() {
+        chat.innerHTML = '';
+        if (activeTab === 'raw') {
+          const wrap = el('div', '');
+          wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:12px';
+          for (const turn of rawTurns) wrap.appendChild(renderRawTurn(turn));
+          chat.appendChild(wrap);
+        } else {
+          for (const turn of chatTurns) renderTurn(chat, turn);
+        }
+      }
+
+      window.switchTab = (tab) => {
+        activeTab = tab;
+        ['chat', 'raw'].forEach(t => {
+          const btn = document.getElementById('tab-' + t);
+          if (!btn) return;
+          btn.style.background = t === tab ? 'var(--accent)' : 'var(--bg)';
+          btn.style.color      = t === tab ? '#fff'          : 'var(--muted)';
+        });
+        buildChat();
+      };
+
+      buildChat();
+    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
+  }
+
+  // ── Raw JSON turn renderer (collapse/expand) ──────────────────────────────
+  function renderRawTurn(turn) {
+    const details = document.createElement('details');
+    details.className = 'raw-turn';
+
+    const summary = document.createElement('summary');
+    const roleLabel = { student: '👤 student', agent: '🤖 agent', tool_call: '🔧 ' + (turn.name ?? 'tool_call'), tool_result: '↩ ' + (turn.name ?? 'tool_result') };
+    summary.textContent = (roleLabel[turn.role] ?? turn.role) + (turn.timestamp ? '  ' + shortDate(turn.timestamp) : '');
+    details.appendChild(summary);
+
+    const pre = document.createElement('pre');
+    // Omit large base64 fields from display
+    const display = JSON.parse(JSON.stringify(turn));
+    pre.textContent = JSON.stringify(display, null, 2);
+    details.appendChild(pre);
+
+    // Render media (images + audio) if present in content
+    const content = typeof turn.content === 'string' ? turn.content : '';
+    const imageFiles = [...content.matchAll(/\[image:([^\]]+)\]/g)].map(m => m[1]);
+    const audioFiles = [...content.matchAll(/\[audio:([^\]]+)\]/g)].map(m => m[1]);
+
+    if (imageFiles.length || audioFiles.length) {
+      const mediaRow = el('div', 'raw-media');
+      for (const name of imageFiles) {
+        const img = document.createElement('img');
+        img.src = `/image-uploads/${name}`;
+        img.alt = 'student upload';
+        img.addEventListener('click', () => {
+          document.getElementById('img-modal-src').src = img.src;
+          document.getElementById('img-modal').classList.add('open');
+        });
+        mediaRow.appendChild(img);
+      }
+      for (const name of audioFiles) {
+        const aud = document.createElement('audio');
+        aud.controls = true;
+        aud.src = `/audio-uploads/${name}`;
+        mediaRow.appendChild(aud);
+      }
+      details.appendChild(mediaRow);
+    }
+
+    return details;
+  }
+
+  // ── Turn renderer ─────────────────────────────────────────────────────────
+  function renderTurn(container, turn) {
+    const role = turn.role;
+    const msgEl = el('div', `msg ${role}`);
+
+    const meta = el('div', 'msg-meta');
+    meta.textContent = role + (turn.timestamp ? '  ' + shortDate(turn.timestamp) : '');
+    msgEl.appendChild(meta);
+
+    if (role === 'student') {
+      const raw = String(turn.content);
+      const imageRe = /\[image:([^\]]+)\]/g;
+      const audioRe = /\[audio:([^\]]+)\]/g;
+      const textOnly = raw.replace(imageRe, '').replace(audioRe, '').trim();
+      const imageFiles = [...raw.matchAll(imageRe)].map(m => m[1]);
+      const audioFiles = [...raw.matchAll(audioRe)].map(m => m[1]);
+
+      const b = el('div', 'student-bubble');
+      if (textOnly) b.textContent = textOnly;
+      if (imageFiles.length) {
+        const row = el('div', 'student-images');
+        for (const name of imageFiles) {
+          const img = document.createElement('img');
+          img.className = 'img-thumb';
+          img.src = `/image-uploads/${name}`;
+          img.alt = 'student upload';
+          img.addEventListener('click', () => {
+            document.getElementById('img-modal-src').src = img.src;
+            document.getElementById('img-modal').classList.add('open');
+          });
+          row.appendChild(img);
+        }
+        b.appendChild(row);
+      }
+      for (const name of audioFiles) {
+        const wrap = el('div', 'student-audio');
+        const aud = document.createElement('audio');
+        aud.controls = true;
+        aud.src = `/audio-uploads/${name}`;
+        wrap.appendChild(aud);
+        b.appendChild(wrap);
+      }
+      msgEl.appendChild(b);
+
+    } else if (role === 'agent') {
+      const blocks = el('div', 'agent-blocks');
+      blocks.appendChild(parseAgentDSL(String(turn.content)));
+      msgEl.appendChild(blocks);
+
+    } else if (role === 'tool_call') {
+      const b = el('div', 'tool-bubble call');
+      const nm = el('div', 'tool-name');
+      nm.textContent = '🔧 ' + (turn.name ?? 'tool_call');
+      b.appendChild(nm);
+      b.appendChild(renderToolContent(turn.content));
+      msgEl.appendChild(b);
+
+    } else if (role === 'tool_result') {
+      const b = el('div', 'tool-bubble result');
+      const nm = el('div', 'tool-name');
+      nm.textContent = '↩ ' + (turn.name ?? 'tool_result');
+      b.appendChild(nm);
+      b.appendChild(renderToolContent(turn.content));
+      msgEl.appendChild(b);
+    }
+
+    container.appendChild(msgEl);
+  }
+
+  // ── Tool content renderer ─────────────────────────────────────────────────
+  function renderToolContent(raw) {
+    const frag = document.createDocumentFragment();
+    if (typeof raw === 'string') {
+      frag.appendChild(document.createTextNode(raw));
+      return frag;
+    }
+
+    const obj = (typeof raw === 'object' && raw !== null) ? raw : {};
+
+    // Surface step content (get_next_step / update_step results)
+    const step = obj.step ?? obj.nextStep ?? null;
+    if (step) {
+      const c = step.content ?? {};
+      if (c.name || c.instruction || c.question) {
+        if (c.name) {
+          const nameEl = el('div');
+          nameEl.style.cssText = 'font-weight:700;margin-bottom:4px';
+          nameEl.textContent = `Step ${step.id}: ${c.name}`;
+          frag.appendChild(nameEl);
+        }
+        const text = c.instruction ?? c.question ?? c.explanation ?? '';
+        if (text) {
+          const textEl = el('div');
+          textEl.style.cssText = 'white-space:pre-wrap;font-family:inherit;font-size:12px';
+          textEl.textContent = text;
+          frag.appendChild(textEl);
+        }
+        // Show remaining fields collapsed
+        const rest = Object.fromEntries(Object.entries(obj).filter(([k]) => k !== 'step' && k !== 'nextStep'));
+        if (Object.keys(rest).length) {
+          const extra = el('div');
+          extra.style.cssText = 'color:var(--muted);font-size:11px;margin-top:4px';
+          extra.textContent = JSON.stringify(rest);
+          frag.appendChild(extra);
+        }
+        return frag;
+      }
+    }
+
+    // Surface plan array (read_plan result)
+    if (obj.plan && typeof obj.plan === 'string') {
+      const pre = el('div');
+      pre.style.cssText = 'white-space:pre-wrap';
+      pre.textContent = obj.plan;
+      frag.appendChild(pre);
+      return frag;
+    }
+
+    // Surface simple scalar results (message, ok, error, done)
+    const keys = ['message', 'error', 'ok', 'done', 'state', 'action'];
+    const summary = keys.filter(k => obj[k] !== undefined).map(k => `${k}: ${JSON.stringify(obj[k])}`).join('  ');
+    if (summary) {
+      const sumEl = el('div');
+      sumEl.style.cssText = 'margin-bottom:4px';
+      sumEl.textContent = summary;
+      frag.appendChild(sumEl);
+    }
+
+    // Remaining keys as collapsed JSON
+    const shown = new Set(['message', 'error', 'ok', 'done', 'state', 'action', 'step', 'nextStep', 'plan']);
+    const remainder = Object.fromEntries(Object.entries(obj).filter(([k]) => !shown.has(k)));
+    if (Object.keys(remainder).length) {
+      const pre = el('div');
+      pre.style.cssText = 'white-space:pre-wrap;color:var(--muted);font-size:11px;margin-top:4px';
+      pre.textContent = JSON.stringify(remainder, null, 2);
+      frag.appendChild(pre);
+    }
+
+    if (!summary && !Object.keys(remainder).length) {
+      frag.appendChild(document.createTextNode(JSON.stringify(obj, null, 2)));
+    }
+
+    return frag;
+  }
+
+  // ── Agent DSL parser ──────────────────────────────────────────────────────
+  function parseAgentDSL(raw) {
+    const frag = document.createDocumentFragment();
+
+    const BLOCK_KEYS   = new Set(['speak','write','ask','annotate','draw','play','model3d']);
+    const BLOCK_RE     = /^(speak|write|ask|annotate|draw|play|model3d):\s*/;
+    const PARALLEL_RE  = /^parallel:(start|end)\s*$/;
+    const QUESTION_RE  = /^question:\s*(.+)$/;
+    const ATTR_RE      = /^\/([a-z_]+):\s*(.*)/;
+
+    let current      = null;   // { key, lines, attrs }
+    let parallelEl   = null;
+
+    function container() { return parallelEl ?? frag; }
+
+    function flush() {
+      if (!current) return;
+      const content = current.lines.join('\n').trim();
+      if (!content && !Object.keys(current.attrs).length) { current = null; return; }
+
+      const block = el('div', `block block-${current.key}`);
+      const lbl   = el('div', 'block-label');
+      lbl.textContent = current.key;
+      block.appendChild(lbl);
+
+      if (current.key === 'draw') {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = content;
+        block.appendChild(wrap);
+      } else if (content) {
+        block.appendChild(document.createTextNode(content));
+      }
+
+      // Render slash attrs (mark, target, position, etc.)
+      const attrEntries = Object.entries(current.attrs);
+      if (attrEntries.length) {
+        const attrEl = el('div', 'block-attrs');
+        attrEl.textContent = attrEntries.map(([k, v]) => `/${k}: ${v}`).join('  ');
+        block.appendChild(attrEl);
+      }
+
+      container().appendChild(block);
+      current = null;
+    }
+
+    for (const line of raw.split('\n')) {
+      // slash attribute — belongs to current block
+      const am = line.match(ATTR_RE);
+      if (am && current) {
+        current.attrs[am[1]] = am[2].trim();
+        continue;
+      }
+
+      // parallel:start / parallel:end
+      const pm = line.match(PARALLEL_RE);
+      if (pm) {
+        flush();
+        if (pm[1] === 'start') {
+          parallelEl = el('div', 'block-parallel');
+          const lbl = el('div', 'parallel-label');
+          lbl.textContent = '⬡ parallel';
+          parallelEl.appendChild(lbl);
+          frag.appendChild(parallelEl);
+        } else {
+          parallelEl = null;
+        }
+        continue;
+      }
+
+      // question: Q01  or  question: end
+      const qm = line.match(QUESTION_RE);
+      if (qm) {
+        flush();
+        const qid = qm[1].trim();
+        const marker = el('div', 'question-marker');
+        marker.textContent = qid === 'end' ? `Q${qid.replace(/^end$/i, '?')} ended` : `📝 ${qid} started`;
+        if (qid.toLowerCase() === 'end') {
+          marker.textContent = 'question ended';
+          marker.style.color = 'var(--muted)';
+          marker.style.cssText += ';font-weight:400';
+        } else {
+          marker.textContent = `📝 ${qid} started`;
+        }
+        frag.appendChild(marker);
+        continue;
+      }
+
+      // block key line
+      const bm = line.match(BLOCK_RE);
+      if (bm) {
+        flush();
+        const key  = bm[1];
+        const rest = line.slice(bm[0].length);
+        current = { key, lines: rest ? [rest] : [], attrs: {} };
+      } else if (current) {
+        current.lines.push(line);
+      }
+    }
+    flush();
+    return frag;
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  route();
+</script>
+</body>
+</html>

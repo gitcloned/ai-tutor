@@ -6,7 +6,7 @@
 import type { AgentContext } from '../context.js';
 import type { Concept, JourneyNode, PlanHistoryEntry } from '../types.js';
 import { lp, cms } from '../api.js';
-import { buildPlan } from '../plan-builder.js';
+import { buildConceptPlan } from '../learning/stateManagement.js';
 
 // ── redirectToPrereq ──────────────────────────────────────────────────────────
 
@@ -14,9 +14,12 @@ export async function redirectToPrereq(
   prereqConceptId:    string,
   prereqConceptTitle: string,
   ctx:                AgentContext,
+  mode:               'teach' | 'probe' = 'teach',
 ): Promise<void> {
   const originConceptId = ctx.journeyNode.conceptId;
   const originNodeId    = ctx.journeyNode.id;
+
+  const prereqNodeState = mode === 'probe' ? 'not_assessed' : 'learning';
 
   // Mark current node as paused
   await lp.patch(`/journey-nodes/${originNodeId}`, {
@@ -37,28 +40,26 @@ export async function redirectToPrereq(
       journeyId:     ctx.journeyNode.journeyId,
       conceptId:     prereqConceptId,
       order:         0,
-      state:         'learning',
+      state:         prereqNodeState,
       masteryLevel:  null,
       goTo:          originConceptId,
       cameFrom:      originConceptId,
       preReqToLearn: null,
     });
   } else {
-    // Force to learning — the probing tree already diagnosed this student,
-    // no need to re-assess
     await lp.patch(`/journey-nodes/${prereqNode.id}`, {
-      state:    'learning',
+      state:    prereqNodeState,
       goTo:     originConceptId,
       cameFrom: originConceptId,
     });
-    prereqNode.state    = 'learning';
+    prereqNode.state    = prereqNodeState;
     prereqNode.goTo     = originConceptId;
     prereqNode.cameFrom = originConceptId;
   }
 
   // Fetch prereq concept and build its plan
   const prereqConcept = await cms.get<Concept>(`/concepts/${prereqConceptId}`);
-  const prereqPlan    = buildPlan(prereqConcept, 'learning');
+  const prereqPlan    = buildConceptPlan(prereqConcept, prereqNodeState);
 
   // Append to planHistory
   const entry: PlanHistoryEntry = {
@@ -109,9 +110,9 @@ export async function returnToOrigin(ctx: AgentContext): Promise<boolean> {
   originNode.state         = 'learning';
   originNode.preReqToLearn = null;
 
-  // Fetch origin concept and build learning plan
+  // Fetch origin concept and build its plan for the resumed state
   const originConcept = await cms.get<Concept>(`/concepts/${originConceptId}`);
-  const originPlan    = buildPlan(originConcept, 'learning');
+  const originPlan    = buildConceptPlan(originConcept, originNode.state);
 
   // Append to planHistory
   const entry: PlanHistoryEntry = {

@@ -3,6 +3,21 @@ import { BlockAdapter, decodeNarration, lessonMetadata, position, safeMedia } fr
 import { sanitizeDiagram } from '../src/diagram';
 
 describe('the backend canvas stream', () => {
+  it('flushes pending writing before forwarding the explicit tutor turn boundary',()=>{
+    const adapter=new BlockAdapter();adapter.accept({type:'text_chunk',content:'Video introduction'});
+    expect(adapter.accept({type:'event',event:{type:'tutor-ended'}})).toEqual([
+      {kind:'write',content:'Video introduction',attrs:{}},
+      {kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}},
+    ]);
+  });
+  it('flushes writing before question boundaries and preserves textless marks',()=>{
+    const adapter=new BlockAdapter();
+    adapter.accept({type:'text_chunk',content:'2x = 4'});
+    expect(adapter.accept({type:'annotate',content:'',attrs:{mark:'circle',target:'2x'}})).toEqual([
+      {kind:'write',content:'2x = 4',attrs:{}},{kind:'annotate',content:'',attrs:{mark:'circle',target:'2x'}},
+    ]);
+    expect(adapter.accept({type:'question',content:'end',attrs:{}})).toEqual([{kind:'question',content:'end',attrs:{}}]);
+  });
   it('reads lesson metadata sent when a socket session connects', () => {
     const event = {
       type:'session',

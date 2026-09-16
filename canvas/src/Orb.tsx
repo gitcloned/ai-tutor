@@ -1,14 +1,16 @@
 import {useRef,useState,useEffect} from 'react';
-import {Mic} from 'lucide-react';
+import {Mic,Check,LoaderCircle} from 'lucide-react';
 import type {Phase} from './useLesson';
 import {blobInput,type MediaInput} from './studentWork';
 
-export function Orb({phase,onTap,onAudio,onRecording,notify}:{phase:Phase;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string)=>void}) {
+export function Orb({phase,submission='idle',preparing=false,watching=false,onTap,onAudio,onRecording,notify}:{phase:Phase;submission?:'idle'|'sent'|'waiting';preparing?:boolean;watching?:boolean;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string)=>void}) {
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null),held=useRef(false),pressed=useRef(false),cancelled=useRef(false);
   const generation=useRef(0),recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null);
   const callbacks=useRef({onAudio,onRecording,notify});callbacks.current={onAudio,onRecording,notify};
   const startPoint=useRef({x:0,y:0});const [listening,setListening]=useState(false);
   const busy=['speaking','writing','thinking','connecting'].includes(phase);
+  const unavailable=preparing||submission!=='idle'||phase==='connecting'||watching;
+  const status=preparing?'Sending…':submission==='sent'?'Sent':submission==='waiting'?'Waiting for tutor…':null;
   function stopTracks(){stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;}
   function stop(cancel:boolean){
     pressed.current=false;cancelled.current=cancel;
@@ -40,19 +42,19 @@ export function Orb({phase,onTap,onAudio,onRecording,notify}:{phase:Phase;onTap:
       r.start();setListening(true);callbacks.current.onRecording(true);
     } catch {stopTracks();setListening(false);notify('Microphone access failed. Allow microphone access or type your reply.');}
   }
-  function begin(){if(pressed.current||recorder.current)return;pressed.current=true;held.current=false;cancelled.current=false;timer.current=setTimeout(start,420);}
-  function release(cancel=false){const wasHeld=held.current;stop(cancel);if(!cancel&&!wasHeld)onTap();}
+  function begin(){if(unavailable||pressed.current||recorder.current)return;pressed.current=true;held.current=false;cancelled.current=false;timer.current=setTimeout(start,420);}
+  function release(cancel=false){if(!pressed.current)return;const wasHeld=held.current;stop(cancel);if(!cancel&&!wasHeld&&!unavailable)onTap();}
   return <div className="orb-wrap">
-    <span className="orb-label" aria-live="polite">{listening?'Listening…':({offline:'Meet your tutor',connecting:'Connecting…',ready:'Here with you',thinking:'Thinking…',speaking:'Explaining…',writing:'Writing…',waiting:'Your turn',paused:'Paused'})[phase]}</span>
-    <button className={`orb ${busy?'active':''} ${listening?'listening':''}`} aria-label={listening?'Release to send audio':'Send new work; hold to speak'}
+    <span className="orb-label" aria-live="polite">{listening?'Listening…':status??(watching?'Watch at your pace':({offline:'Meet your tutor',connecting:'Connecting…',ready:'Here with you',thinking:'Thinking…',speaking:'Explaining…',writing:'Writing…',waiting:'Your turn',paused:'Paused'})[phase])}</span>
+    <button className={`orb ${busy?'active':''} ${listening?'listening':''} ${unavailable?'unavailable':'available'} ${submission==='sent'?'submitted':''}`} disabled={unavailable} aria-busy={preparing||submission==='waiting'} aria-label={listening?'Release to send audio':'Send new work; hold to speak'}
       onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);startPoint.current={x:e.clientX,y:e.clientY};begin();}}
       onPointerMove={e=>{if(e.buttons&&Math.hypot(e.clientX-startPoint.current.x,e.clientY-startPoint.current.y)>90){held.current=true;stop(true);}}}
       onPointerUp={()=>release(cancelled.current)} onPointerCancel={()=>release(true)}
       onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();begin();}if(e.key==='Escape')release(true);}}
       onKeyUp={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();release();}}}>
       <span className="orb-ring one"/><span className="orb-ring two"/><span className="orb-core"/>
-      <span className="orb-icon">{listening?<Mic size={22}/>:null}</span>
+      <span className="orb-icon">{listening?<Mic size={22}/>:submission==='sent'?<Check size={25}/>:preparing||submission==='waiting'?<LoaderCircle className="orb-spinner" size={22}/>:null}</span>
     </button>
-    <span className="orb-hint">{listening?'Release to send · Slide away to cancel':'Tap to send · Hold to talk'}</span>
+    <span className="orb-hint">{listening?'Release to send · Slide away to cancel':submission==='sent'?'Your work is on its way':unavailable?'You can keep working on the canvas':phase==='offline'?'Tap to connect':'Tap to send · Hold to talk'}</span>
   </div>;
 }

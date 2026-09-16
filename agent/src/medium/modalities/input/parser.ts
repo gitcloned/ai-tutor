@@ -50,7 +50,8 @@ export class InputParser {
 
     return {
       text: parts.filter(Boolean).join(' '),
-      ...(images.length ? { images } : {}),
+      ...(images.length    ? { images }                  : {}),
+      ...(input.audio      ? { audioBlob: input.audio }  : {}),
     };
   }
 }

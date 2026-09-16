@@ -48,7 +48,7 @@ export interface Concept {
   lessonPlan?:   LessonStep[];
 }
 
-export type PlanStepType = 'probe' | 'teach' | 'inline' | 'store_memory' | 'advance_state' | 'resource' | 'practice';
+export type PlanStepType = 'probe' | 'teach' | 'inline' | 'store_memory' | 'advance_state' | 'resource' | 'practice' | 'step';
 
 export interface PlanStep {
   id:         number;
@@ -61,6 +61,13 @@ export interface PlanStep {
 }
 
 export interface Message { role: 'student' | 'agent'; content: string; timestamp: string; }
+
+export interface RawTurn {
+  role: 'student' | 'agent' | 'tool_call' | 'tool_result';
+  content: unknown;
+  name?: string;   // tool name for tool_call / tool_result
+  timestamp: string;
+}
 
 export interface PlanHistoryEntry {
   conceptId:    string;
@@ -79,6 +86,8 @@ export interface Session {
   teachingPlan:        { content: string; updatedAt: string };
   planHistory:         PlanHistoryEntry[];
   history:             Message[];
+  rawHistory:          RawTurn[];
+  systemPrompt?:       string;
 }
 
 export interface Journey { id: string; studentId: string; objective: string; }

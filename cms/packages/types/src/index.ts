@@ -64,6 +64,7 @@ export interface PerseusContent { content: string; widgets: Record<string, Perse
 export interface ExamAppearance { exam: ObjectId; link?: string; }
 export interface TeachingPlan   { content: string; createdAt: Date; updatedAt: Date; }
 export interface Message        { role: 'student' | 'agent'; content: string; timestamp: Date; }
+export interface RawTurn        { role: 'student' | 'agent' | 'tool_call' | 'tool_result'; content: unknown; name?: string; timestamp: Date; }
 
 /** One entry in the plan history — records the active plan each time the agent switches concept. */
 export interface PlanHistoryEntry {
@@ -200,6 +201,10 @@ export interface ISession {
   /** Full history of plans across all concept hops in this session. */
   planHistory: PlanHistoryEntry[];
   history: Message[];
+  /** Full turn-by-turn record including tool_call and tool_result turns. */
+  rawHistory: RawTurn[];
+  /** System prompt used for this session (recorded on first turn). */
+  systemPrompt?: string;
   memory: string[];
   createdAt: Date;
   endedAt?: Date | null;

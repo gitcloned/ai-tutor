@@ -6,3 +6,4 @@ ka-session.json
 .DS_Store
 ka-session.json
 .gstack/
+agent/tmp/

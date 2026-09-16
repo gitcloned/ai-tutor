@@ -169,6 +169,7 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     teachingPlan:        { content: '', updatedAt: new Date().toISOString() },
     planHistory:         [],
     history:             [],
+    rawHistory:          [],
     ...overrides,
   };
 }

@@ -1,6 +1,11 @@
 import express from 'express';
+import { readFileSync } from 'fs';
+import { resolve, dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { connectDb } from './db.js';
 import { LearningJourney, LearningJourneyNode, Session, Memory } from './models/index.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app  = express();
 const PORT = Number(process.env.PORT ?? 32002);
@@ -11,6 +16,25 @@ type AsyncHandler = (req: express.Request, res: express.Response, next: express.
 function wrap(fn: AsyncHandler): express.RequestHandler {
   return (req, res, next) => fn(req, res, next).catch(next);
 }
+
+// ── Student image uploads (stored by agent) ────────────────────────────────────
+
+const IMAGE_DIR = join(__dirname, '../../../../agent/tmp/images');
+const AUDIO_DIR = join(__dirname, '../../../../agent/tmp/audio');
+app.use('/image-uploads', express.static(IMAGE_DIR));
+app.use('/audio-uploads', express.static(AUDIO_DIR));
+
+// ── Admin UI ───────────────────────────────────────────────────────────────────
+
+function readAdminHtml() {
+  try {
+    return readFileSync(resolve(__dirname, 'admin.html'), 'utf8');        // dev (src/)
+  } catch {
+    return readFileSync(resolve(__dirname, '../src/admin.html'), 'utf8'); // prod (dist/)
+  }
+}
+// Read on every request so HTML changes take effect without a server restart.
+app.get('/admin', (_req, res) => res.type('html').send(readAdminHtml()));
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 

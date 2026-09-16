@@ -6,6 +6,8 @@ export class Playback {
   private controller = new AbortController();
   private parallelDepth = 0;
   private parallelTasks: Promise<void>[] = [];
+  private turnVideos:Block[]=[];
+  private narrationTail: Promise<void> | null = null;
   private previousKind: Block['kind'] | null = null;
   paused = false;
   constructor(
@@ -22,6 +24,8 @@ export class Playback {
     this.controller=new AbortController();
     this.parallelDepth=0;
     this.parallelTasks=[];
+    this.turnVideos=[];
+    this.narrationTail=null;
     this.previousKind=null;
     this.paused=false;
   }
@@ -31,12 +35,24 @@ export class Playback {
     try {
       while(this.queue.length && !this.paused) {
         const block=this.queue.shift()!;
+        // A video may arrive before its introduction. Only the explicit turn
+        // boundary guarantees all speech and writing for that turn have arrived.
+        if(block.kind==='play'){this.turnVideos.push(block);continue;}
         const action = block.action;
         if (block.kind === 'action' && action && typeof action === 'object' && 'type' in action) {
+          if(action.type==='tutor-ended'){
+            const videos=this.turnVideos.splice(0),signal=this.controller.signal;
+            await Promise.all(this.parallelTasks.splice(0));
+            this.parallelDepth=0;
+            for(const video of videos){if(signal.aborted)break;await this.run(video);}
+            continue;
+          }
           if (action.type === 'parallel-start') { this.parallelDepth++; continue; }
           if (action.type === 'parallel-end') {
             this.parallelDepth = Math.max(0, this.parallelDepth - 1);
-            if (this.parallelDepth === 0) await Promise.all(this.parallelTasks.splice(0));
+            if (this.parallelDepth === 0) {
+              await Promise.all(this.parallelTasks.splice(0));
+            }
             continue;
           }
         }
@@ -50,20 +66,37 @@ export class Playback {
         if (isPresentationBlock(block)) this.previousKind = block.kind;
       }
       if (this.parallelDepth === 0 && this.parallelTasks.length) await Promise.all(this.parallelTasks.splice(0));
-    } finally { this.running=false; if(!this.queue.length) this.idle(); }
+    } finally { this.running=false; if(!this.queue.length&&!this.parallelTasks.length&&!this.turnVideos.length&&!this.narrationTail) this.idle(); }
   }
-  private async run(block: Block) {
-    try { await this.present(block,this.controller.signal); } catch(error) { if((error as Error).name!=='AbortError') this.failed(error); }
+  private run(block: Block): Promise<void> {
+    // Capture this connection's signal now: a queued sentence must never inherit
+    // a new connection's signal after cancel().
+    const signal=this.controller.signal;
+    const present=async()=>{
+      try {
+        while(this.paused&&!signal.aborted)await new Promise(r=>setTimeout(r,16));
+        if(!signal.aborted)await this.present(block,signal);
+      } catch(error) { if((error as Error).name!=='AbortError') this.failed(error); }
+    };
+    if(block.kind!=='audio'&&block.kind!=='speech'&&block.kind!=='play')return present();
+    // Parallel means narration can accompany visuals, never another narration.
+    // Videos share this queue: preceding speech finishes before video opens,
+    // and subsequent speech waits until the student dismisses the video.
+    const task=this.narrationTail?this.narrationTail.then(present):present();
+    const tail=task.finally(()=>{if(this.narrationTail===tail)this.narrationTail=null;});
+    this.narrationTail=tail;
+    return tail;
   }
 }
 
 function isPresentationBlock(block: Block) {
-  return ['model3d','write','svg','ask','play','speech','audio'].includes(block.kind);
+  return ['model3d','question','annotate','write','svg','ask','play','speech','audio'].includes(block.kind);
 }
 
 export function transitionPause(previous: Block['kind'] | null, next: Block['kind']) {
   if (next !== 'speech' && next !== 'audio') return 0;
   if (previous === 'write') return 1200;
+  if (previous === 'annotate') return 1200;
   if (previous === 'svg') return 1600;
   if (previous === 'model3d') return 1200;
   return 0;

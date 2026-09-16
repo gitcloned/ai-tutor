@@ -605,11 +605,16 @@
         break;
 
       // ── Ask ─────────────────────────────────────────────────────────────
+      case 'question':
+        currentAgentBubble = null;
+        addSystem(event.content === 'end' ? 'Worked question complete' : 'Worked question: ' + event.content);
+        break;
+      case 'annotate':
       case 'ask': {
         currentAgentBubble = null;
         const card = el('div', 'ask-card');
         const lbl = el('div', 'label');
-        lbl.textContent = '❓ Question';
+        lbl.textContent = event.type === 'annotate' ? 'Annotation' : '❓ Question';
         card.appendChild(lbl);
         // Text node that chars will be streamed into
         const textNode = document.createTextNode('');

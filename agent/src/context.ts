@@ -1,6 +1,6 @@
 import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry } from './types.js';
 import type { ImageBlob }   from './medium/modalities/input/types.js';
-import { buildPlan }        from './plan-builder.js';
+import { buildConceptPlan } from './learning/stateManagement.js';
 import { cms, lp }          from './api.js';
 
 export interface AgentContext {
@@ -23,7 +23,7 @@ export async function buildContext(studentId: string, conceptId: string, journey
   ]);
 
   const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
-  const plan    = buildPlan(concept, journeyNode.state);
+  const plan = buildConceptPlan(concept, journeyNode.state);
 
   if (session.planHistory.length === 0) {
     const entry: PlanHistoryEntry = {

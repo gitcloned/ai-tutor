@@ -10,7 +10,7 @@
  * Then open http://localhost:<port> in your browser and watch.
  *
  * Options:
- *   --scenario  text | algebra | heart | cuboid-volume | cuboid | both   (default: both)
+ *   --scenario  text | algebra | question-algebra | heart | cuboid-volume | cuboid | both   (default: both)
  *   --delay     ms per character                (default: 10, use 0 for instant)
  *   --port      port number                     (default: 32004)
  */
@@ -20,6 +20,7 @@ import { readFileSync } from 'fs';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { cuboidLesson } from './cuboid-lesson.mjs';
+import { questionLesson } from './question-lesson.mjs';
 
 // Auto-load .env from agent root (same as cli.mjs)
 try {
@@ -202,12 +203,15 @@ async function replay(ws, response) {
   for await (const event of parser.parse({ type: 'text', content: response })) {
     send(ws, event);
   }
+  send(ws, {type:'event',event:{type:'tutor-ended'}});
 }
 
 // ── Build the scenario list to play ──────────────────────────────────────────
 
 const queue = scenario === 'text'
   ? ['text']
+  : scenario === 'question-algebra'
+    ? [questionLesson]
   : scenario === 'both'
     ? [SCENARIOS.algebra, SCENARIOS.heart]
     : scenario === 'algebra'
@@ -250,18 +254,24 @@ async function play(ws, q) {
 
 wss.on('connection', async ws => {
   console.log('Client connected — starting playback.');
-  await play(ws, queue);
-  console.log('Playback complete.');
-
+  let playing = true;
   ws.on('message', async data => {
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === 'message') {
+        if (msg.text === 'I am done watching') {
+          send(ws, {type:'event',event:{type:'tutor-ended'}});
+          return;
+        }
+        if (playing) return;
         console.log(`Replaying (triggered by: "${msg.text}")`);
-        await play(ws, queue);
+        playing = true;
+        try { await play(ws, queue); } finally { playing = false; }
       }
     } catch { }
   });
+  try { await play(ws, queue); } finally { playing = false; }
+  console.log('Playback complete.');
 });
 
 http.listen(port, () => {

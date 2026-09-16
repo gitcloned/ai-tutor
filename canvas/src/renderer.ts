@@ -4,6 +4,7 @@ import { sanitizeDiagram } from './diagram';
 import { delay } from './playback';
 import { playModel } from './models/playModel';
 import type { ModelShape } from './models/ModelShape';
+import {Questions} from './questions';
 import { cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
 
 export class CanvasRenderer {
@@ -12,7 +13,9 @@ export class CanvasRenderer {
   private origin=0;
   private started=false;
   private focused:TLShapeId|null=null;
-  constructor(readonly editor:Editor,private paused:()=>boolean) {editor.on('tick',this.keepModelVisible);}
+  private questions:Questions;
+  private layoutTail:Promise<void>=Promise.resolve();
+  constructor(readonly editor:Editor,private paused:()=>boolean) {this.questions=new Questions(editor);editor.on('tick',this.keepModelVisible);}
   dispose() {this.editor.off('tick',this.keepModelVisible);}
   private keepModelVisible=()=>{
     if(!this.follow)return;
@@ -47,7 +50,8 @@ export class CanvasRenderer {
     if(!this.follow) return;
     const model=this.editor.getCurrentPageShapes().find((s):s is ModelShape=>s.type==='model3d');
     if(this.editor.getShape(id)?.type==='model3d'&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
-    const bounds=this.editor.getShapePageBounds(id); if(!bounds) return;
+    const row=this.questions.rowBounds(id);
+    const bounds=row??this.editor.getShapePageBounds(id); if(!bounds) return;
     if(this.editor.getShape(id)?.type!=='model3d')this.focused=id;
     if(model) {
       const screen=this.editor.getViewportScreenBounds();
@@ -64,6 +68,7 @@ export class CanvasRenderer {
       this.keepModelVisible();
       return;
     }
+    if(row){const camera=this.editor.getCamera(),screen=this.editor.getViewportScreenBounds();const z=Math.min(camera.z,(screen.w-120)/(bounds.w+80));if(z<camera.z)this.editor.setCamera({...camera,z});}
     const view=this.editor.getViewportPageBounds();
     const shift=cameraShift(
       {x:view.x,y:view.y,w:view.w,h:view.h},
@@ -77,25 +82,46 @@ export class CanvasRenderer {
     );
   }
   refocus() {if(this.focused)this.focus(this.focused);}
-  async render(block:Block,signal:AbortSignal) {
+  render(block:Block,signal:AbortSignal):Promise<void> {
+    // Steps depend on previous measured text and notes, even within parallel
+    // narration. Keep layout operations ordered while audio plays alongside.
+    if(['question','annotate','write','ask'].includes(block.kind)){
+      const task=this.layoutTail.then(()=>this.renderBlock(block,signal));
+      this.layoutTail=task.catch(()=>{});return task;
+    }
+    return this.renderBlock(block,signal);
+  }
+  private async renderBlock(block:Block,signal:AbortSignal) {
     if(signal.aborted) return;
+    if(block.kind==='question'){
+      const id=this.questions.start(block.content);if(id)this.focus(id);
+      const bounds=this.editor.getCurrentPageBounds();if(bounds)this.cursor=Math.max(this.cursor,bounds.maxY+60);
+      return;
+    }
+    if(block.kind==='annotate'){
+      const id=this.questions.annotate(block);this.focus(id);return;
+    }
     if(block.kind==='model3d') {
       await playModel(this.editor,block,signal,this.paused,(w,h)=>this.locate(block,w,h),id=>this.focus(id));return;
     }
     const id=createShapeId(); const meta={author:'tutor',kind:block.kind};
     if(block.kind==='write' || block.kind==='ask') {
       const style=textStyle(block.kind);
-      const point=this.locate(block,block.kind==='ask'?560:500,54);
-      this.editor.createShape({id,type:'text',...point,meta,props:{richText:toRichText(' '),...style,autoSize:false,w:block.kind==='ask'?560:500}});
-      this.focus(id);
+      const step=block.kind==='write'?this.questions.beginStep():null;
+      const point=step?{parentId:step.parentId,x:step.x,y:step.y}:this.locate(block,block.kind==='ask'?560:500,54);
+      this.editor.createShape({id,type:'text',...point,meta:step?.meta??meta,props:{richText:toRichText(' '),...style,autoSize:false,w:step?.w??(block.kind==='ask'?560:500)}});
       const text=block.kind==='ask'?questionText(block.content):block.content.trim(); const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(step){this.questions.placeStep(id,text);this.questions.resize(id);}
+      this.focus(id);
       const frames=reduced?[text]:writingFrames(text);
       for(const frame of frames) {
         if(signal.aborted) return;
         this.editor.updateShape({id,type:'text',props:{richText:toRichText(frame)}});
+        if(step)this.questions.resize(id);
         if(!reduced) await delay(WRITE_CHARACTER_DELAY_MS,signal,this.paused);
       }
       const bounds=this.editor.getShapePageBounds(id); if(bounds) this.cursor=Math.max(this.cursor,bounds.maxY+35);
+      if(block.kind==='write')this.questions.written(id);
       this.focus(id); return;
     }
     if(block.kind==='svg') {

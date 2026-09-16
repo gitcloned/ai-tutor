@@ -81,6 +81,7 @@ export class OutputParser {
     }
 
     if (/^parallel:start\s*\n?$/.test(line)) {
+      yield* this.endBlock();
       if (!this.inParallel) {
         this.inParallel = true;
         this.parallelBlockCount = 0;
@@ -89,6 +90,7 @@ export class OutputParser {
       return;
     }
     if (/^parallel:end\s*\n?$/.test(line)) {
+      yield* this.endBlock();
       if (this.inParallel) yield* this.closeParallel();
       return;
     }
@@ -119,5 +121,11 @@ export class OutputParser {
     } else if (this.currentModality) {
       yield* this.currentModality.handle(line);
     }
+  }
+
+  private async *endBlock(): AsyncGenerator<TurnEvent> {
+    if (this.currentModality) yield* this.currentModality.end(this.currentAttrs);
+    this.currentModality = null;
+    this.currentAttrs = {};
   }
 }

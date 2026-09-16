@@ -23,7 +23,7 @@ npm run dev
 
 Open http://127.0.0.1:32000, choose **Start learning**, and connect to `ws://localhost:32004`. The replay begins on connection. `--scenario algebra`, `heart`, and `text` work too. The replay tool restarts its scenarios on any text reply; it does not assess student answers.
 
-The default replay socket is `ws://127.0.0.1:32004`. Canvas uses port **32000** and fails if it is occupied rather than silently switching ports.
+Canvas binds to `0.0.0.0:32000`, making it reachable from other devices on your network. It fails if port **32000** is occupied rather than silently switching ports. The default tutor socket uses the site's hostname on port **32004**, with `ws://` for HTTP and `wss://` for HTTPS. Saved addresses are reused only when their hostname and protocol match the current site. You can edit the tutor address before connecting. Preview also binds to `0.0.0.0`, on port **32005**.
 
 ## Cuboid volume chapter
 
@@ -79,6 +79,8 @@ The server sends `{type: 'session', sessionId, conceptId, title}` immediately af
 
 `Playback` preserves incoming order. Real audio is awaited until playback ends, then subsequent visuals render. `audio_chunk` with `attrs.mimeType: text/plain` is the replay tool's UTF-8 caption simulation. It uses a bounded reading delay, not TTS. Pause suspends both visual timing and Web Audio playback. Disconnect discards queued presentation. The backend still owns LLM parsing, transformations, and event sequencing.
 
+All narration shares one ordered queue, including inside parallel groups. Parallel groups allow visuals to accompany narration; they never overlap two audio chunks or simulated sentences. Captions start when their narration reaches the front of that queue. `parallel:end` waits for both the visuals and queued narration to finish.
+
 Writing appears one character at a time at a 45ms cadence. Sequential write → speech and diagram → speech transitions add 1200ms and 1600ms pauses respectively, after the visual is fully rendered. Explicit `parallel-start` / `parallel-end` groups bypass these pauses and continue to present their contents together.
 
 Ordinary canvas content honors explicit positions and center/top-left anchors. With a model present, teaching uses a right-hand column and vertical positions are treated as minimums to prevent overlaps. Questions use green ink, retain the same font and size, receive a `Q.` prefix unless already labeled, and have extra space above them. Missing positions use vertical placement with collision avoidance. Camera following pans new material into view and zooms to fit model and writing together. Simple clicks keep following enabled; deliberate dragging or wheel navigation pauses it. Fit lesson or Back to the lesson resumes following. SVGs are sanitized and stored as vector image assets. Videos use tldraw embeds/video shapes. HTTP(S) links are validated before rendering.
@@ -106,3 +108,30 @@ npm exec -- playwright test
 ```
 
 The browser test uses installed Google Chrome in an isolated profile. It covers replay rendering, both notebook pages, drawing undo/redo, persistence after reload, and mobile overflow. Screenshots are written to `artifacts/`.
+# Worked questions and annotations
+
+`question: Q01` starts a saved worked example. The first `write:` is its question statement; later writes stay aligned below it. `annotate:` adds a green note on the right of the latest step. Tall notes reserve space before the next step. `question: end` closes the example without deleting it; a new question ID also closes the previous example. An open question can continue across tutor turns.
+
+Annotations support `/mark: circle` or `/mark: underline`, with optional `/target: exact phrase` (first occurrence in the latest step; omit to mark the whole step). A mark can have no text:
+
+```text
+question: Q01
+write: Solve 2x + 3 = 7
+annotate:
+/mark: underline
+/target: + 3
+write: 2x = 4
+annotate: Subtract 3 from both sides.
+question: end
+```
+
+Annotations do not pause for student input. Existing `ask:` lessons keep their previous behavior. Outside a question, an annotation targets the most recent plain write in the current renderer session.
+
+Replay from `agent/`: `npm run build`, then `node scripts/canvas.mjs --scenario question-algebra --tts test --port 32014`. Connect the canvas to `ws://localhost:32014` (use the server's hostname when accessing remotely).
+# Video viewing and orb feedback
+
+Video `play:` blocks are deferred until the backend sends `{ "type": "event", "event": { "type": "tutor-ended" } }` and all speech and visuals from that turn finish. This works even when `play:` arrives before its introduction or outside a parallel group. The viewer fills the browser window automatically and requests native fullscreen when permitted, keeping the completion button accessible. If native fullscreen requires a user gesture, use the fullscreen button. The replay script emits the same turn boundary.
+
+“I’m done watching” pauses and closes the viewer, keeps the video on the canvas, and sends `{ "type": "message", "text": "I am done watching" }`. Native video autoplay has a Play button fallback when the browser blocks it; YouTube retains its player controls. The replay server acknowledges completion without restarting the lesson.
+
+The orb shows Sending, Sent, then Waiting for tutor. Duplicate submissions are blocked until a tutor response arrives; after the brief Sent animation it becomes available again. Students can still draw while waiting. Speaking and writing tutor states remain interactive so a student can hold the orb to speak.

@@ -6,7 +6,7 @@
 import type { AgentContext } from '../context.js';
 import type { ConceptState } from '../types.js';
 import { lp } from '../api.js';
-import { buildPlan } from '../plan-builder.js';
+import { buildConceptPlan } from '../learning/stateManagement.js';
 import { returnToOrigin } from './redirect.js';
 
 export async function transitionState(targetState: ConceptState, ctx: AgentContext): Promise<void> {
@@ -21,6 +21,16 @@ export async function transitionState(targetState: ConceptState, ctx: AgentConte
   const returned = await returnToOrigin(ctx);
   if (returned) return;
 
-  // Otherwise rebuild the plan for the new state in this concept
-  ctx.plan = buildPlan(ctx.concept, targetState);
+  // Otherwise rebuild the plan for the new state in this concept.
+  // If the state is not yet implemented (throws "not yet implemented"), leave the plan
+  // empty so the callers fall through to allDone gracefully.
+  try {
+    ctx.plan = buildConceptPlan(ctx.concept, targetState);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('not yet implemented')) {
+      ctx.plan = [];
+    } else {
+      throw err;
+    }
+  }
 }

@@ -14,6 +14,8 @@ async function persistSession(ctx: import('./context.js').AgentContext): Promise
   if (ctx.session.status === 'initialised') return;
   await lp.patch(`/sessions/${ctx.session.id}`, {
     history:      ctx.session.history,
+    rawHistory:   ctx.session.rawHistory,
+    systemPrompt: ctx.session.systemPrompt,
     planHistory:  ctx.session.planHistory,
     teachingPlan: ctx.session.teachingPlan,
   }).catch(() => { });
@@ -134,6 +136,8 @@ export class SessionManager {
       await lp.patch<Session>(`/sessions/${ctx.session.id}`, {
         status:       'completed',
         history:      ctx.session.history,
+        rawHistory:   ctx.session.rawHistory,
+        systemPrompt: ctx.session.systemPrompt,
         planHistory:  ctx.session.planHistory,
         teachingPlan: ctx.session.teachingPlan,
         endedAt:      new Date().toISOString(),

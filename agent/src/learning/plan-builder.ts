@@ -1,4 +1,4 @@
-import type { Concept, ConceptState, PlanStep, PlanStepType } from './types.js';
+import type { Concept, ConceptState, PlanStep, PlanStepType } from '../types.js';
 
 /**
  * Build the initial teaching plan for a concept + state.

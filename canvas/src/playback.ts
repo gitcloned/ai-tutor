@@ -10,6 +10,11 @@ export class Playback {
   private narrationTail: Promise<void> | null = null;
   private previousKind: Block['kind'] | null = null;
   paused = false;
+  snapshot() {
+    return {running:this.running,paused:this.paused,queued:this.queue.map(b=>b.kind),
+      parallelDepth:this.parallelDepth,parallelTasks:this.parallelTasks.length,
+      pendingVideos:this.turnVideos.length,narrationPending:!!this.narrationTail};
+  }
   constructor(
     private present:(block:Block,signal:AbortSignal)=>Promise<void>,
     private failed:(error:unknown)=>void,
@@ -112,6 +117,7 @@ export async function delay(ms:number,signal:AbortSignal,paused:()=>boolean=()=>
 }
 export class AudioPlayer {
   private context:AudioContext|null=null;
+  get state(){return this.context?.state??'not-created';}
   unlock() { this.context??=new AudioContext(); return this.context.resume(); }
   pause(value:boolean) { if(this.context) void (value?this.context.suspend():this.context.resume()); }
   async play(base64:string,signal:AbortSignal,progress?:(elapsed:number,duration:number)=>void) {

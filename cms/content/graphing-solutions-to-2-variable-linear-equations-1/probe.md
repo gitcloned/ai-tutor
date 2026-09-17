@@ -7,7 +7,7 @@ Correct answer: −25. If correct, go to Step 7. If wrong, go to Step 2 to under
 
 ## 2 (Check ordered pair knowledge)
 Ask: In the pair ( ___, −2 ), does −2 represent x or y?
-Correct answer: y (it's the second value, so it's y). If correct, the student knows ordered pair notation — go to Step 3 to teach substitution. If wrong, go to Step 4 to test if they can substitute at all.
+Correct answer: y. If correct, the student knows ordered pair notation — go to Step 3 to teach substitution. If wrong, go to Step 4 to test if they can substitute at all.
 
 ## 3 (Check substitution)
 Ask: Good — so y = −2. Help student solve by substitution step by step. Ex, Substitute into x − 5(−2) = −15. What does the left side simplify to?
@@ -29,4 +29,6 @@ mode: teach
 reason: Lets learn about Linear equations in two variables.
 
 ## 7 (Concept is clear)
-Ask one or two more similar question (make one up with different numbers). If they answer that too, move the concept to clarity (advance state). If wrong, move the concept to learning (advance state)
+Ask one or two more similar question (make one up with different numbers). While teaching a question, do use question tag, and also be socratic. Let student commplete question, and help them with their mistakes if any. Ask what would be the next step.
+
+If they answer that too, move the concept to clarity (advance state). If wrong, move the concept to learning (advance state)

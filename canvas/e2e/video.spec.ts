@@ -1,5 +1,40 @@
 import {test,expect,type WebSocketRoute} from '@playwright/test';
 
+test('session parser releases a final video after a question and teaching introduction',async({page})=>{
+  process.env.USE_TTS_PROVIDER='test';
+  const parserPath='../../agent/dist/medium/modalities/output/parser.js';
+  const mediumPath='../../agent/dist/medium/canvas.js';
+  const {OutputParser}=await import(parserPath);
+  const {CanvasMedium}=await import(mediumPath);
+  const parser=new OutputParser(CanvasMedium.create());
+  let socket:WebSocketRoute;
+  const errors:string[]=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.route('https://www.youtube.com/**',route=>route.fulfill({contentType:'text/html',body:'Video provider'}));
+  await page.routeWebSocket('**/session-video',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/session-video');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=async(event:unknown)=>{
+    for await(const output of parser.parse(event)){
+      if(output.type==='audio_chunk') {output.content=silence(1).toString('base64');output.attrs.mimeType='audio/wav';}
+      socket!.send(JSON.stringify(output));
+    }
+  };
+  for(const response of [
+    'question: Q02\nwrite: y = 2x - 3',
+    "parallel:start\nwrite: Video: Two-variable linear equations intro\nspeak: Let me share a quick video with you to help introduce two-variable linear equations. Let me know when you've finished watching it!\nparallel:end\nplay: https://www.youtube.com/watch?v=AOxMJRtoR2A",
+  ]){
+    await send({type:'event',event:{type:'tutor-started'}});
+    for(let i=0;i<response.length;i+=13)await send({type:'text_chunk',content:response.slice(i,i+13)});
+    await send({type:'text',content:response});
+    await send({type:'event',event:{type:'tutor-ended'}});
+  }
+  await expect(page.getByRole('dialog',{name:'Watch together'})).toBeVisible({timeout:20000});
+  expect(errors).toEqual([]);
+});
+
 function silence(seconds:number){
   const size=8000*2*seconds,wav=Buffer.alloc(44+size);
   wav.write('RIFF');wav.writeUInt32LE(36+size,4);wav.write('WAVEfmt ',8);

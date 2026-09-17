@@ -8,6 +8,7 @@ import { spokenPrefix } from './captions';
 import type {StudentInput} from './studentWork';
 export type Phase='offline'|'connecting'|'ready'|'thinking'|'speaking'|'writing'|'waiting'|'paused';
 export type Entry={kind:string;text:string};
+declare global {interface Window {canvasPlaybackDiagnostics?:()=>unknown;}}
 export function useLesson(editor:Editor|null) {
   const [phase,setPhase]=useState<Phase>('offline'); const [connected,setConnected]=useState(false);
   const [caption,setCaption]=useState(''); const [question,setQuestion]=useState(''); const [title,setTitle]=useState('A little room to think');
@@ -21,6 +22,9 @@ export function useLesson(editor:Editor|null) {
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
   const notify=useCallback((text:string)=>setNotice(text),[]);
   const connectionVersion=useRef(0),recordingPause=useRef(false);
+  // Metadata only: never retain student input, audio bytes, or lesson text here.
+  const trace=useRef<{at:string;event:string}[]>([]);
+  const record=(event:string)=>{trace.current.push({at:new Date().toISOString(),event});if(trace.current.length>200)trace.current.shift();};
   const log=(kind:string,text:string)=>setEntries(old=>[...old.slice(-199),{kind,text}]);
   useEffect(()=>{
     let timer:ReturnType<typeof setTimeout>;
@@ -33,6 +37,7 @@ export function useLesson(editor:Editor|null) {
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
     const playback=new Playback(async(block:Block,signal)=>{
       if(signal.aborted) return;
+      record(`present:${block.kind}`);
       if(block.kind==='session') {
         renderer.current!.newLesson(block.content);setTitle(block.content);setQuestion('');waiting.current=false;setFollow(true);log('lesson',block.content);return;
       }
@@ -82,11 +87,14 @@ export function useLesson(editor:Editor|null) {
       if(signal.aborted) return;
       if(block.kind==='ask') {waiting.current=true;setQuestion(block.content);setCaption(block.content);setPhase('waiting');}
       log(block.kind,block.kind==='svg'?'Diagram added':block.content);
-    },error=>notify((error as Error).message),()=>{
+    },error=>{record(`failed:${(error as Error).name}`);console.error('Canvas playback failed',error);notify((error as Error).message);},()=>{
+      record('idle');
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(pendingReply.current?'thinking':waiting.current?'waiting':'ready');
     });
     player.current=playback;
-    return ()=>{if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
+    const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,events:[...trace.current]});
+    window.canvasPlaybackDiagnostics=diagnostics;
+    return ()=>{if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
     try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.');return false;}
@@ -101,6 +109,7 @@ export function useLesson(editor:Editor|null) {
       if(socket.current!==ws)return;
       try {
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
+        record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(['text_chunk','audio_chunk','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
         player.current!.add(adapter.current.accept(event));
       }

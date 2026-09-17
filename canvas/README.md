@@ -2,6 +2,8 @@
 
 A shared learning notebook connected to the agent's existing WebSocket event stream. Built with React, TypeScript, Vite, and tldraw.
 
+For a stalled video or narration, run `JSON.stringify(window.canvasPlaybackDiagnostics(), null, 2)` in the browser console before refreshing. It reports queued block types, deferred video count, audio context state, and the last 200 received/presented event types with timestamps. It excludes lesson text, student input, and audio payloads. The trace starts when this version of the page loads; it cannot recover earlier wire events from the saved session transcript.
+
 ## Run with the teaching replay
 
 Terminal 1, from the repository root:

@@ -72,7 +72,7 @@ export class OutputParser {
   }
 
   private async *processLine(line: string): AsyncGenerator<TurnEvent> {
-    const attrMatch = line.match(/^\/([a-z_]+):\s?(.*)\n?$/);
+    const attrMatch = line.match(/^\/([a-z_][a-z0-9_-]*):\s?(.*)\n?$/);
     if (attrMatch) {
       if (this.currentModality) {
         this.currentAttrs[attrMatch[1]] = attrMatch[2].trim();

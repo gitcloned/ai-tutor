@@ -13,10 +13,13 @@ export function useLesson(editor:Editor|null) {
   const [phase,setPhase]=useState<Phase>('offline'); const [connected,setConnected]=useState(false);
   const [caption,setCaption]=useState(''); const [question,setQuestion]=useState(''); const [title,setTitle]=useState('A little room to think');
   const [notice,setNotice]=useState(''); const [entries,setEntries]=useState<Entry[]>([]);
+  const turnActive=useRef(false),busyRef=useRef(false);
+  const [tutorBusy,setTutorBusy]=useState(false);
+  const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
   const [video,setVideo]=useState<LessonVideo|null>(null),[submission,setSubmission]=useState<'idle'|'sent'|'waiting'>('idle');
   const pendingReply=useRef(false),sentTimer=useRef<ReturnType<typeof setTimeout>|null>(null),finishVideo=useRef<(()=>void)|null>(null);
-  const clearSubmission=()=>{pendingReply.current=false;if(sentTimer.current)clearTimeout(sentTimer.current);setSubmission('idle');};
+  const clearSubmission=()=>{turnActive.current=false;setBusy(false);pendingReply.current=false;if(sentTimer.current)clearTimeout(sentTimer.current);setSubmission('idle');};
   const receivedReply=()=>{pendingReply.current=false;setSubmission(current=>current==='sent'?'sent':'idle');};
   const socket=useRef<WebSocket|null>(null), player=useRef<Playback|null>(null), renderer=useRef<CanvasRenderer|null>(null);
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
@@ -63,7 +66,7 @@ export function useLesson(editor:Editor|null) {
         if(sentence){setCaption('');log('tutor',sentence);}
         await audio.current.play(block.content,signal,sentence?(elapsed,duration)=>setCaption(spokenPrefix(sentence,elapsed,duration)):undefined);return;
       }
-      if(block.kind==='error') {notify(block.content);setPhase('ready');return;}
+      if(block.kind==='error') {turnActive.current=false;pendingReply.current=false;setSubmission('idle');notify(block.content);return;}
       if(block.kind==='play'){
         await renderer.current!.render(block,signal);
         const media=safeMedia(block.content);
@@ -79,7 +82,7 @@ export function useLesson(editor:Editor|null) {
       }
       if(block.kind==='action') {
         if(block.action && typeof block.action==='object' && 'type' in block.action && block.action.type==='send-ok') {
-          if(socket.current?.readyState===WebSocket.OPEN) socket.current.send(JSON.stringify({type:'message',text:'Ok'}));
+          if(socket.current?.readyState===WebSocket.OPEN){pendingReply.current=true;setBusy(true);socket.current.send(JSON.stringify({type:'message',text:'Ok'}));}
         } return;
       }
       setPhase('writing');setCaption(block.kind==='svg'?'Let’s look at this together.':'Follow along, or try it yourself.');
@@ -89,10 +92,12 @@ export function useLesson(editor:Editor|null) {
       log(block.kind,block.kind==='svg'?'Diagram added':block.content);
     },error=>{record(`failed:${(error as Error).name}`);console.error('Canvas playback failed',error);notify((error as Error).message);},()=>{
       record('idle');
-      if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(pendingReply.current?'thinking':waiting.current?'waiting':'ready');
+      const active=pendingReply.current||turnActive.current;
+      setBusy(active);
+      if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
     });
     player.current=playback;
-    const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,events:[...trace.current]});
+    const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;
     return ()=>{if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
@@ -110,7 +115,10 @@ export function useLesson(editor:Editor|null) {
       try {
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
-        if(['text_chunk','audio_chunk','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
+        if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
+        if(event.type==='event'&&event.event?.type==='tutor-ended')turnActive.current=false;
+        if(['text_chunk','audio_chunk','question','model','model3d','ask','annotate','svg','play'].includes(event.type))setBusy(true);
+        if(['text_chunk','audio_chunk','model','model3d','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
         player.current!.add(adapter.current.accept(event));
       }
       catch {notify('One tutor event could not be read. You can reconnect if the lesson stops.');}
@@ -120,20 +128,21 @@ export function useLesson(editor:Editor|null) {
     return true;
   }
   function disconnect(){connectionVersion.current++;clearSubmission();socket.current?.close();player.current?.cancel();setConnected(false);setPhase('offline');}
-  function send(value:string|StudentInput) {
+  function send(value:string|StudentInput,videoDone=false) {
     if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.');return false;}
-    if(pendingReply.current){notify('Your work was sent. Wait for your tutor to respond.');return false;}
+    if(pendingReply.current||(busyRef.current&&!videoDone)){notify('Your work was sent. Wait for your tutor to respond.');return false;}
     const input=typeof value==='string'?{text:value.trim()}:value;
-    if(!input.text?.trim()&&!input.audio&&!input.images?.length)return false;
+    if(!input.text?.trim()&&!input.audio&&!input.images?.length&&!input.activity)return false;
     try{socket.current.send(JSON.stringify({type:'message',...input}));}catch{notify('Could not send. Your work is still pending; tap to retry.');return false;}
-    pendingReply.current=true;setSubmission('sent');
+    pendingReply.current=true;setBusy(true);setSubmission('sent');
+    if(renderer.current)renderer.current.follow=true;setFollow(true);
     if(sentTimer.current)clearTimeout(sentTimer.current);
     sentTimer.current=setTimeout(()=>setSubmission(pendingReply.current?'waiting':'idle'),900);
-    log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
+    log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null,input.activity?`Plotted (${input.activity.x}, ${input.activity.y}) — ${input.activity.correct?'correct':'try again'}`:null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
   }
   function doneWatching(){
     if(!finishVideo.current)return false;
-    if(!send('I am done watching'))return false;
+    if(!send('I am done watching',true))return false;
     finishVideo.current();return true;
   }
   function recording(active:boolean){
@@ -146,6 +155,6 @@ export function useLesson(editor:Editor|null) {
     player.current?.setPaused(paused.current);audio.current.pause(paused.current);
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
-  function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}
-  return {phase,connected,caption,question,title,notice,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:resumeFollowing};
+  function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.refocus();}setFollow(true);}
+  return {tutorBusy,phase,connected,caption,question,title,notice,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
 }

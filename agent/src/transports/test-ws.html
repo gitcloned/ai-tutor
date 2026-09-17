@@ -632,6 +632,9 @@
       case 'model3d':
         addSystem('3D model: ' + event.content + (event.attrs?.action ? ' — ' + event.attrs.action : '') + '. Open the Canvas app to interact with this model.');
         break;
+      case 'model':
+        addSystem('Activity: ' + event.content + (event.attrs?.action ? ' — ' + event.attrs.action : '') + '. Open the Canvas app to interact. ' + fmtAttrs(event.attrs || {}));
+        break;
 
       case 'svg': {
         currentAgentBubble = null;

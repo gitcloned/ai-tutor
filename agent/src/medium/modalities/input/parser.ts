@@ -22,6 +22,22 @@ export class InputParser {
     const parts: string[] = [];
     const images = [];
 
+    if (input.activity) {
+      const a = input.activity;
+      if (a.type !== 'graph-point' || a.model !== 'function-graph' ||
+        typeof a.activityId !== 'string' || a.activityId.length > 200 ||
+        typeof a.equation !== 'string' || a.equation.length > 200 ||
+        !Number.isFinite(a.x) || !Number.isFinite(a.y) ||
+        typeof a.correct !== 'boolean' || typeof a.complete !== 'boolean' ||
+        !Array.isArray(a.remaining) || a.remaining.length > 20 || !a.remaining.every(Number.isFinite)) {
+        throw new Error('Invalid graph-point activity input.');
+      }
+      parts.push(`Student graph activity (client-reported result): ${JSON.stringify({
+        type:a.type,model:a.model,activityId:a.activityId,equation:a.equation,
+        x:a.x,y:a.y,correct:a.correct,complete:a.complete,remaining:a.remaining,
+      })}`);
+    }
+
     if (input.text?.trim()) {
       const mod = inputModalities.get('text') as TextInputModality | undefined;
       parts.push(mod ? mod.process(input.text) : input.text);

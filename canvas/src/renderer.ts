@@ -4,8 +4,12 @@ import { sanitizeDiagram } from './diagram';
 import { delay } from './playback';
 import { playModel } from './models/playModel';
 import type { ModelShape } from './models/ModelShape';
+import {renderFunctionGraph,type FunctionGraphShape} from './models/FunctionGraphShape';
+import type {TLShape} from 'tldraw';
 import {Questions} from './questions';
 import { cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
+
+const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape=>s.type==='model3d'||s.type==='function-graph';
 
 export class CanvasRenderer {
   follow=true;
@@ -19,10 +23,10 @@ export class CanvasRenderer {
   dispose() {this.editor.off('tick',this.keepModelVisible);}
   private keepModelVisible=()=>{
     if(!this.follow)return;
-    const model=this.editor.getCurrentPageShapes().find((s):s is ModelShape=>s.type==='model3d');
+    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
     if(!model)return;
     const y=this.editor.getViewportPageBounds().y+80/this.editor.getZoomLevel();
-    if(Math.abs(model.y-y)>.01)this.editor.updateShape({id:model.id,type:'model3d',y});
+    if(Math.abs(model.y-y)>.01)this.editor.updateShape({id:model.id,type:model.type,y});
   };
   newLesson(title:string) {
     // Each replay scenario becomes a notebook page; student work is never cleared.
@@ -34,25 +38,25 @@ export class CanvasRenderer {
     this.editor.setCamera({x:80,y:50,z:1});
   }
   private locate(block:Block,w:number,h:number) {
-    const model=this.editor.getCurrentPageShapes().find((s):s is ModelShape=>s.type==='model3d');
+    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
     const obstacles=this.editor.getCurrentPageShapes()
-      .filter(shape=>shape.type!=='model3d')
+      .filter(shape=>!isTeachingModel(shape))
       .map(shape=>this.editor.getShapePageBounds(shape.id))
       .filter((bounds):bounds is Box=>!!bounds)
       .map(bounds=>({x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h}));
     const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
     if(block.attrs.position) point.y+=this.origin;
-    if(model&&block.kind!=='model3d'){point.x=model.x+model.props.w+40;point.y=Math.max(point.y,this.cursor);}
+    if(model&&block.kind!=='model3d'&&block.kind!=='model'){point.x=model.x+model.props.w+40;point.y=Math.max(point.y,this.cursor);}
     if(block.kind==='ask')point.y=Math.max(point.y,this.cursor+24);
-    if(block.kind!=='model3d')this.cursor=Math.max(this.cursor,point.y+h+38); return point;
+    if(block.kind!=='model3d'&&block.kind!=='model')this.cursor=Math.max(this.cursor,point.y+h+38); return point;
   }
   private focus(id:TLShapeId) {
     if(!this.follow) return;
-    const model=this.editor.getCurrentPageShapes().find((s):s is ModelShape=>s.type==='model3d');
-    if(this.editor.getShape(id)?.type==='model3d'&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
+    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
+    if(id===model?.id&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
     const row=this.questions.rowBounds(id);
     const bounds=row??this.editor.getShapePageBounds(id); if(!bounds) return;
-    if(this.editor.getShape(id)?.type!=='model3d')this.focused=id;
+    if(id!==model?.id)this.focused=id;
     if(model) {
       const screen=this.editor.getViewportScreenBounds();
       const zoom=Math.min(1,(screen.w-140)/(model.props.w+40+Math.max(560,id===model.id?0:bounds.w)),(screen.h-180)/Math.max(model.props.h,bounds.h));
@@ -85,7 +89,7 @@ export class CanvasRenderer {
   render(block:Block,signal:AbortSignal):Promise<void> {
     // Steps depend on previous measured text and notes, even within parallel
     // narration. Keep layout operations ordered while audio plays alongside.
-    if(['question','annotate','write','ask'].includes(block.kind)){
+    if(['question','annotate','write','ask','model'].includes(block.kind)){
       const task=this.layoutTail.then(()=>this.renderBlock(block,signal));
       this.layoutTail=task.catch(()=>{});return task;
     }
@@ -93,6 +97,10 @@ export class CanvasRenderer {
   }
   private async renderBlock(block:Block,signal:AbortSignal) {
     if(signal.aborted) return;
+    if(block.kind==='model'){
+      this.questions.start('end');
+      renderFunctionGraph(this.editor,block,(w,h)=>this.locate(block,w,h),id=>this.focus(id));return;
+    }
     if(block.kind==='question'){
       const id=this.questions.start(block.content);if(id)this.focus(id);
       const bounds=this.editor.getCurrentPageBounds();if(bounds)this.cursor=Math.max(this.cursor,bounds.maxY+60);
@@ -147,7 +155,7 @@ export class CanvasRenderer {
     }
   }
   fit() {
-    const model=this.editor.getCurrentPageShapes().find(s=>s.type==='model3d');
+    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
     if(model){const following=this.follow;this.follow=true;this.focus(model.id);this.follow=following;return;}
     const bounds=this.editor.getCurrentPageShapes().map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
     if(!bounds.length)return;

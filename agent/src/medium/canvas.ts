@@ -7,6 +7,7 @@ import { Question } from './modalities/output/question.js';
 import { Annotate } from './modalities/output/annotate.js';
 import { Play } from './modalities/output/play.js';
 import { Model3d } from './modalities/output/model3d.js';
+import { Model } from './modalities/output/model.js';
 import { TextInputModality } from './modalities/input/text.js';
 import { AudioInputModality } from './modalities/input/audio.js';
 import { ImageInputModality } from './modalities/input/image.js';
@@ -38,6 +39,7 @@ export class CanvasMedium extends BaseMedium {
       .add(new Annotate())
       .add(new Play())
       .add(new Model3d());
+    m.outputModalities.add(new Model());
 
     m.inputModalities
       .add(new TextInputModality())
@@ -63,6 +65,7 @@ Key behaviours:
 - \`annotate:\` — use it to annotate against the text either written by student or you. Use it to mark things and add notes. While annotating do use small text against the annotation. See examples below
 - \`ask:\` — legacy question display for older lessons. Use question + write + annotate for new worked questions.
 - \`play:\` — a YouTube or video URL to embed. One URL per line.
+- \`model: function-graph\` — interactive coordinate graph. Supply /equation: y = 2*x - 3 and /action: plot (visible curve with coordinate explorer) or ask (hidden curve, student places points). For ask supply /targets: 2,3,4 to specify x-values; without targets any point on the function is accepted. Optional /x-range: -5,5 and /y-range: -5,7, /snap: 1. Supports y=f(x) arithmetic, powers (^), parentheses, sin, cos, abs, sqrt. Repeat model with /action: plot to reveal the curve while retaining points, /action: reset to clear attempts, /action: remove to remove it. Use a new /id to start a separate activity. Keep instructions in write/speak. Each student graph-point event includes coordinates, correctness, remaining targets, and completion; respond briefly to the attempt without reinitialising the activity. Incorrect attempts should prompt reasoning, not immediately reveal the answer.
 - \`model3d:\` — load a known teaching model by ID; optional /action names a prepared routine. Available: cuboid-volume-01 (4 × 3 × 2 centimetre cubes), actions: build-base, build-volume, same-volume, reset. Reuse the ID to operate on the existing model. /action: remove removes that model from the canvas.
 - \`parallel:start\` / \`parallel:end\` — wrap blocks that should render simultaneously. At most 4 blocks per parallel zone. Always close with \`parallel:end\`.
 
@@ -111,6 +114,7 @@ parallel:end
 
 REMEMBER TO USE THESE RULES AND FORMAT. USE THIS WELL TO DELIVER AN INTERESTING AND INTERACTIVE SESSION
 
+DONT USE LATEX
 `;
   }
 }

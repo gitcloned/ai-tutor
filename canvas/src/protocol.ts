@@ -1,7 +1,7 @@
 export type Attrs = Record<string, string>;
 export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; event?:{type:string}; sessionId?: string; conceptId?: string; title?: string };
 export type LessonMetadata = { sessionId: string; conceptId: string; title: string };
-export type Block = { kind: 'session' | 'model3d' | 'question' | 'annotate' | 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown };
+export type Block = { kind: 'session' | 'model' | 'model3d' | 'question' | 'annotate' | 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown };
 export class BlockAdapter {
   private pending = '';
   reset() { this.pending = ''; }
@@ -26,9 +26,9 @@ export class BlockAdapter {
       if(metadata) result.push({kind:'session',content:metadata.title,attrs:{sessionId:metadata.sessionId,conceptId:metadata.conceptId}});
       return result;
     }
-    if (['model3d','question','annotate','svg','ask','play','audio_chunk','error','action'].includes(event.type)) flush();
+    if (['model','model3d','question','annotate','svg','ask','play','audio_chunk','error','action'].includes(event.type)) flush();
     const attrs = event.attrs ?? {};
-    if (['model3d','question','annotate','svg','ask','play'].includes(event.type)) result.push({kind:event.type as Block['kind'],content:event.content ?? '',attrs});
+    if (['model','model3d','question','annotate','svg','ask','play'].includes(event.type)) result.push({kind:event.type as Block['kind'],content:event.content ?? '',attrs});
     if (event.type === 'audio_chunk') result.push({kind:attrs.mimeType === 'text/plain' ? 'speech' : 'audio',content:attrs.mimeType === 'text/plain' ? decodeNarration(event.content ?? '') : event.content ?? '',attrs});
     if (event.type === 'error') result.push({kind:'error',content:event.message ?? 'The tutor encountered an error.',attrs});
     if (event.type === 'action') result.push({kind:'action',content:'',attrs,action:event.action});

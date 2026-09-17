@@ -9,8 +9,8 @@
  */
 
 import type { ConceptState, Concept, PlanStep } from '../types.js';
-import { buildPlan }                            from './plan-builder.js';
-import { hasProbePlan, loadProbePlan }          from './plan-builder-v2.js';
+import { buildPlan }                                          from './plan-builder.js';
+import { hasProbePlan, loadProbePlan, hasTeachPlan, loadTeachPlan } from './plan-builder-v2.js';
 
 export function buildConceptPlan(concept: Concept, state: ConceptState): PlanStep[] {
   switch (state) {
@@ -18,7 +18,7 @@ export function buildConceptPlan(concept: Concept, state: ConceptState): PlanSte
       return hasProbePlan(concept.id) ? loadProbePlan(concept.id) : buildPlan(concept, state);
 
     case 'learning':
-      return buildPlan(concept, state);
+      return hasTeachPlan(concept.id) ? loadTeachPlan(concept.id) : buildPlan(concept, state);
 
     case 'clarity':
       throw new Error(`buildConceptPlan: 'clarity' plan builder not yet implemented for concept "${concept.id}"`);

@@ -95,7 +95,7 @@ export class Playback {
 }
 
 function isPresentationBlock(block: Block) {
-  return ['model3d','question','annotate','write','svg','ask','play','speech','audio'].includes(block.kind);
+  return ['model','model3d','question','annotate','write','svg','ask','play','speech','audio'].includes(block.kind);
 }
 
 export function transitionPause(previous: Block['kind'] | null, next: Block['kind']) {
@@ -103,7 +103,7 @@ export function transitionPause(previous: Block['kind'] | null, next: Block['kin
   if (previous === 'write') return 1200;
   if (previous === 'annotate') return 1200;
   if (previous === 'svg') return 1600;
-  if (previous === 'model3d') return 1200;
+  if (previous === 'model3d' || previous === 'model') return 1200;
   return 0;
 }
 

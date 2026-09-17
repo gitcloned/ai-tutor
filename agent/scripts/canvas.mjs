@@ -10,7 +10,7 @@
  * Then open http://localhost:<port> in your browser and watch.
  *
  * Options:
- *   --scenario  text | algebra | question-algebra | heart | cuboid-volume | cuboid | both   (default: both)
+ *   --scenario  text | algebra | question-algebra | heart | cuboid-volume | function-graph | function-graph-plot | both
  *   --delay     ms per character                (default: 10, use 0 for instant)
  *   --port      port number                     (default: 32004)
  */
@@ -21,6 +21,7 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { cuboidLesson } from './cuboid-lesson.mjs';
 import { questionLesson } from './question-lesson.mjs';
+import { functionGraphLesson, functionGraphExploreLesson } from './function-graph-lesson.mjs';
 
 // Auto-load .env from agent root (same as cli.mjs)
 try {
@@ -168,6 +169,7 @@ async function streamText(ws, text) {
  *    which gives a natural typewriter feel for speak/write/ask content.
  */
 async function replay(ws, response) {
+  send(ws, { type: 'event', event: { type: 'tutor-started' } });
   const canvas = CanvasMedium.create();
   const parser = new OutputParser(canvas);
 
@@ -203,22 +205,24 @@ async function replay(ws, response) {
   for await (const event of parser.parse({ type: 'text', content: response })) {
     send(ws, event);
   }
-  send(ws, {type:'event',event:{type:'tutor-ended'}});
+  send(ws, { type: 'event', event: { type: 'tutor-ended' } });
 }
 
 // ── Build the scenario list to play ──────────────────────────────────────────
 
 const queue = scenario === 'text'
   ? ['text']
-  : scenario === 'question-algebra'
-    ? [questionLesson]
-  : scenario === 'both'
-    ? [SCENARIOS.algebra, SCENARIOS.heart]
-    : scenario === 'algebra'
-      ? [SCENARIOS.algebra]
-      : scenario === 'cuboid' || scenario === 'cuboid-volume'
-        ? [cuboidLesson]
-        : [SCENARIOS.heart];
+  : scenario === 'function-graph' ? [functionGraphLesson]
+    : scenario === 'function-graph-plot' ? [functionGraphExploreLesson]
+      : scenario === 'question-algebra'
+        ? [questionLesson]
+        : scenario === 'both'
+          ? [SCENARIOS.algebra, SCENARIOS.heart]
+          : scenario === 'algebra'
+            ? [SCENARIOS.algebra]
+            : scenario === 'cuboid' || scenario === 'cuboid-volume'
+              ? [cuboidLesson]
+              : [SCENARIOS.heart];
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 
@@ -259,8 +263,21 @@ wss.on('connection', async ws => {
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === 'message') {
+        if (msg.activity?.type === 'graph-point') {
+          console.log('Graph attempt:', JSON.stringify(msg.activity));
+          if (playing) return;
+          playing = true;
+          try {
+            const a = msg.activity;
+            await replay(ws, a.complete
+              ? `speak: You found all three points. Let's reveal the line through them.\nmodel: function-graph\n/action: plot\nwrite: These points lie on y = 2x − 3.\n`
+              : a.correct ? 'speak: That point fits the equation. Try the next x value.\n'
+                : 'speak: Try substituting your x value into the equation again. Multiply by 2, then subtract 3.\n');
+          } finally { playing = false; }
+          return;
+        }
         if (msg.text === 'I am done watching') {
-          send(ws, {type:'event',event:{type:'tutor-ended'}});
+          send(ws, { type: 'event', event: { type: 'tutor-ended' } });
           return;
         }
         if (playing) return;

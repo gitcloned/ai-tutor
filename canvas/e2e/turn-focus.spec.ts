@@ -1,0 +1,46 @@
+import {test,expect,type WebSocketRoute} from '@playwright/test';
+
+test('orb waits through stream gaps and playback; drawing preserves following and submission restores it',async({page})=>{
+  let socket:WebSocketRoute;
+  const messages:unknown[]=[];
+  await page.routeWebSocket('**/turn-focus',ws=>{socket=ws;ws.onMessage(data=>messages.push(JSON.parse(String(data))));});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/turn-focus');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  const lifecycle=(type:string)=>send({type:'event',event:{type}});
+  const orb=page.getByRole('button',{name:'Send new work; hold to speak',exact:true});
+  lifecycle('tutor-started');
+  await expect(orb).toBeDisabled();
+  await expect(page.locator('.orb-label')).toHaveText('Thinking…');
+  send({type:'text_chunk',content:'x = 2',attrs:{}});
+  await expect(page.locator('.orb-label')).toHaveText('Thinking…');
+  await page.waitForTimeout(400);
+  await expect(orb).toBeDisabled();
+  send({type:'audio_chunk',content:Buffer.from('Let us check the answer together.').toString('base64'),attrs:{mimeType:'text/plain'}});
+  lifecycle('tutor-ended');
+  await expect(page.locator('.orb-label')).toHaveText('Explaining…');
+  await expect(orb).toBeDisabled();
+  await expect(orb).toBeEnabled();
+
+  await page.getByRole('button',{name:'Pencil (D)',exact:true}).click();
+  await page.mouse.move(850,350);await page.mouse.down();await page.mouse.move(950,400,{steps:10});await page.mouse.up();
+  await expect(page.getByRole('button',{name:'Back to the lesson'})).toHaveCount(0);
+  await orb.click();await expect.poll(()=>messages.length).toBe(1);
+  await expect(page.getByRole('button',{name:'Back to the lesson'})).toHaveCount(0);
+  await expect(page.locator('.orb-label')).toHaveText('Waiting for tutor…');
+  lifecycle('tutor-started');
+  await expect(page.locator('.orb-label')).toHaveText('Thinking…');
+  await expect(orb).toBeDisabled();
+  send({type:'text_chunk',content:'Next step',attrs:{position:'300,1800'}});
+  lifecycle('tutor-ended');
+  await expect(orb).toBeEnabled();
+  await expect(page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'Next step'})).toBeInViewport();
+  lifecycle('tutor-started');await expect(orb).toBeDisabled();
+  send({type:'error',message:'Test recovery'});
+  await expect(orb).toBeEnabled();
+  lifecycle('tutor-started');await expect(orb).toBeDisabled();
+  socket!.close();await expect(page.locator('.orb-label')).toHaveText('Meet your tutor');
+});

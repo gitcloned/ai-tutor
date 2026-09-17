@@ -36,13 +36,14 @@ export type TurnEvent =
   | { type: 'audio';       content: string; attrs: Record<string, string> }
   | { type: 'svg';         content: string; attrs: Record<string, string> }
   | { type: 'model3d';     content: string; attrs: Record<string, string> }
+  | { type: 'model';       content: string; attrs: Record<string, string> }
   | { type: 'play';        content: string; attrs: Record<string, string> }
   | { type: 'ask';         content: string; attrs: Record<string, string> }
   | { type: 'question';    content: string; attrs: Record<string, string> }
   | { type: 'annotate';    content: string; attrs: Record<string, string> };
 
 /** Union of all output event type strings. */
-export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'model3d' | 'play' | 'ask' | 'question' | 'annotate' | 'text_chunk';
+export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'model3d' | 'model' | 'play' | 'ask' | 'question' | 'annotate' | 'text_chunk';
 
 /** A single output event — the shape every modality produces. */
 export type OutputEvent = Extract<TurnEvent, { attrs: Record<string, string> }>

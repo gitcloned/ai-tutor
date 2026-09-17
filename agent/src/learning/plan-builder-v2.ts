@@ -23,6 +23,19 @@ export function loadProbePlan(conceptId: string): PlanStep[] {
   return buildPlanFromMarkdown(md);
 }
 
+export function teachPlanPath(conceptId: string): string {
+  return join(CONTENT_ROOT, conceptId, 'teach.md');
+}
+
+export function hasTeachPlan(conceptId: string): boolean {
+  return existsSync(teachPlanPath(conceptId));
+}
+
+export function loadTeachPlan(conceptId: string): PlanStep[] {
+  const md = readFileSync(teachPlanPath(conceptId), 'utf8');
+  return buildPlanFromMarkdown(md);
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 interface RawStep {
@@ -70,7 +83,7 @@ export function buildPlanFromMarkdown(markdown: string): PlanStep[] {
   return steps;
 }
 
-const KV_RE      = /^(redirect|mode|reason):\s*(.+)$/i;
+const KV_RE      = /^(redirect|mode|reason|play):\s*(.+)$/i;
 
 function parseStep(id: number, name: string | null, body: string): RawStep {
   const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
@@ -83,6 +96,15 @@ function parseStep(id: number, name: string | null, body: string): RawStep {
     const m = KV_RE.exec(line);
     if (m) kv[m[1].toLowerCase()] = m[2].trim();
     else   prose.push(line);
+  }
+
+  // Video resource step — play: <url> maps to type 'resource'.
+  if (kv['play']) {
+    const content: Record<string, unknown> = {};
+    if (name) content.name = name;
+    content.resources  = [{ youtubeUrl: kv['play'], title: name ?? kv['play'] }];
+    if (prose.length) content.instruction = prose.join('\n');
+    return { id, type: 'resource', content, ifCorrect: null, ifWrong: null };
   }
 
   // Redirect step — maps to type 'teach' which update_step handles automatically.

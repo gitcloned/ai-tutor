@@ -120,11 +120,12 @@ export class WebSocketTransport implements Transport {
         if (msg !== null && typeof msg === 'object' && (msg as any).type === 'message') {
           const raw = msg as any;
           const input: StudentInput = {
+            activity: raw.activity ?? undefined,
             text:   typeof raw.text   === 'string' ? raw.text.trim() || undefined : undefined,
             audio:  raw.audio  ?? undefined,
             images: Array.isArray(raw.images) && raw.images.length ? raw.images : undefined,
           };
-          if (input.text || input.audio || input.images) {
+          if (input.text || input.audio || input.images || input.activity) {
             for (const h of this.messageHandlers) await h(input);
           }
         }

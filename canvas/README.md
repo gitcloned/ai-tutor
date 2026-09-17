@@ -136,4 +136,39 @@ Video `play:` blocks are deferred until the backend sends `{ "type": "event", "e
 
 “I’m done watching” pauses and closes the viewer, keeps the video on the canvas, and sends `{ "type": "message", "text": "I am done watching" }`. Native video autoplay has a Play button fallback when the browser blocks it; YouTube retains its player controls. The replay server acknowledges completion without restarting the lesson.
 
-The orb shows Sending, Sent, then Waiting for tutor. Duplicate submissions are blocked until a tutor response arrives; after the brief Sent animation it becomes available again. Students can still draw while waiting. Speaking and writing tutor states remain interactive so a student can hold the orb to speak.
+The orb shows Sending, Sent, then Waiting for tutor. It remains busy from `tutor-started` through `tutor-ended` and until queued speech/writing finishes. Students can keep drawing while waiting.
+
+## Function graph activity
+
+From `agent/`, build once (`npm run build`) and run:
+
+```sh
+node scripts/canvas.mjs --scenario function-graph --tts test --delay 0 --port 32004
+```
+
+Connect the canvas to `ws://localhost:32004`. Use `function-graph-plot` for exploration with the curve visible. The graph renderer lives in `canvas/src/models/` and loads JSXGraph on demand; this activity needs no CMS asset server.
+
+```text
+model: function-graph
+/equation: y = 2*x - 3
+/action: ask
+/targets: 2,3,4
+/x-range: -5,7
+/y-range: -5,7
+/snap: 1
+write: Plot the points for x = 2, 3, and 4.
+```
+
+`plot` and `explore` show the curve and track `(x, f(x))` under the crosshair. `ask` hides the curve and lets students tap or drag/release to place grid-snapped points. Arrow keys move the crosshair; Enter submits. Targets are x-values; omit them to accept any point satisfying the equation. Correct points stay fixed; repeated placement at a solved x-value does not send a duplicate. Incorrect attempts remain visible with a different color, and feedback invites another calculation without revealing the answer.
+
+Expressions must be explicit `y = f(x)`: arithmetic, parentheses, powers (`^`), `sin`, `cos`, `sqrt`, `abs`, `pi`, and `e`. Expressions are parsed with a restricted arithmetic grammar, not evaluated as JavaScript. Implicit equations such as `x + y = 3` and vertical lines are not supported. Choose a snap interval that can reach the required coordinates; invalid configurations produce a recoverable notification. Ranges default to include the targets.
+
+Each committed attempt automatically sends one WebSocket message:
+
+```json
+{"type":"message","activity":{"type":"graph-point","model":"function-graph","activityId":"function-graph","equation":"y = 2*x - 3","x":2,"y":1,"correct":true,"complete":false,"remaining":[3,4]}}
+```
+
+The input parser validates and includes this structured result in the tutor's student-message history. Coordinates and correctness are client-reported; the tutor can use the equation to reason about them. New attempts wait while the tutor responds, without blocking crosshair exploration. The replay gives brief scripted feedback and reveals the line once all targets are solved; live tutoring uses the agent's response.
+
+Repeat `model: function-graph` with `/action: plot` to reveal the same activity and retain points; `/action: reset` clears attempts, and `/action: remove` removes it. A changed equation or target set clears attempts. `/id` identifies a separate activity. Configuration and attempts are saved with the notebook. The graph stays visible on the left while new teaching appears on the right.

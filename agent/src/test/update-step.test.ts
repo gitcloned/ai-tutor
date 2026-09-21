@@ -192,18 +192,18 @@ describe('update_step — navigating the learning plan', () => {
       );
     });
 
-    it('leaves ctx.plan empty — clarity plan is not yet implemented', async () => {
+    it('rebuilds ctx.plan with clarity mastery steps after advance_state', async () => {
       const ctx         = makeLearningCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 
-      // clarity is unimplemented — plan builder throws → caught → plan is empty
-      expect(ctx.plan.length).toBe(0);
+      // clarity uses buildMasteryPlan — should have steps
+      expect(ctx.plan.length).toBeGreaterThan(0);
     });
 
-    it('returns allDone since the clarity plan is not yet implemented', async () => {
+    it('returns nextStep pointing to first clarity step after advance_state', async () => {
       const ctx         = makeLearningCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
       vi.mocked(lp.patch).mockResolvedValue({});
@@ -211,10 +211,10 @@ describe('update_step — navigating the learning plan', () => {
       const result = await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx) as any;
 
       expect(result.ok).toBe(true);
-      // node state still transitions correctly
       expect(ctx.journeyNode.state).toBe('clarity');
-      // no next step — session ends gracefully
-      expect(result.allDone).toBe(true);
+      // clarity has a real plan — nextStep should be defined, not allDone
+      expect(result.nextStep).toBeDefined();
+      expect(result.allDone).toBeFalsy();
     });
 
     it('does not trigger return-to-origin — goTo is null on this node', async () => {
@@ -231,7 +231,7 @@ describe('update_step — navigating the learning plan', () => {
   // ── ──────────────────────────────────────────────────────────────────────────
 
   describe('full walk — resource → practice → advance_state', () => {
-    it('can complete all steps in sequence; node state advances to "clarity" and session ends gracefully', async () => {
+    it('can complete all steps in sequence; node state advances to "clarity" with a new plan', async () => {
       const ctx = makeLearningCtx();
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -248,13 +248,15 @@ describe('update_step — navigating the learning plan', () => {
                       : 'pass';
         lastResult = await update_step.run({ id: step.id, outcome }, ctx) as any;
 
-        if (lastResult.allDone) break;
+        // stop once we've hit advance_state (clarity plan is now in ctx.plan)
+        if (step.type === 'advance_state') break;
       }
 
-      // node transitions to clarity even though its plan isn't built yet
+      // node transitions to clarity
       expect(ctx.journeyNode.state).toBe('clarity');
-      // session ends gracefully rather than erroring
-      expect(lastResult.allDone).toBe(true);
+      // clarity has a real plan — nextStep defined, not allDone
+      expect(lastResult.ok).toBe(true);
+      expect(lastResult.nextStep).toBeDefined();
     });
   });
 

@@ -18,7 +18,7 @@ export function hasProbePlan(conceptId: string): boolean {
   return existsSync(probePlanPath(conceptId));
 }
 
-export function loadProbePlan(conceptId: string): PlanStep[] {
+export function loadProbePlan(conceptId: string): MarkdownPlan {
   const md = readFileSync(probePlanPath(conceptId), 'utf8');
   return buildPlanFromMarkdown(md);
 }
@@ -31,7 +31,7 @@ export function hasTeachPlan(conceptId: string): boolean {
   return existsSync(teachPlanPath(conceptId));
 }
 
-export function loadTeachPlan(conceptId: string): PlanStep[] {
+export function loadTeachPlan(conceptId: string): MarkdownPlan {
   const md = readFileSync(teachPlanPath(conceptId), 'utf8');
   return buildPlanFromMarkdown(md);
 }
@@ -46,16 +46,29 @@ interface RawStep {
   ifWrong:    number | null;
 }
 
+export interface MarkdownPlan {
+  steps:  PlanStep[];
+  models: string[];  // model IDs declared via "# Models: a, b" in the preamble
+}
+
 // Header pattern: ## N (optional name) or ## Step N (optional name)
 const HEADER_RE = /^## (?:Step )?(\d+)(?:\s+\(([^)]+)\))?\s*$/gm;
 const HEADER_SPLIT_RE = /^## (?:Step )?\d+(?:\s+\([^)]+\))?\s*$/m;
+const MODELS_RE  = /^#\s+Models:\s*(.+)$/im;
 
-export function buildPlanFromMarkdown(markdown: string): PlanStep[] {
+export function buildPlanFromMarkdown(markdown: string): MarkdownPlan {
   const headers = [...markdown.matchAll(HEADER_RE)];
-  if (!headers.length) return [];
+  if (!headers.length) return { steps: [], models: [] };
 
   const parts = markdown.split(HEADER_SPLIT_RE);
-  // parts[0] is preamble, parts[1..] are step bodies
+  // parts[0] is preamble — parse model declarations from it
+  const preamble = parts[0] ?? '';
+  const modelsMatch = MODELS_RE.exec(preamble);
+  const models = modelsMatch
+    ? modelsMatch[1].split(',').map(m => m.trim()).filter(Boolean)
+    : [];
+
+  // parts[1..] are step bodies
   const raw: RawStep[] = headers.map((h, i) =>
     parseStep(parseInt(h[1], 10), h[2]?.trim() ?? null, parts[i + 1] ?? ''),
   );
@@ -80,7 +93,7 @@ export function buildPlanFromMarkdown(markdown: string): PlanStep[] {
     ifWrong:   r.ifWrong,
   }));
 
-  return steps;
+  return { steps, models };
 }
 
 const KV_RE      = /^(redirect|mode|reason|play):\s*(.+)$/i;

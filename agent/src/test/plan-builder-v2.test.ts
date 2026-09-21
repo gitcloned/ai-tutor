@@ -17,7 +17,7 @@ vi.mock('../api.js', () => ({
 describe('buildPlanFromMarkdown', () => {
 
   it('all authored steps get type "step" with null navigation', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Ask something)
 Ask the student what x is. If correct go to 2.
 ## 2 (Follow up)
@@ -32,7 +32,7 @@ Ask a follow-up.
   });
 
   it('captures name from header into content.name', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Check substitution)
 Ask: What is y?
 `);
@@ -41,7 +41,7 @@ Ask: What is y?
   });
 
   it('stores full prose as content.instruction', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry question)
 Ask: Given x − 5y = −15, complete ( ___, −2 ).
 Correct answer: −25. If correct, advance state.
@@ -52,7 +52,7 @@ Correct answer: −25. If correct, advance state.
   });
 
   it('works without Step keyword in header', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (First)
 Some instruction.
 ## 2 (Second)
@@ -63,7 +63,7 @@ Another instruction.
   });
 
   it('auto-appends store_memory as the final step — state advancement is now implicit', () => {
-    const plan  = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Only step)
 Ask: What is x?
 `);
@@ -74,7 +74,7 @@ Ask: What is x?
   });
 
   it('first step is in_progress, rest are pending', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (First)
 Something.
 ## 2 (Second)
@@ -91,7 +91,7 @@ Something else.
 describe('buildPlanFromMarkdown — redirect steps', () => {
 
   it('a step with redirect: becomes type "teach" with the right conceptId', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask the entry question.
 ## 2 (Prereq: ordered pairs)
@@ -107,7 +107,7 @@ reason: Student does not know ordered pair notation.
   });
 
   it('a redirect step with mode: probe sets mode correctly', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Only step)
 Ask something.
 ## 2 (Prereq: probe first)
@@ -120,7 +120,7 @@ reason: Student needs probing first.
   });
 
   it('non-redirect steps stay as type "step" even when redirect step is present', () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Normal step)
 Ask the student something.
 ## 2 (Prereq)
@@ -138,7 +138,7 @@ reason: Student needs this first.
 describe('update_step — navigating a markdown plan', () => {
 
   it('when the LLM says go to step 3, it jumps there even if the plan has no pointers', async () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask entry question. If correct go to 3, if wrong go to 2.
 ## 2 (Deeper probe)
@@ -154,7 +154,7 @@ Ask follow-up.
   });
 
   it('when the LLM forgets to provide nextStep, it falls back to the next pending step rather than ending the session', async () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask entry question.
 ## 2 (Follow up)
@@ -172,7 +172,7 @@ One more question.
   });
 
   it('when the LLM forgets nextStep mid-plan, the fallback still skips already-done steps', async () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask entry question.
 ## 2 (Follow up)
@@ -193,7 +193,7 @@ One more question.
   });
 
   it('when all steps are done and the node is in a terminal state, returns allDone', async () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Only step)
 Ask the question.
 `);
@@ -208,7 +208,7 @@ Ask the question.
   });
 
   it('when outcome is not_sure, it is treated the same as pass and moves forward', async () => {
-    const plan = buildPlanFromMarkdown(`
+    const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask entry question.
 ## 2 (Follow up)

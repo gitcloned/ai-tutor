@@ -1,0 +1,106 @@
+/* Tutor controls have their own space; the editor measures the unobscured area. */
+.app{--tutor-space-height:78px}
+.canvas-area{top:0;bottom:var(--tutor-space-height)}
+.canvas-back{position:absolute;top:16px;left:25px;width:38px;height:38px;border:1px solid #e1e5da;border-radius:12px;background:#fffefa;z-index:310;color:#586057}
+.toolbar{top:70px}
+.lesson-tools{position:absolute;left:22px;top:10px;width:208px;display:flex;flex-direction:column;gap:3px}
+.lesson-tools .notebook-button{padding:3px 0;justify-content:flex-start;gap:9px;min-width:0}
+.lesson-tools .lesson-breadcrumb strong{max-width:180px;font-size:11px}
+.lesson-tools-actions{display:flex;align-items:center;gap:10px}
+.lesson-tools-actions>button{height:28px;padding:4px;border-radius:6px;color:#7d867d}
+.lesson-tools .connection{display:inline-flex;font-size:10px}
+.notebook{top:0;bottom:var(--tutor-space-height)}
+.tutor-space{position:absolute;inset:auto 0 0;height:var(--tutor-space-height);border-top:1px solid #e5e7df;background:#fbfaf6;z-index:35}
+.tutor-space .bottom-actions{left:24px;bottom:32px;gap:2px}
+.tutor-space .bottom-actions button{background:transparent}
+.tutor-space .caption{left:350px;right:240px;bottom:12px;max-width:760px;margin:auto;padding:0;border:0;border-radius:0;box-shadow:none;background:none;pointer-events:auto}
+.tutor-space .caption>span{font-size:10px;color:#7d867d}
+.tutor-space .caption>p{font-size:14px;line-height:1.55;margin:5px 0 0;max-height:44px;overflow:auto;scrollbar-width:thin;scrollbar-color:#d4dece transparent;color:#3d5143}
+.tutor-space .caption>p:focus-visible{outline:2px solid #89a18c;outline-offset:3px;border-radius:3px}
+.tutor-space .orb-wrap{right:18px;bottom:6px;width:200px;height:66px;display:grid;grid-template-columns:1fr 64px;grid-template-rows:1fr 1fr;column-gap:12px;row-gap:3px}
+.tutor-space .orb-label{grid-column:1;grid-row:1;align-self:end;text-align:right;font-size:12px;color:#416653}
+.tutor-space .orb-hint{grid-column:1;grid-row:2;align-self:start;white-space:normal;text-align:right;line-height:1.4;font-size:10px}
+.tutor-space .orb{grid-column:2;grid-row:1 / 3;width:66px;height:66px;align-self:center;background:#eef2e8;border:1px solid #d8e2d1;box-shadow:0 3px 12px #304b3912;transition:background .3s,box-shadow .3s,transform .18s}
+.orb[data-state] .orb-core{inset:13px;filter:none;animation:none;background:radial-gradient(circle at 32% 24%,#b8cda7 0%,#789b6b 35%,#416653 75%);transition:background .3s,filter .3s,transform .2s}
+.orb[data-state] .orb-ring.one,.orb[data-state] .orb-ring.two{animation:none;transition:border-color .3s}
+.orb[data-state=ready]:hover{box-shadow:0 0 0 5px #78977416,0 5px 16px #304b3920;transform:translateY(-2px)}
+.orb[data-state=holding]{transform:scale(.92);box-shadow:0 0 0 7px #78977422}
+.orb[data-state=holding] .orb-core{transform:scale(.92)}
+.orb[data-state=speaking] .orb-core{animation:tutor-speaking 1.4s ease-in-out infinite}
+.orb[data-state=speaking] .orb-ring.one{animation:tutor-ripple 1.7s ease-out infinite}
+.orb[data-state=speaking] .orb-ring.two{animation:tutor-ripple 1.7s .6s ease-out infinite}
+.orb[data-state=thinking] .orb-ring.one,.orb[data-state=connecting] .orb-ring.one,.orb[data-state=microphone] .orb-ring.one{border-color:#416653 transparent #8aa67b transparent;animation:tutor-orbit 2.8s linear infinite}
+.orb[data-state=thinking] .orb-core{animation:tutor-think 3s ease-in-out infinite}
+.orb[data-state=writing] .orb-core{animation:tutor-writing 1.1s ease-in-out infinite}
+.orb[data-state=writing] .orb-ring.one{animation:tutor-orbit 5s linear infinite}
+.orb[data-state=listening]{background:#f3ebdd;border-color:#d9c5a1;box-shadow:0 0 0 5px #c6a36516}
+.orb[data-state=listening] .orb-core{background:radial-gradient(circle at 30% 25%,#d9c79f,#9c7b48);animation:tutor-speaking 1.3s ease-in-out infinite}
+.orb[data-state=listening] .orb-ring{border-color:#ac8b5266}
+.orb[data-state=listening] .orb-ring.one{animation:tutor-ripple 1.8s ease-out infinite}
+.orb[data-state=sent] .orb-core{background:#416653}
+.orb[data-state=sent] .orb-icon{animation:tutor-confirm .35s ease-out}
+.orb[data-state=offline] .orb-core,.orb[data-state=watching] .orb-core,.orb[data-state=paused] .orb-core{filter:saturate(.35);opacity:.75}
+.orb-voice{display:none;position:absolute;inset:0;align-items:center;justify-content:center;gap:3px;z-index:2;pointer-events:none}
+.orb[data-state=speaking] .orb-voice{display:flex}
+.orb-voice i{width:3px;height:7px;background:#f5faef;border-radius:3px;animation:tutor-voice .65s ease-in-out infinite alternate}
+.orb-voice i:nth-child(2),.orb-voice i:nth-child(4){animation-delay:-.25s}.orb-voice i:nth-child(3){animation-delay:-.45s}
+.tutor-space .zoom-controls{top:23px;right:auto;bottom:auto;left:235px;transform:none;opacity:.85}
+.follow-button{bottom:calc(var(--tutor-space-height) + 16px)}
+.canvas-caption{display:none}
+@keyframes tutor-speaking{50%{transform:scale(1.06);border-radius:43% 57% 46% 54%}}
+@keyframes tutor-ripple{0%{transform:scale(.95);opacity:.6}100%{transform:scale(1.25);opacity:0}}
+@keyframes tutor-orbit{to{transform:rotate(395deg)}}
+@keyframes tutor-think{50%{transform:scale(.91);opacity:.8}}
+@keyframes tutor-writing{0%,100%{transform:translateX(-1px) rotate(-5deg)}50%{transform:translateX(2px) rotate(7deg)}}
+@keyframes tutor-voice{to{height:19px}}
+@keyframes tutor-confirm{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.orb[data-state] *,.orb[data-state]{animation:none!important;transition:none!important}}
+.toolbar .swatch.ink-selected span{box-shadow:0 0 0 2px #fffefa,0 0 0 4px currentColor}
+.toolbar .swatch.ink-selected{color:#356aca}
+
+/* Topic above its controls; the tutor sits across the canvas edge. */
+.app{--tutor-space-height:88px}
+.toolbar{top:50%;transform:translateY(-50%);max-height:calc(100% - 24px);overflow-y:auto}
+.tutor-space{display:grid;grid-template-columns:36px minmax(280px,440px) minmax(100px,1fr) 222px;align-items:center;gap:20px;padding:10px 18px}
+.tutor-space .canvas-back{position:static;grid-column:1;width:36px;height:36px;background:transparent;border:0;border-radius:9px}
+.tutor-space .lesson-tools{position:static;grid-column:2;width:auto;min-width:0;gap:7px}
+.lesson-tools .notebook-button{display:flex;width:100%;padding:0;font-size:13px}
+.lesson-tools .lesson-breadcrumb strong{max-width:none;min-width:0;font-size:13px}
+.lesson-tools-actions{padding-left:26px;gap:18px;height:30px}
+.lesson-tools-actions>button{height:30px;padding:0;font-size:11px;flex-shrink:0}
+.lesson-tools .connection>span{background:#c76057}
+.lesson-tools .connection.online>span{background:#659671}
+.footer-utilities{display:flex;align-items:center;gap:12px}
+.tutor-space .zoom-controls{position:static;transform:none;opacity:1;padding:0;background:transparent;border-color:transparent;border-radius:8px}
+.footer-utilities>button{width:30px;height:30px;border-radius:8px;color:#879080}
+.tutor-space .caption{position:static;grid-column:3;min-width:0;max-width:none;width:100%;margin:0;padding-left:20px;border-left:1px solid #e1e5da}
+.tutor-space .caption>span{font-size:10px}
+.tutor-space .caption>p{font-size:13px;line-height:1.5;max-height:39px;margin-top:3px}
+.tutor-space .orb-wrap{position:absolute;top:-32px;right:100px;bottom:auto;width:140px;height:auto;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tutor-space .orb{order:-1;flex-shrink:0;width:64px;height:64px;box-shadow:0 0 0 6px #fbfaf6,0 5px 18px #304b3920}
+.tutor-space .orb-label{align-self:center;text-align:center;font-size:11px;margin-top:3px}
+.tutor-space .orb-hint{align-self:center;text-align:center;font-size:9px;max-width:140px}
+@media(max-width:1000px) and (min-width:761px){
+  .tutor-space{grid-template-columns:32px minmax(260px,360px) minmax(80px,1fr) 170px;gap:12px;padding-inline:12px}
+  .tutor-space .orb-wrap{width:110px;right:72px}
+  .tutor-space .caption{padding-left:12px}
+}
+@media(max-width:760px){
+  .app{--tutor-space-height:136px}
+  .tutor-space{grid-template-columns:28px minmax(0,1fr);grid-template-rows:44px 64px;gap:6px 10px;padding:10px 12px}
+  .tutor-space .caption{grid-column:1 / -1;grid-row:1;padding:0 142px 0 0;border:0;align-self:start}
+  .tutor-space .caption>span{display:none}
+  .tutor-space .canvas-back{grid-column:1;grid-row:2;width:28px;height:36px}
+  .tutor-space .lesson-tools{grid-column:2;grid-row:2;gap:7px}
+  .lesson-tools .lesson-breadcrumb strong{font-size:12px}
+  .lesson-tools-actions{padding-left:0;gap:10px}
+  .lesson-tools .connection{font-size:10px;gap:6px}
+  .footer-utilities{gap:6px}
+  .tutor-space .zoom-controls button{min-width:25px;padding:2px;font-size:10px}
+  .footer-utilities>button{width:26px}
+  .tutor-space .orb-wrap{width:76px;right:72px;top:-29px}
+  .tutor-space .orb{width:58px;height:58px}
+  .tutor-space .orb-hint{display:none}
+  .tutor-space .orb-label{font-size:9px}
+  .follow-button{bottom:calc(var(--tutor-space-height) + 12px);left:50%;transform:translateX(-50%)}
+}

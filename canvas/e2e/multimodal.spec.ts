@@ -25,7 +25,7 @@ test('orb sends only new drawing work and combines held audio with typed text',a
   await orb.click();await expect.poll(()=>messages.length).toBe(2);expect(messages[1].text).toBe('x = 2');expect(messages[1].images).toBeUndefined();
   socket!.send(JSON.stringify({type:'text_chunk',content:'Keep going.',attrs:{}}));await expect(orb).toBeEnabled();
   await page.getByRole('button',{name:'Pencil (D)',exact:true}).click();await page.mouse.move(850,550);await page.mouse.down();await page.mouse.move(940,580,{steps:10});await page.mouse.up();
-  await page.getByRole('button',{name:'Type a reply',exact:true}).click();await page.getByLabel('Your reply').fill('I counted 24 cubes.');await page.getByRole('button',{name:'Close dialog'}).click();
+  await page.getByRole('button',{name:'Text (T)',exact:true}).click();await page.mouse.click(850,650);await page.keyboard.type('I counted 24 cubes.');await page.keyboard.press('Escape');
   const b=await orb.boundingBox();await page.mouse.move(b!.x+b!.width/2,b!.y+b!.height/2);await page.mouse.down();
   await expect(page.locator('.orb-label')).toHaveText('Listening…');
   await page.waitForTimeout(400);await page.mouse.up();

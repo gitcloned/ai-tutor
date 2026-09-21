@@ -1,8 +1,8 @@
 import {test,expect,type WebSocketRoute} from '@playwright/test';
 import {readFileSync} from 'node:fs';
-const manifest=JSON.parse(readFileSync(new URL('../../cms/packages/resources/3d-models/cuboid-volume-01/manifest.json',import.meta.url),'utf8'));
+const manifest=JSON.parse(readFileSync(new URL('../../cms/packages/resources/interactive-models/cuboid-volume-01/manifest.json',import.meta.url),'utf8'));
 
-test('model stays visible as questions scroll, rotates, and backend can remove it',async({page})=>{
+test('model stays visible as questions scroll, rotates, and backend can unpin it',async({page})=>{
   let socket:WebSocketRoute;
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.emulateMedia({reducedMotion:'reduce'});
@@ -39,6 +39,7 @@ test('model stays visible as questions scroll, rotates, and backend can remove i
   const current=await model.boundingBox();
   const gap=(await later.boundingBox())!.x-(current!.x+current!.width);
   expect(gap).toBeGreaterThan(10);expect(gap).toBeLessThan(65);
+  await page.getByRole('button',{name:'Select (V)',exact:true}).click();
   const polygon=model.locator('polygon').first(),before=await polygon.getAttribute('points');
   await page.screenshot({path:'artifacts/model-before-rotate.png'});
   await expect(page.locator('.tl-hit-test-blocker')).not.toBeVisible();
@@ -52,7 +53,11 @@ test('model stays visible as questions scroll, rotates, and backend can remove i
   await expect.poll(async()=>{const b=await later.boundingBox();return b!.y+b!.height;}).toBeLessThan(650);
   await page.screenshot({path:'artifacts/model-docked-mobile.png'});
   send({type:'model3d',content:'cuboid-volume-01',attrs:{action:'remove'}});
-  await expect(model).toHaveCount(0);
+  await expect(model).toHaveCount(1);
+  send({type:'text_chunk',content:'Now we continue below the model.',attrs:{}});
+  const below=page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'Now we continue'});
+  await expect(below).toBeVisible();
+  await expect.poll(async()=>{const m=(await model.boundingBox())!,t=(await below.boundingBox())!;return t.y-m.y-m.height;}).toBeGreaterThan(0);
   await expect(page.locator('.canvas-area')).not.toHaveClass(/with-model/);
   expect(errors).toEqual([]);
 });

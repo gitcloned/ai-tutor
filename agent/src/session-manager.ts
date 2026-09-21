@@ -31,8 +31,9 @@ export class SessionManager {
 
   /**
    * Create or resume a session for this student + concept.
+   * Pass `forceState` to override the journey node state (useful for local testing).
    */
-  async create(studentId: string, conceptId: string): Promise<{ sessionId: string; resumed: boolean }> {
+  async create(studentId: string, conceptId: string, forceState?: string): Promise<{ sessionId: string; resumed: boolean }> {
     const journeys = await lp.get<Journey[]>(`/students/${studentId}/journeys`);
     let journey = journeys[0];
     if (!journey) {
@@ -53,12 +54,16 @@ export class SessionManager {
         journeyId:    journey.id,
         conceptId,
         order:        1,
-        state:        'not_assessed',
+        state:        forceState ?? 'not_assessed',
         masteryLevel: null,
         goTo,
         cameFrom:     null,
         preReqToLearn: null,
       });
+    } else if (forceState && node.state !== forceState) {
+      // Override existing node state for testing — patch LP and update local copy
+      await lp.patch(`/journey-nodes/${node.id}`, { state: forceState });
+      node.state = forceState as JourneyNode['state'];
     }
 
     const agent   = await newAgent(studentId, conceptId, node.id);

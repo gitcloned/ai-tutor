@@ -9,7 +9,7 @@ export interface ImageBlob { data: string; mimeType: string; }
  * All fields are optional; at least one must be present.
  */
 export interface StudentInput {
-  activity?: GraphPointInput;
+  activity?: GraphPointInput | ChoiceSelectedInput;
   text?:   string;
   audio?:  AudioBlob;
   images?: ImageBlob[];
@@ -25,4 +25,8 @@ export interface ProcessedInput {
   text:       string;
   images?:    ImageBlob[];
   audioBlob?: AudioBlob;   // original audio blob, preserved for storage
+}
+
+export interface ChoiceSelectedInput {
+  type:'choice-selected';questionId:string;choice:string;text:string;correct?:boolean;
 }

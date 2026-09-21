@@ -69,7 +69,7 @@ export function questionText(text:string) {
   return /^(?:q(?:uestion)?\s*[.:：)]|q\s*\d+[.:)])\s*/i.test(trimmed)?trimmed:`Q. ${trimmed}`;
 }
 
-export const WRITE_CHARACTER_DELAY_MS = 45;
+export const WRITE_CHARACTER_DELAY_MS = 60;
 
 export function writingFrames(text: string) {
   const characters = [...text];

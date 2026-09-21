@@ -1,0 +1,45 @@
+{
+  "id": "function-graph",
+  "version": 1,
+  "kind": "activity",
+  "renderer": "function-graph",
+  "title": "Interactive function graph",
+  "whenToUse": "Use when a student needs to connect an equation with coordinates, points, and a straight-line graph.",
+  "studentEvents": [
+    "graph-point"
+  ],
+  "capabilities": [
+    "plot",
+    "ask",
+    "explore",
+    "crosshair",
+    "snap",
+    "point-feedback"
+  ],
+  "parameters": [
+    "equation",
+    "action",
+    "targets",
+    "x-range",
+    "y-range",
+    "snap"
+  ],
+  "examples": [
+    {
+      "description": "Show a function and let the student explore coordinates.",
+      "example": "model: function-graph\n/equation: y = 2*x - 3\n/action: plot"
+    },
+    {
+      "description": "Hide the curve and ask the student to plot points for selected x-values.",
+      "example": "model: function-graph\n/equation: y = 2*x - 3\n/action: ask\n/targets: 2,3,4\n/x-range: -5,7\n/y-range: -5,7\n/snap: 1"
+    },
+    {
+      "description": "Reveal the curve after the student completes the activity while retaining their points.",
+      "example": "model: function-graph\n/equation: y = 2*x - 3\n/action: plot"
+    },
+    {
+      "description": "Unpin the graph, keeping its points in the notebook while subsequent content continues below.",
+      "example": "model: function-graph\n/action: remove"
+    }
+  ]
+}

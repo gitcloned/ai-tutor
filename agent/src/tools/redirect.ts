@@ -7,6 +7,7 @@ import type { AgentContext } from '../context.js';
 import type { Concept, JourneyNode, PlanHistoryEntry } from '../types.js';
 import { lp, cms } from '../api.js';
 import { buildConceptPlan } from '../learning/stateManagement.js';
+import { buildModelPrompt } from '../learning/modelPrompt.js';
 
 // ── redirectToPrereq ──────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ export async function redirectToPrereq(
 
   // Fetch prereq concept and build its plan
   const prereqConcept = await cms.get<Concept>(`/concepts/${prereqConceptId}`);
-  const prereqPlan    = buildConceptPlan(prereqConcept, prereqNodeState);
+  const { plan: prereqPlan, models: prereqModels } = buildConceptPlan(prereqConcept, prereqNodeState);
 
   // Append to planHistory
   const entry: PlanHistoryEntry = {
@@ -80,9 +81,10 @@ export async function redirectToPrereq(
   });
 
   // Swap ctx
-  ctx.concept     = prereqConcept;
-  ctx.journeyNode = prereqNode;
-  ctx.plan        = prereqPlan;
+  ctx.concept      = prereqConcept;
+  ctx.journeyNode  = prereqNode;
+  ctx.plan         = prereqPlan;
+  ctx.modelPrompt  = buildModelPrompt(prereqModels);
 
   ctx.log({ level: 'info', message: `redirect → ${prereqConceptId} (origin: ${originConceptId})` });
 }
@@ -112,7 +114,7 @@ export async function returnToOrigin(ctx: AgentContext): Promise<boolean> {
 
   // Fetch origin concept and build its plan for the resumed state
   const originConcept = await cms.get<Concept>(`/concepts/${originConceptId}`);
-  const originPlan    = buildConceptPlan(originConcept, originNode.state);
+  const { plan: originPlan, models: originModels } = buildConceptPlan(originConcept, originNode.state);
 
   // Append to planHistory
   const entry: PlanHistoryEntry = {
@@ -136,6 +138,7 @@ export async function returnToOrigin(ctx: AgentContext): Promise<boolean> {
   ctx.concept     = originConcept;
   ctx.journeyNode = originNode;
   ctx.plan        = originPlan;
+  ctx.modelPrompt = buildModelPrompt(originModels);
 
   ctx.log({ level: 'info', message: `return_to_origin ← ${originConceptId} (from: ${prereqConceptTitle})` });
   return true;

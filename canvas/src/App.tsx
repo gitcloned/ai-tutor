@@ -1,17 +1,20 @@
 import { useEffect, useState, useRef } from 'react';
-import { Tldraw, type Editor, useValue } from 'tldraw';
+import { Tldraw, DefaultColorStyle, type Editor, useValue } from 'tldraw';
 import {QuestionFrameUtil} from './QuestionFrame';
 import {VideoLesson} from './VideoLesson';
 import {upgradeQuestionLayout} from './questions';
-import { ArrowUpRight, BookOpen, ChevronRight, X, Keyboard, Send, Focus, Minus, Plus, Plug, Download, MessageCircle, Volume2, Leaf } from 'lucide-react';
+import { ArrowUpRight, ArrowLeft, BookOpen, X, Send, Focus, Minus, Plus, Plug, Download, Volume2, Leaf } from 'lucide-react';
 import { Toolbar } from './Toolbar';
 import { Orb } from './Orb';
+import {InputHints,learnedInput} from './InputHints';
+import {McqShapeUtil,McqContext} from './McqShape';
+import type {ChoiceAttempt} from './mcq';
 import { Notebook } from './Notebook';
 import {defaultTutorUrl,initialTutorUrl} from './tutorUrl';
 import {StudentWork,type MediaInput} from './studentWork';
 import { ModelShapeUtil } from './models/ModelShape';
 import {FunctionGraphShapeUtil,GraphActivityContext} from './models/FunctionGraphShape';
-const modelShapeUtils=[ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
+const modelShapeUtils=[McqShapeUtil,ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
 function applyCanvasTheme(editor:Editor) {
   const theme=editor.getTheme('default');
   if(theme)editor.updateTheme({...theme,colors:{...theme.colors,light:{...theme.colors.light,green:{...theme.colors.light.green,solid:'#416653',fill:'#416653'}}}});
@@ -19,6 +22,7 @@ function applyCanvasTheme(editor:Editor) {
 import { useLesson } from './useLesson';
 import 'tldraw/tldraw.css';
 import './styles.css';
+import './tutorSpace.css';
 function LessonName({editor}:{editor:Editor}) {
   const name=useValue('lesson name',()=>editor.getCurrentPage().name,[editor]);
   return <strong>{name==='Page 1'?'Your canvas':name}</strong>;
@@ -32,6 +36,8 @@ export default function App() {
   const [sheet,setSheet]=useState<'connect'|'reply'|'transcript'|null>(null),[notebook,setNotebook]=useState(false),[reply,setReply]=useState('');
   const [url,setUrl]=useState(()=>initialTutorUrl(window.location,localStorage.getItem('prodigy-ws')));
   const [hasContent,setHasContent]=useState(false);
+  const captionText=useRef<HTMLParagraphElement>(null);
+  useEffect(()=>{const text=captionText.current;if(text)text.scrollTop=text.scrollHeight;},[lesson.caption]);
   const [preparing,setPreparing]=useState(false);
   const canvasPointer=useRef<{x:number;y:number}|null>(null);
   const work=useRef<StudentWork|null>(null),sending=useRef(false),pendingAudio=useRef<MediaInput|undefined>(undefined);
@@ -48,41 +54,52 @@ export default function App() {
   useEffect(()=>{if(!editor)return;const refresh=()=>setHasContent(editor.getCurrentPageShapes().length>0);refresh();return editor.store.listen(refresh);},[editor]);
   useEffect(()=>{if(!lesson.notice)return;const timeout=setTimeout(()=>lesson.notify(''),9000);return()=>clearTimeout(timeout);},[lesson.notice]);
   useEffect(()=>{function escape(e:KeyboardEvent){if(e.key==='Escape'){setSheet(null);setNotebook(false);}}window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);},[]);
-  async function sendWork(audio?:MediaInput){
+  async function sendWork(audio?:MediaInput,activity?:ChoiceAttempt):Promise<boolean>{
     if(audio)pendingAudio.current=audio;
-    if(!lesson.connected){setSheet('connect');return;}
-    if(sending.current||(lesson.submission!=='idle'||lesson.tutorBusy)||!work.current||!editor)return;
+    if(!lesson.connected){setSheet('connect');return false;}
+    if(sending.current||(lesson.submission!=='idle'||lesson.tutorBusy)||!work.current||!editor)return false;
     sending.current=true;setPreparing(true);const version=lesson.connectionVersion.current,page=editor.getCurrentPageId(),draft=replyRef.current.trim(),voice=pendingAudio.current;
     try{
       editor.complete();
       const delta=await work.current.prepare();
-      if(version!==lesson.connectionVersion.current||page!==editor.getCurrentPageId()){lesson.notify('The lesson changed. Your work is still pending.');return;}
+      if(version!==lesson.connectionVersion.current||page!==editor.getCurrentPageId()){lesson.notify('The lesson changed. Your work is still pending.');return false;}
       const text=[draft,delta.text].filter(Boolean).join('\n');
-      if(!text&&!voice&&!delta.images.length){lesson.notify('No new work to send. Draw, type, or hold the orb to speak.');return;}
-      if(lesson.send({...(text?{text}:{}),...(voice?{audio:voice}:{}),...(delta.images.length?{images:delta.images}:{})})){
-        delta.commit();if(replyRef.current.trim()===draft)setReply('');if(pendingAudio.current===voice)pendingAudio.current=undefined;setSheet(null);
+      if(!text&&!voice&&!delta.images.length&&!activity){lesson.notify('No new work to send. Draw, type, or hold the orb to speak.');return false;}
+      if(lesson.send({...(activity?{activity}:{}),...(text?{text}:{}),...(voice?{audio:voice}:{}),...(delta.images.length?{images:delta.images}:{})})){
+        delta.commit();if(replyRef.current.trim()===draft)setReply('');if(pendingAudio.current===voice)pendingAudio.current=undefined;setSheet(null);return true;
       }
     }catch{lesson.notify('Could not prepare your work. It is still pending; tap to retry.');}finally{sending.current=false;setPreparing(false);}
+    return false;
   }
-  function tapOrb(){void sendWork();}
+  function tapOrb(){if(!lesson.connected){setSheet('connect');return;}void sendWork();}
   async function exportPage(){
     if(!editor)return;const ids=[...editor.getCurrentPageShapeIds()];if(!ids.length){lesson.notify('Write or draw something first, then export your page.');return;}
     try{const result=await editor.toImageDataUrl(ids,{format:'png',background:true,padding:40});const link=document.createElement('a');link.href=result.url;link.download='prodigy-notebook.png';link.click();}catch{lesson.notify('This page could not be exported. Some embedded media may not support export.');}
   }
   return <main className="app">
-    <header className="app-header"><a className="wordmark" href="/" aria-label="Prodigy home">Prodigy<span className="brand-dot"/></a><span className="header-rule"/><div className="lesson-breadcrumb"><span>Learn together</span><ChevronRight size={13}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</div><div className="header-actions"><button className={`connection ${lesson.connected?'online':''}`} onClick={()=>setSheet('connect')} title="Tutor connection"><span/>{lesson.connected?'Connected':'Connect tutor'}</button><button className="notebook-button" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/><span>Lesson notebook</span></button><button className="avatar" title="Your learning space" onClick={()=>setNotebook(!notebook)}>S</button></div></header>
     <section className="canvas-area" aria-label="Shared learning canvas" onPointerDown={e=>{canvasPointer.current=(e.target as HTMLElement).closest('.tl-canvas')?{x:e.clientX,y:e.clientY}:null;}} onPointerMove={e=>{const start=canvasPointer.current;if(start&&e.buttons&&(editor?.inputs.isPanning||editor?.getCurrentToolId()==='hand'||e.buttons===4)&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>8){lesson.stopFollowing();canvasPointer.current=null;}}} onPointerUp={()=>{canvasPointer.current=null;}} onPointerCancel={()=>{canvasPointer.current=null;}} onWheel={()=>lesson.stopFollowing()}>
+      <McqContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
       <GraphActivityContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
-        <Tldraw hideUi shapeUtils={modelShapeUtils} persistenceKey="prodigy-canvas-v1" onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);setEditor(ed);}}><Toolbar/></Tldraw>
+        <Tldraw hideUi shapeUtils={modelShapeUtils} persistenceKey="prodigy-canvas-v1" onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
       </GraphActivityContext.Provider>
+      </McqContext.Provider>
     </section>
     {!hasContent && !lesson.connected && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={()=>setSheet('connect')}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}
-    {editor&&<CanvasControls editor={editor} fit={lesson.fit}/>}
-    <div className="bottom-actions"><button title="Type a reply" aria-label="Type a reply" onClick={()=>setSheet('reply')}><Keyboard size={19}/></button><button title="Lesson conversation" aria-label="Lesson conversation" onClick={()=>setSheet('transcript')}><MessageCircle size={18}/></button><button title="Export page" aria-label="Export page" onClick={exportPage}><Download size={18}/></button></div>
-    {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p>{lesson.caption}</p></div>}
-    <Orb tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
+
+    <footer className="tutor-space" aria-label="Tutor and responses">
+    <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(window.history.length>1)window.history.back();else setNotebook(true);}}><ArrowLeft size={18}/></button>
+    <div className="lesson-tools">
+      <button className="notebook-button lesson-breadcrumb" aria-label="Lesson notebook" title="Lesson notebook" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</button>
+      <div className="lesson-tools-actions"><button className={`connection ${lesson.connected?'online':''}`} onClick={()=>setSheet('connect')} title="Tutor connection"><span/>{lesson.connected?'Connected':'Connect tutor'}</button>
+    <div className="footer-utilities">{editor&&<CanvasControls editor={editor} fit={lesson.fit}/>}<button title="Export page" aria-label="Export page" onClick={exportPage}><Download size={16}/></button></div>
+      </div>
+    </div>
+    {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p ref={captionText} tabIndex={0} aria-label="Tutor captions">{lesson.caption}</p></div>}
+    <Orb tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
+    </footer>
+    {editor&&<InputHints key={lesson.connectionVersion.current} editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&['ready','waiting'].includes(lesson.phase)} blocked={!!lesson.video||!!sheet||notebook}/>}
     {lesson.video&&<VideoLesson media={lesson.video} onDone={lesson.doneWatching}/>}
     {lesson.notice&&<div className="toast" role="status">{lesson.notice}<button aria-label="Dismiss notification" onClick={()=>lesson.notify('')}><X size={16}/></button></div>}
     {notebook&&editor&&<Notebook editor={editor} connected={lesson.connected} close={()=>setNotebook(false)}/>}

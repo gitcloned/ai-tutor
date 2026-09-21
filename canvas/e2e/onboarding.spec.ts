@@ -1,0 +1,88 @@
+import {test,expect,type WebSocketRoute} from '@playwright/test';
+
+test('hints wait for a finished turn, do not edit work, and introduce speaking on a later turn',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/onboarding',ws=>{socket=ws;});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/onboarding');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  const hint=page.locator('[data-onboarding]');
+  send({type:'event',event:{type:'tutor-started'}});
+  send({type:'text_chunk',content:'Your turn',attrs:{}});
+  await expect(page.locator('.tl-shape[data-shape-type="text"]')).toContainText('Your turn');
+  await page.waitForTimeout(2200);
+  await expect(hint).toHaveCount(0);
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(hint).toHaveAttribute('data-onboarding','write');
+  await page.screenshot({path:'test-results/onboarding-write.png'});
+  await expect(hint).toHaveAttribute('data-step','1');
+  await page.screenshot({path:'test-results/onboarding-draw.png'});
+  await expect(page.locator('.tl-shape')).toHaveCount(1);
+  await expect(page.getByRole('button',{name:'Pencil (D)',exact:true})).toHaveAttribute('aria-pressed','true');
+  // Real interaction dismisses immediately, without swallowing the click.
+  await page.getByRole('button',{name:'Pencil (D)',exact:true}).click();
+  await expect(hint).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Pencil (D)',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.waitForTimeout(2200);
+  await expect(hint).toHaveCount(0);
+  send({type:'event',event:{type:'tutor-started'}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(hint).toHaveAttribute('data-onboarding','speak');
+  await page.screenshot({path:'test-results/onboarding-speak.png'});
+  await expect(hint).toContainText('Hold');
+  await expect(hint).toContainText('Release',{timeout:5000});
+  await expect(hint).toHaveCount(0);
+  await expect(page.locator('.tl-shape')).toHaveCount(1);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('prodigy-input-hints-v1')!))).toEqual({write:true,speak:true});
+  await page.reload();
+  await page.locator('.connection').click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/onboarding');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  send({type:'event',event:{type:'tutor-ended'}});
+  await page.waitForTimeout(2300);
+  await expect(hint).toHaveCount(0);
+});
+
+test('queued writing and an open video suppress hints after the end signal',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.route('https://www.youtube.com/**',route=>route.fulfill({contentType:'text/html',body:'Video'}));
+  await page.routeWebSocket('**/onboarding-video',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/onboarding-video');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  send({type:'event',event:{type:'tutor-started'}});
+  send({type:'text_chunk',content:'Let us take a moment to watch this introduction before trying the next question together.',attrs:{}});
+  send({type:'play',content:'https://www.youtube.com/watch?v=AOxMJRtoR2A',attrs:{}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await page.waitForTimeout(2300);
+  await expect(page.locator('[data-onboarding]')).toHaveCount(0);
+  await expect(page.getByRole('dialog',{name:'Watch together'})).toBeVisible({timeout:12000});
+  await page.waitForTimeout(2300);
+  await expect(page.locator('[data-onboarding]')).toHaveCount(0);
+  expect(await page.evaluate(()=>localStorage.getItem('prodigy-input-hints-v1'))).toBeNull();
+});
+
+test('an ask-mode graph suppresses onboarding until a later ordinary turn',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/onboarding-graph',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/onboarding-graph');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  send({type:'model',content:'function-graph',attrs:{equation:'y=x',action:'ask',targets:'1'}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.locator('.function-graph')).toHaveAttribute('data-ready','true');
+  await page.waitForTimeout(2500);
+  await expect(page.locator('[data-onboarding]')).toHaveCount(0);
+  send({type:'event',event:{type:'tutor-started'}});
+  send({type:'model',content:'function-graph',attrs:{action:'remove'}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.locator('[data-onboarding]')).toHaveAttribute('data-onboarding','write');
+});

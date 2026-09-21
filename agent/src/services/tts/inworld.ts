@@ -2,11 +2,40 @@ import type { TTSProvider } from './base.js';
 
 const INWORLD_TTS_URL = 'https://api.inworld.ai/tts/v1/voice:stream';
 
+/** Status codes worth retrying — transient server/load issues. */
+const RETRYABLE = new Set([429, 503, 502, 504]);
+
+const MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok) return res;
+
+    if (!RETRYABLE.has(res.status) || attempt === MAX_ATTEMPTS - 1) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Inworld TTS HTTP ${res.status}: ${body}`);
+    }
+
+    // Exponential backoff with jitter: base * 2^attempt + random(0, 500ms)
+    const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+    await sleep(delay);
+  }
+  throw new Error('Inworld TTS: exhausted retries');
+}
+
 /**
  * Creates an Inworld TTS provider that streams MP3 audio chunks as they arrive.
  *
  * Reads INWORLD_API_KEY and INWORLD_VOICE_ID from the environment.
  * The API key must be in `workspace_id:secret` format (as shown in the Inworld dashboard).
+ *
+ * Automatically retries on 429/503/502/504 with exponential backoff + jitter.
  */
 export function createInworldTTS(): TTSProvider {
   const apiKey  = process.env.INWORLD_API_KEY  ?? '';
@@ -19,7 +48,7 @@ export function createInworldTTS(): TTSProvider {
   const auth = `Basic ${apiKey}`;
 
   return async function* inworldTTS(text: string) {
-    const res = await fetch(INWORLD_TTS_URL, {
+    const res = await fetchWithRetry(INWORLD_TTS_URL, {
       method: 'POST',
       headers: {
         'Authorization': auth,
@@ -34,11 +63,6 @@ export function createInworldTTS(): TTSProvider {
         language:      'AUTO',
       }),
     });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Inworld TTS HTTP ${res.status}: ${body}`);
-    }
 
     if (!res.body) return;
 

@@ -183,6 +183,7 @@ export function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
     journeyNode: makeNode(),
     memories:    [],
     plan:        [],
+    modelPrompt: "",
     log:         () => {},
     ...overrides,
   };

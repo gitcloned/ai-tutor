@@ -1,5 +1,34 @@
 import {test,expect,type WebSocketRoute} from '@playwright/test';
 
+test('reconnecting opens a fresh page before metadata and a late title keeps new work',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/fresh-page',ws=>{socket=ws;});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://127.0.0.1:32004/fresh-page');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  send({type:'session',title:'Previous lesson'});
+  send({type:'text_chunk',content:'Previous work',attrs:{}});
+  const text=page.locator('.tl-shape[data-shape-type="text"]');
+  await expect(text).toContainText('Previous work');
+  await page.locator('.connection').click();
+  await page.getByRole('button',{name:'Reconnect',exact:true}).click();
+  await expect(text).toHaveCount(0);
+  await expect(page.locator('.lesson-breadcrumb')).toContainText('New lesson');
+  send({type:'session',sessionId:'no-title'});
+  send({type:'text_chunk',content:'Fresh work',attrs:{}});
+  await expect(text).toContainText('Fresh work');
+  send({type:'session',sessionId:'no-title',title:'Current lesson'});
+  await expect(page.locator('.lesson-breadcrumb')).toContainText('Current lesson');
+  await expect(text).toContainText('Fresh work');
+  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.locator('.notebook-row')).toHaveCount(2);
+  await page.locator('.notebook-open').filter({hasText:'Previous lesson'}).click();
+  await expect(text).toContainText('Previous work');
+});
+
 function silence(seconds:number) {
   const size=8000*2*seconds, wav=Buffer.alloc(44+size);
   wav.write('RIFF');wav.writeUInt32LE(36+size,4);wav.write('WAVEfmt ',8);

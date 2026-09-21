@@ -10,7 +10,7 @@
  * Then open http://localhost:<port> in your browser and watch.
  *
  * Options:
- *   --scenario  text | algebra | question-algebra | heart | cuboid-volume | function-graph | function-graph-plot | both
+ *   --scenario  text | mcq | algebra | question-algebra | heart | cuboid-volume | function-graph | function-graph-plot | both
  *   --delay     ms per character                (default: 10, use 0 for instant)
  *   --port      port number                     (default: 32004)
  */
@@ -22,6 +22,7 @@ import { WebSocketServer } from 'ws';
 import { cuboidLesson } from './cuboid-lesson.mjs';
 import { questionLesson } from './question-lesson.mjs';
 import { functionGraphLesson, functionGraphExploreLesson } from './function-graph-lesson.mjs';
+import {mcqLesson} from './mcq-lesson.mjs';
 
 // Auto-load .env from agent root (same as cli.mjs)
 try {
@@ -212,6 +213,7 @@ async function replay(ws, response) {
 
 const queue = scenario === 'text'
   ? ['text']
+  : scenario === 'mcq' ? [mcqLesson]
   : scenario === 'function-graph' ? [functionGraphLesson]
     : scenario === 'function-graph-plot' ? [functionGraphExploreLesson]
       : scenario === 'question-algebra'
@@ -263,6 +265,17 @@ wss.on('connection', async ws => {
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === 'message') {
+        if(scenario==='mcq'&&msg.activity?.type==='choice-selected'){
+          if(playing)return;
+          playing=true;
+          try{
+            const correct=msg.activity.questionId==='mcq-demo'&&msg.activity.choice==='a';
+            await replay(ws,correct
+              ? 'speak: Yes. Two times zero is zero, and zero minus three is negative three.\nwrite: y = 2 × 0 - 3 = -3\nquestion: end\n'
+              : 'speak: Two times zero is zero. Now subtract three. Try another option.\nwrite: y = 0 - 3\n');
+          }finally{playing=false;}
+          return;
+        }
         if (msg.activity?.type === 'graph-point') {
           console.log('Graph attempt:', JSON.stringify(msg.activity));
           if (playing) return;

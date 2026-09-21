@@ -1,0 +1,14 @@
+{
+    "models": [
+        {
+            "id": "cuboid-volume-01",
+            "title": "How many cubes are hiding inside?",
+            "manifest": "cuboid-volume-01/manifest.json"
+        },
+        {
+            "id": "function-graph",
+            "title": "Interactive function graph",
+            "manifest": "function-graph/manifest.json"
+        }
+    ]
+}

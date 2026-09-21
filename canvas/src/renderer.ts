@@ -1,4 +1,4 @@
-import { Box, Editor, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
+import { Box, Editor, DefaultFontFaces, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
 import { safeMedia, type Block } from './protocol';
 import { sanitizeDiagram } from './diagram';
 import { delay } from './playback';
@@ -9,7 +9,7 @@ import type {TLShape} from 'tldraw';
 import {Questions} from './questions';
 import { cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
 
-const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape=>s.type==='model3d'||s.type==='function-graph';
+const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape=>(s.type==='model3d'||s.type==='function-graph')&&s.meta.unpinned!==true;
 
 export class CanvasRenderer {
   follow=true;
@@ -44,9 +44,18 @@ export class CanvasRenderer {
       .map(shape=>this.editor.getShapePageBounds(shape.id))
       .filter((bounds):bounds is Box=>!!bounds)
       .map(bounds=>({x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h}));
-    const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
+    const isModel=block.kind==='model3d'||block.kind==='model';
+    if(isModel){
+      const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
+      // A pinned model travels vertically with the camera. Reserve its entire
+      // column, including space beside content written before it was loaded.
+      if(obstacles.length)point.x=Math.min(point.x,...obstacles.map(bounds=>bounds.x-w-40));
+      return point;
+    }
+    const right=model?model.x+model.props.w+40:260;
+    const point=resolvePlacement(block.attrs,w,h,{x:right,y:this.cursor},obstacles);
     if(block.attrs.position) point.y+=this.origin;
-    if(model&&block.kind!=='model3d'&&block.kind!=='model'){point.x=model.x+model.props.w+40;point.y=Math.max(point.y,this.cursor);}
+    if(model){point.x=right;point.y=Math.max(point.y,this.cursor);}
     if(block.kind==='ask')point.y=Math.max(point.y,this.cursor+24);
     if(block.kind!=='model3d'&&block.kind!=='model')this.cursor=Math.max(this.cursor,point.y+h+38); return point;
   }
@@ -89,20 +98,32 @@ export class CanvasRenderer {
   render(block:Block,signal:AbortSignal):Promise<void> {
     // Steps depend on previous measured text and notes, even within parallel
     // narration. Keep layout operations ordered while audio plays alongside.
-    if(['question','annotate','write','ask','model'].includes(block.kind)){
+    if(['question','annotate','write','ask','model','model3d','svg','play'].includes(block.kind)){
       const task=this.layoutTail.then(()=>this.renderBlock(block,signal));
       this.layoutTail=task.catch(()=>{});return task;
     }
     return this.renderBlock(block,signal);
   }
+  private releaseModelLayout(){
+    this.questions.start('end');
+    const bounds=this.editor.getCurrentPageBounds();
+    if(bounds)this.cursor=Math.max(this.cursor,bounds.maxY+60);
+    this.focused=null;
+  }
   private async renderBlock(block:Block,signal:AbortSignal) {
     if(signal.aborted) return;
     if(block.kind==='model'){
       this.questions.start('end');
-      renderFunctionGraph(this.editor,block,(w,h)=>this.locate(block,w,h),id=>this.focus(id));return;
+      renderFunctionGraph(this.editor,block,(w,h)=>this.locate(block,w,h),id=>this.focus(id));
+      if(block.attrs.action==='remove')this.releaseModelLayout();
+      return;
     }
     if(block.kind==='question'){
-      const id=this.questions.start(block.content);if(id)this.focus(id);
+      if(block.attrs.stem){
+        await this.editor.fonts.ensureFontIsLoaded(DefaultFontFaces.tldraw_draw.normal.normal);
+        if(signal.aborted)return;
+      }
+      const id=this.questions.start(block.content,block.attrs);if(id)this.focus(id);
       const bounds=this.editor.getCurrentPageBounds();if(bounds)this.cursor=Math.max(this.cursor,bounds.maxY+60);
       return;
     }
@@ -110,7 +131,9 @@ export class CanvasRenderer {
       const id=this.questions.annotate(block);this.focus(id);return;
     }
     if(block.kind==='model3d') {
-      await playModel(this.editor,block,signal,this.paused,(w,h)=>this.locate(block,w,h),id=>this.focus(id));return;
+      await playModel(this.editor,block,signal,this.paused,(w,h)=>this.locate(block,w,h),id=>this.focus(id));
+      if(block.attrs.action==='remove')this.releaseModelLayout();
+      return;
     }
     const id=createShapeId(); const meta={author:'tutor',kind:block.kind};
     if(block.kind==='write' || block.kind==='ask') {

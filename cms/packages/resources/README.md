@@ -1,8 +1,8 @@
-# Teaching resources
+# Interactive models
 
-Run `npm run dev` here to serve `/3d-models/` on port 32003, independently of MongoDB. The CMS backend also serves this directory at `/3d-models/` on port 32001. Deploy these public files behind a static server or CDN in production.
+Run `npm run dev` here to serve `/interactive-models/` on port 32003, independently of MongoDB. The CMS backend also serves this directory at `/interactive-models/` on port 32001. Deploy these public files behind a static server or CDN in production.
 
-Each model has an ID, versioned manifest, renderer name, and a small dictionary of finite routines. Cuboid geometry is generated from data; there is no GLB download for this model. A future mesh renderer can consume GLB assets through the same resource server. Remote JavaScript is never executed.
+Each interactive model has an ID, versioned manifest, renderer-specific configuration, `whenToUse`, supported `studentEvents`, and an `examples` array. The Canvas medium reads the catalog and includes the compact manifest guidance in the live LLM prompt, so the tutor can select and format activities from examples. Remote JavaScript is never executed.
 
 `cuboid-volume-01` uses 24 centimetre cubes. Its actions are `build-base`, `build-volume`, `same-volume`, and `reset`. Every stage names an absolute target state, so it can be replayed or called out of order.
 

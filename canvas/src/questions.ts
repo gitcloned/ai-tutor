@@ -2,6 +2,10 @@ import {AssetRecordType,Box,createShapeId,getDisplayValues,renderPlaintextFromRi
 import type {Block} from './protocol';
 import {resolvePlacement,textStyle} from './layout';
 import {renderHtmlFromRichTextForMeasurement} from 'tldraw';
+import {annotationTarget} from './annotationTarget';
+import {mcqConfig} from './mcq';
+import type {Attrs} from './protocol';
+import type {McqShape} from './McqShape';
 
 const STEP_WIDTH=500,NOTE_X=640,NOTE_WIDTH=460,PADDING=32,GAP=44;
 
@@ -38,22 +42,37 @@ const union=(boxes:Box[])=>{
 /** Native frame and child shapes preserve a complete worked example in the notebook. */
 export class Questions {
   private lastWritten:TLShapeId|null=null;
+  private recentWritten:TLShapeId[]=[];
   constructor(private editor:Editor){}
   get active(){return this.editor.getCurrentPageShapes().find((s):s is TLFrameShape=>s.type==='frame'&&s.meta.questionActive===true);}
   private steps(frame:TLFrameShape){return this.editor.getCurrentPageShapes().filter((s):s is TLTextShape=>s.type==='text'&&s.parentId===frame.id&&typeof s.meta.questionStep==='number').sort((a,b)=>Number(a.meta.questionStep)-Number(b.meta.questionStep));}
-  start(content:string){
+  start(content:string,attrs:Attrs={}){
     const key=content.trim();if(!key)return;
+    const mcq=key==='end'?null:mcqConfig(attrs);
     const active=this.active;
     if(key!=='end'&&active?.meta.questionId===key)return active.id;
+    if(active&&this.editor.getCurrentPageShapes().some(s=>s.type==='mcq'&&s.parentId===active.id))this.editor.setCurrentTool('draw');
     if(active)this.editor.updateShape({id:active.id,type:'frame',meta:{...active.meta,questionActive:false}});
     this.lastWritten=null;
+    this.recentWritten=[];
     if(key==='end')return;
     const shapes=this.editor.getCurrentPageShapes();
-    const model=shapes.find(s=>s.type==='model3d'||s.type==='function-graph');
-    const bounds=shapes.filter(s=>s.type!=='model3d'&&s.type!=='function-graph').map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
+    const model=shapes.filter(s=>s.type==='model3d'||s.type==='function-graph').find(s=>s.meta.unpinned!==true);
+    const bounds=shapes.filter(s=>s.meta.unpinned===true||(s.type!=='model3d'&&s.type!=='function-graph')).map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
     const x=model?model.x+model.props.w+40:140,y=bounds.length?Math.max(...bounds.map(b=>b.maxY))+80:100;
     const id=createShapeId();
     this.editor.createShape({id,type:'frame',x,y,meta:{author:'tutor',kind:'question',questionId:key,questionActive:true},props:{w:1132,h:140,name:'Question',color:'green'}});
+    if(mcq){
+      const stemId=createShapeId(),step=this.beginStep()!;
+      this.editor.createShape({id:stemId,type:'text',parentId:id,x:step.x,y:step.y,meta:step.meta,props:{...textStyle('write'),w:STEP_WIDTH,autoSize:false,richText:toRichText(mcq.stem)}});
+      this.placeStep(stemId,mcq.stem);this.written(stemId);
+      const stem=this.editor.getShape(stemId)!;
+      const rowHeight=Math.max(64,...mcq.choices.map(c=>Math.ceil(c.text.length/24)*34+24));
+      const choiceId=createShapeId();
+      this.editor.createShape<McqShape>({id:choiceId,type:'mcq',parentId:id,x:PADDING,y:stem.y+this.editor.getShapeGeometry(stem).bounds.h+24,meta:{author:'tutor',kind:'mcq',questionId:key},props:{w:STEP_WIDTH,h:mcq.choices.length*(rowHeight+10)+36,questionId:key,config:JSON.stringify(mcq),selected:''}});
+      this.resize(choiceId);
+      this.editor.setCurrentTool('select');
+    }
     return id;
   }
   beginStep(){
@@ -63,7 +82,7 @@ export class Questions {
     const order=this.steps(frame).length;
     return {parentId:frame.id,x:PADDING,y:children.length?bottom+GAP:PADDING,w:STEP_WIDTH,meta:{author:'tutor',kind:'write',questionId:frame.meta.questionId,questionStep:order}};
   }
-  written(id:TLShapeId){this.lastWritten=id;this.resize(id);}
+  written(id:TLShapeId){this.lastWritten=id;this.recentWritten=[...this.recentWritten.filter(previous=>previous!==id),id].slice(-3);this.resize(id);}
   placeStep(id:TLShapeId,text:string){
     const step=this.editor.getShape<TLTextShape>(id);if(!step)return;
     const frame=this.editor.getShape(step.parentId as TLShapeId);if(frame?.type!=='frame')return;
@@ -109,8 +128,9 @@ export class Questions {
     const dv=getDisplayValues(this.editor.getShapeUtil(step) as TextShapeUtil,step);
     const spans=this.editor.textMeasure.measureTextSpans(text,{...dv,width:step.props.w,height:10000,padding:0,overflow:'wrap',textAlign:'start'});
     const measured=spans.map(s=>s.text).join('');
-    const start=target?measured.indexOf(target):0,end=target?start+target.length:measured.length;
-    if(start<0)throw new Error(`Annotation target “${target}” was not found in the latest step.`);
+    const match=target?annotationTarget(measured,target):{start:0,end:measured.length};
+    if(!match)throw new Error(`Annotation target “${target}” was not found in the last three steps.`);
+    const {start,end}=match;
     let offset=0;
     const boxes:Box[]=[];
     for(const span of spans){
@@ -128,7 +148,18 @@ export class Questions {
     return lines.map(union);
   }
   annotate(block:Block){
-    const step=this.latest();if(!step)throw new Error('Write a step before annotating it.');
+    let step=this.latest();if(!step)throw new Error('Write a step before annotating it.');
+    const target=block.attrs.target?.trim();
+    if(target){
+      const frame=this.active;
+      const candidates=frame?this.steps(frame).slice(-3).reverse():this.recentWritten.slice().reverse().flatMap(id=>{
+        const shape=this.editor.getCurrentPageShapeIds().has(id)?this.editor.getShape(id):undefined;
+        return shape?.type==='text'?[shape]:[];
+      });
+      const matched=candidates.find(candidate=>annotationTarget(renderPlaintextFromRichText(this.editor,candidate.props.richText),target));
+      if(!matched)throw new Error(`Annotation target “${target}” was not found in the last three steps.`);
+      step=matched;
+    }
     const requestedMark=block.attrs.mark?.trim(),mark=requestedMark==='arrow'?undefined:requestedMark,note=block.content.trim();
     if(mark&&!['circle','underline'].includes(mark))throw new Error(`Unknown annotation mark: ${mark}`);
     if(!mark&&!note)return step.id;

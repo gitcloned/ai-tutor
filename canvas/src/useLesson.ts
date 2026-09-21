@@ -15,6 +15,7 @@ export function useLesson(editor:Editor|null) {
   const [notice,setNotice]=useState(''); const [entries,setEntries]=useState<Entry[]>([]);
   const turnActive=useRef(false),busyRef=useRef(false);
   const [tutorBusy,setTutorBusy]=useState(false);
+  const [endedTurns,setEndedTurns]=useState(0);
   const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
   const [video,setVideo]=useState<LessonVideo|null>(null),[submission,setSubmission]=useState<'idle'|'sent'|'waiting'>('idle');
@@ -25,6 +26,7 @@ export function useLesson(editor:Editor|null) {
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
   const notify=useCallback((text:string)=>setNotice(text),[]);
   const connectionVersion=useRef(0),recordingPause=useRef(false);
+  const untitledConnectionPage=useRef<ReturnType<Editor['getCurrentPageId']>|null>(null);
   // Metadata only: never retain student input, audio bytes, or lesson text here.
   const trace=useRef<{at:string;event:string}[]>([]);
   const record=(event:string)=>{trace.current.push({at:new Date().toISOString(),event});if(trace.current.length>200)trace.current.shift();};
@@ -38,17 +40,24 @@ export function useLesson(editor:Editor|null) {
   useEffect(()=>{
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
+    const nameLesson=(name:string)=>{
+      if(untitledConnectionPage.current){
+        editor.updatePage({id:untitledConnectionPage.current,name});
+        untitledConnectionPage.current=null;
+      }else renderer.current!.newLesson(name);
+      setTitle(name);setQuestion('');waiting.current=false;setFollow(true);log('lesson',name);
+    };
     const playback=new Playback(async(block:Block,signal)=>{
       if(signal.aborted) return;
       record(`present:${block.kind}`);
       if(block.kind==='session') {
-        renderer.current!.newLesson(block.content);setTitle(block.content);setQuestion('');waiting.current=false;setFollow(true);log('lesson',block.content);return;
+        nameLesson(block.content);return;
       }
       if(block.kind==='question'){
         waiting.current=false;setQuestion('');await renderer.current!.render(block,signal);return;
       }
       if(block.kind==='write' && block.content.startsWith('📖')) {
-        const name=block.content.replace(/^📖\s*/,''); renderer.current!.newLesson(name); setTitle(name);setQuestion(''); waiting.current=false;setFollow(true);log('lesson',name);return;
+        nameLesson(block.content.replace(/^📖\s*/,''));return;
       }
       if(block.kind==='speech') {
         waiting.current=false;setQuestion('');setSimulated(true);setPhase('speaking');log('tutor',block.content);
@@ -105,18 +114,25 @@ export function useLesson(editor:Editor|null) {
     try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.');return false;}
     if(!player.current) return false;
     connectionVersion.current++;
+    setEndedTurns(0);
     clearSubmission();
     socket.current?.close();player.current.cancel();adapter.current.reset();paused.current=false;audio.current.pause(false);
     void audio.current.unlock().catch(()=>notify('Sound is blocked. Tap the tutor to enable audio.'));
     const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setNotice('');setQuestion('');waiting.current=false;
-    ws.onopen=()=>{if(socket.current!==ws)return;setConnected(true);setPhase('ready');setCaption('Your tutor is getting ready.');};
+    ws.onopen=()=>{
+      if(socket.current!==ws)return;
+      renderer.current!.newLesson('New lesson');
+      untitledConnectionPage.current=editor!.getCurrentPageId();
+      setTitle('New lesson');setEntries([]);setFollow(true);
+      setConnected(true);setPhase('ready');setCaption('Your tutor is getting ready.');
+    };
     ws.onmessage=e=>{
       if(socket.current!==ws)return;
       try {
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
-        if(event.type==='event'&&event.event?.type==='tutor-ended')turnActive.current=false;
+        if(event.type==='event'&&event.event?.type==='tutor-ended'){turnActive.current=false;setEndedTurns(count=>count+1);}
         if(['text_chunk','audio_chunk','question','model','model3d','ask','annotate','svg','play'].includes(event.type))setBusy(true);
         if(['text_chunk','audio_chunk','model','model3d','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
         player.current!.add(adapter.current.accept(event));
@@ -138,7 +154,7 @@ export function useLesson(editor:Editor|null) {
     if(renderer.current)renderer.current.follow=true;setFollow(true);
     if(sentTimer.current)clearTimeout(sentTimer.current);
     sentTimer.current=setTimeout(()=>setSubmission(pendingReply.current?'waiting':'idle'),900);
-    log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null,input.activity?`Plotted (${input.activity.x}, ${input.activity.y}) — ${input.activity.correct?'correct':'try again'}`:null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
+    log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null,input.activity?(input.activity.type==='choice-selected'?`Selected ${input.activity.choice.toUpperCase()}: ${input.activity.text}`:`Plotted (${input.activity.x}, ${input.activity.y}) — ${input.activity.correct?'correct':'try again'}`):null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
   }
   function doneWatching(){
     if(!finishVideo.current)return false;
@@ -156,5 +172,5 @@ export function useLesson(editor:Editor|null) {
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
   function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.refocus();}setFollow(true);}
-  return {tutorBusy,phase,connected,caption,question,title,notice,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
+  return {endedTurns,tutorBusy,phase,connected,caption,question,title,notice,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
 }

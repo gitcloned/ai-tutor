@@ -7,7 +7,7 @@ import type { Block } from '../protocol';
 export async function playModel(editor:Editor,block:Block,signal:AbortSignal,paused:()=>boolean,locate:(w:number,h:number)=>{x:number;y:number},focus:(id:ModelShape['id'])=>void) {
   let shape=editor.getCurrentPageShapes().find((s):s is ModelShape=>s.type==='model3d'&&s.props.modelId===block.content);
   if(block.attrs.action==='remove') {
-    if(!signal.aborted&&shape)editor.deleteShape(shape.id);
+    if(!signal.aborted&&shape)editor.updateShape({id:shape.id,type:shape.type,meta:{...shape.meta,unpinned:true}});
     return;
   }
   const model=shape?validateModel(JSON.parse(shape.props.manifest)):await loadModel(block.content,signal);

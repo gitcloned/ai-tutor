@@ -7,7 +7,7 @@ const app  = express();
 const PORT = Number(process.env.PORT ?? 32001);
 
 app.use(express.json());
-app.use('/3d-models', express.static(fileURLToPath(new URL('../../resources/3d-models/', import.meta.url)), {
+app.use('/interactive-models', express.static(fileURLToPath(new URL('../../resources/interactive-models/', import.meta.url)), {
   setHeaders: res => res.setHeader('Access-Control-Allow-Origin', '*'),
 }));
 

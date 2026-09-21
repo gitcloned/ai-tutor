@@ -1,5 +1,28 @@
 import {test,expect,type Page,type WebSocketRoute} from '@playwright/test';
 
+test('annotation lookback finds a spaced target three steps back and stays inside the question',async({page})=>{
+  await page.emulateMedia({reducedMotion:'reduce'});
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/annotation-lookback',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://127.0.0.1:32004/annotation-lookback');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(type:string,content:string,attrs={})=>socket!.send(JSON.stringify({type,content,attrs}));
+  send('question','Q1');send('text_chunk','y = 2*x − 3');send('text_chunk','x = 2');send('text_chunk','(2, ___)');
+  send('annotate','',{mark:'circle',target:'-3'});
+  await expect.poll(async()=>(await records(page)).filter(r=>r.meta?.mark==='circle').length).toBe(1);
+  const saved=await records(page),first=saved.find(r=>r.meta?.questionStep===0);
+  expect(saved.find(r=>r.meta?.mark==='circle').meta.stepId).toBe(first.id);
+  await expect(page.locator('.toast')).toHaveCount(0);
+  send('text_chunk','y = 4 - 3');send('annotate','',{mark:'underline',target:'-3'});
+  await expect.poll(async()=>(await records(page)).filter(r=>r.meta?.mark==='underline').length).toBe(1);
+  const updated=await records(page);
+  expect(updated.find(r=>r.meta?.mark==='underline').meta.stepId).toBe(updated.find(r=>r.meta?.questionStep===3).id);
+  send('question','Q2');send('text_chunk','x = 10');send('annotate','',{mark:'circle',target:'-3'});
+  await expect(page.locator('.toast')).toContainText('last three steps');
+});
+
 async function records(page:Page){
   return page.evaluate(()=>new Promise<any[]>((resolve,reject)=>{
     const request=indexedDB.open('TLDRAW_DOCUMENT_v2prodigy-canvas-v1');

@@ -12,6 +12,15 @@ it('streams model commands with hyphenated ranges and flushes before turn end',a
   for await(const e of p.parse({type:'event',event:{type:'tutor-ended'}}))events.push(e);
   expect(events).toEqual([{type:'model',content:'function-graph',attrs:{equation:'y = 2*x - 3',action:'ask',targets:'2,3,4','x-range':'-5,7','y-range':'-5,7'}},{type:'event',event:{type:'tutor-ended'}}]);
 });
+it('canvas prompt does not embed global model manifests — models come from per-plan # Models declaration',()=>{
+  const prompt=CanvasMedium.create().promptTemplate();
+  // Global manifest JSON block removed; manifests are injected by buildModelPrompt per plan
+  expect(prompt).not.toContain('Available interactive model manifests and examples');
+  expect(prompt).not.toContain('"renderer"');
+  // Canvas format keys are still present
+  expect(prompt).toContain('model:');
+  expect(prompt).toContain('model3d:');
+});
 it('makes structured graph attempts available in tutor history, and rejects malformed data',async()=>{
   const p=new InputParser(CanvasMedium.create());
   const activity={type:'graph-point',model:'function-graph',activityId:'graph-1',equation:'y = 2*x - 3',x:2,y:1,correct:true,complete:false,remaining:[3,4]} as const;

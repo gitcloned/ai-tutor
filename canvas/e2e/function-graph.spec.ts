@@ -90,5 +90,31 @@ test('invalid equations produce a recoverable error and reset/remove commands wo
   await expect(page.locator('.function-graph')).toHaveAttribute('data-points','1');
   await expect(page.locator('[data-result="correct"]')).toHaveCount(1);
   model({action:'reset'});await expect(page.locator('.function-graph')).toHaveAttribute('data-points','0');
-  model({action:'remove'});await expect(page.locator('.function-graph')).toHaveCount(0);
+  model({action:'remove'});await expect(page.locator('.function-graph')).toHaveCount(1);
+});
+
+
+test('graph updated while culled restores its plot at full size on return',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/graph-culling',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/graph-culling');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(attrs:Record<string,string>)=>socket!.send(JSON.stringify({type:'model',content:'function-graph',attrs}));
+  send({equation:'y = 2*x - 3',action:'plot'});
+  const graph=page.locator('.function-graph');
+  await expect(graph).toHaveAttribute('data-ready','true');
+  send({action:'remove'});
+  // Reproduce tldraw hiding an offscreen shape while a later update arrives.
+  await page.addStyleTag({content:'.tl-shape[data-shape-type="function-graph"]{display:none!important}'});
+  send({equation:'y = x + 1',action:'plot'});
+  await expect(graph.locator('header strong')).toHaveText('y = x + 1');
+  await page.evaluate(()=>{for(const el of document.querySelectorAll('style'))if(el.textContent?.includes('display:none!important'))el.remove();});
+  await expect(graph).toHaveAttribute('data-ready','true');
+  await expect.poll(()=>page.locator('.graph-board').evaluate(el=>{
+    const svg=el.querySelector('svg')!;
+    return Math.abs(Number(svg.getAttribute('width'))-el.clientWidth)+Math.abs(Number(svg.getAttribute('height'))-el.clientHeight);
+  })).toBeLessThan(2);
+  await expect(page.locator('.graph-line')).toBeVisible();
 });

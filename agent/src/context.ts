@@ -1,6 +1,7 @@
 import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry } from './types.js';
 import type { ImageBlob }   from './medium/modalities/input/types.js';
 import { buildConceptPlan } from './learning/stateManagement.js';
+import { buildModelPrompt } from './learning/modelPrompt.js';
 import { cms, lp }          from './api.js';
 
 export interface AgentContext {
@@ -9,6 +10,7 @@ export interface AgentContext {
   journeyNode:    JourneyNode;
   memories:       Memory[];
   plan:           PlanStep[];   // compiled fresh each session, lives in memory only
+  modelPrompt:    string;       // prompt fragment for interactive models declared in the plan
   log:            (entry: LogEntry) => void;
   outputPrompt?:  string;       // injected by session manager from medium.promptTemplate()
   currentImages?: ImageBlob[];  // set by agent.send() for the current turn; consumed by engine
@@ -23,7 +25,8 @@ export async function buildContext(studentId: string, conceptId: string, journey
   ]);
 
   const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
-  const plan = buildConceptPlan(concept, journeyNode.state);
+  const { plan, models } = buildConceptPlan(concept, journeyNode.state);
+  const modelPrompt = buildModelPrompt(models);
 
   if (session.planHistory.length === 0) {
     const entry: PlanHistoryEntry = {
@@ -35,7 +38,7 @@ export async function buildContext(studentId: string, conceptId: string, journey
     session.planHistory.push(entry);
   }
 
-  return { session, concept, journeyNode, memories, plan, log: () => {} };
+  return { session, concept, journeyNode, memories, plan, modelPrompt, log: () => {} };
 }
 
 async function createSession(studentId: string, conceptId: string, journeyNodeId: string, state: ConceptState): Promise<Session> {

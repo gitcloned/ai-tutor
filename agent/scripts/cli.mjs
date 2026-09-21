@@ -37,6 +37,7 @@ const hideToolCalls = hasFlag('--hide-tool-calls');
 const mediumName    = flag('--medium')     ?? 'stdin';
 const wsPort        = parseInt(flag('--port') ?? process.env.WS_PORT ?? '32004', 10);
 const ttsFlag       = flag('--tts');
+const forceState    = flag('--state');
 
 // Set TTS provider before any modules load (Speak modality reads env in constructor).
 if (ttsFlag === 'none') {
@@ -46,7 +47,7 @@ if (ttsFlag === 'none') {
 }
 
 if (!conceptId) {
-  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--medium stdin|canvas] [--student <id>] [--port 32004] [--tts inworld|test|none]');
+  console.error('Usage: node scripts/cli.mjs --concept <kaSlug> [--medium stdin|canvas] [--student <id>] [--state not_assessed|learning|clarity|mastered] [--port 32004] [--tts inworld|test|none]');
   process.exit(1);
 }
 
@@ -55,7 +56,7 @@ const sm = new SessionManager();
 
 // ── Create or resume session ──────────────────────────────────────────────────
 
-const { sessionId, resumed } = await sm.create(studentId, conceptId);
+const { sessionId, resumed } = await sm.create(studentId, conceptId, forceState);
 const agent = sm.getAgent(sessionId);
 
 const conceptTitle = agent?.ctx?.concept?.title ?? conceptId;

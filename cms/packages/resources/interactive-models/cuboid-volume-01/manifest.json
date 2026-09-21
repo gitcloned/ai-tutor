@@ -1,0 +1,98 @@
+{
+  "id": "cuboid-volume-01",
+  "version": 1,
+  "title": "How many cubes are hiding inside?",
+  "renderer": "unit-cubes",
+  "unit": "cm",
+  "whenToUse": "Use to make volume visible as equal unit cubes, layers, and rearrangements.",
+  "studentEvents": [
+    "student-message"
+  ],
+  "examples": [
+    {
+      "description": "Build one 4 by 3 layer of cubes.",
+      "example": "model3d: cuboid-volume-01\n/action: build-base"
+    },
+    {
+      "description": "Fill the second layer and show all 24 cubes.",
+      "example": "model3d: cuboid-volume-01\n/action: build-volume"
+    },
+    {
+      "description": "Rearrange the same 24 cubes to show volume is unchanged.",
+      "example": "model3d: cuboid-volume-01\n/action: same-volume"
+    },
+    {
+      "description": "Unpin the model, keeping it in the notebook while subsequent content continues below.",
+      "example": "model3d: cuboid-volume-01\n/action: remove"
+    }
+  ],
+  "dimensions": [
+    4,
+    3,
+    2
+  ],
+  "actions": {
+    "build-base": [
+      {
+        "dimensions": [
+          4,
+          3,
+          2
+        ],
+        "count": 12,
+        "duration": 2400
+      }
+    ],
+    "build-volume": [
+      {
+        "dimensions": [
+          4,
+          3,
+          2
+        ],
+        "count": 24,
+        "duration": 2400
+      }
+    ],
+    "same-volume": [
+      {
+        "dimensions": [
+          4,
+          3,
+          2
+        ],
+        "count": 24,
+        "duration": 800
+      },
+      {
+        "dimensions": [
+          6,
+          2,
+          2
+        ],
+        "count": 24,
+        "duration": 2200
+      },
+      {
+        "dimensions": [
+          8,
+          3,
+          1
+        ],
+        "count": 24,
+        "duration": 2200
+      }
+    ],
+    "reset": [
+      {
+        "dimensions": [
+          4,
+          3,
+          2
+        ],
+        "count": 0,
+        "duration": 500
+      }
+    ]
+  }
+}

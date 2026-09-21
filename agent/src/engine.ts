@@ -88,12 +88,17 @@ export class TurnEngine {
     const chatHistory = history.slice(0, -1);
     const lastMessage = history.at(-1)?.parts?.[0]?.text ?? 'Begin the session.';
 
-    const systemInstruction = `${this.basePrompt}\n\n---\n\n${skill.prompt(ctx)}${ctx.outputPrompt ? `\n\n---\n\n${ctx.outputPrompt}` : ''}`;
+    const systemInstruction = [
+      this.basePrompt,
+      skill.prompt(ctx),
+      ctx.outputPrompt || null,
+      ctx.modelPrompt  || null,
+    ].filter(Boolean).join('\n\n---\n\n');
     // Record the system prompt the first time a turn runs in this session.
     ctx.session.systemPrompt ??= systemInstruction;
 
     const chat = ai.chats.create({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-3.8-flash',
       history: chatHistory as any,
       config: {
         systemInstruction,

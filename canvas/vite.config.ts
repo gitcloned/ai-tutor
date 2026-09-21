@@ -5,7 +5,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', port: 32000, strictPort: true,
     proxy: {
-      '/api/models': {target:'http://127.0.0.1:32003',rewrite:path=>path.replace('/api/models','/3d-models')},
+      '/api/models': {target:'http://127.0.0.1:32003',rewrite:path=>path.replace('/api/models','/interactive-models')},
       '/api/content': {target:'http://127.0.0.1:32001',rewrite:path=>path.replace('/api/content','')},
     },
   },

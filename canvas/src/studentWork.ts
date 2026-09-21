@@ -1,8 +1,9 @@
 import {renderPlaintextFromRichText,type Editor,type TLShape} from 'tldraw';
 import type {GraphAttempt} from './models/functionGraph';
+import type {ChoiceAttempt} from './mcq';
 
 export type MediaInput={data:string;mimeType:string};
-export type StudentInput={text?:string;audio?:MediaInput;images?:MediaInput[];activity?:GraphAttempt};
+export type StudentInput={text?:string;audio?:MediaInput;images?:MediaInput[];activity?:GraphAttempt|ChoiceAttempt};
 export const fingerprint=(shape:TLShape)=>JSON.stringify({type:shape.type,props:shape.props});
 export const isStudentWork=(shape:TLShape)=>shape.meta.author!=='tutor'&&shape.type!=='model3d'&&shape.type!=='group';
 

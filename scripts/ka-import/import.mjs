@@ -85,17 +85,22 @@ const db = dryRun ? null : client.db(dbName);
 const col = name => db?.collection(name);
 
 // Helper: upsert by kaSlug (used as the stable `id` field). Returns kaSlug.
+// preserve: array of field names to set only on insert — existing values are never overwritten.
 let _dryId = 1;
-async function upsert(collName, kaSlug, doc) {
+async function upsert(collName, kaSlug, doc, { preserve = [] } = {}) {
   if (dryRun) {
     console.log(`  [upsert] ${collName} id=${kaSlug}`);
     return kaSlug ?? String(_dryId++);
   }
-  await col(collName).updateOne(
-    { id: kaSlug },
-    { $set: { ...doc, id: kaSlug } },
-    { upsert: true }
-  );
+  const setFields    = { id: kaSlug };
+  const insertFields = {};
+  for (const [k, v] of Object.entries(doc)) {
+    if (preserve.includes(k)) insertFields[k] = v;
+    else setFields[k] = v;
+  }
+  const update = { $set: setFields };
+  if (Object.keys(insertFields).length) update.$setOnInsert = insertFields;
+  await col(collName).updateOne({ id: kaSlug }, update, { upsert: true });
   return kaSlug;
 }
 
@@ -242,7 +247,11 @@ for (const { unit, topics } of unitBatches) {
           nResources++;
         }
 
-        // prerequisites and probingTree use kaSlug directly — no resolution needed
+        // prerequisites and probingTree use kaSlug directly — no resolution needed.
+        // probingTree and misconceptions are hand-authored — preserve on update. supportedPhases is importer-derived.
+        const hasPractice = masteryQuestionIds.length > 0;
+        const supportedPhases = ['learn', ...(hasPractice ? ['master'] : [])];
+
         await upsert('concepts', concept.kaSlug, {
           title:             concept.title,
           kaSlug:            concept.kaSlug,
@@ -258,14 +267,29 @@ for (const { unit, topics } of unitBatches) {
           probingTree:       concept.probingTree       ?? null,
           masteryQuestions:  masteryQuestionIds,
           examQuestions:     concept.examQuestions     ?? [],
+          supportedPhases,
           lessonPlan,
-        });
+        }, { preserve: ['probingTree', 'misconceptions'] });
         nConcepts++;
+      }
+
+      // Wire sequential nextConcepts for concepts[] format (same as teachingItems does)
+      const conceptSlugs = (topic.concepts ?? []).map(c => c.kaSlug);
+      for (let i = 0; i < conceptSlugs.length - 1; i++) {
+        if (!dryRun) {
+          await col('concepts').updateOne(
+            { id: conceptSlugs[i] },
+            { $set: { nextConcepts: [conceptSlugs[i + 1]] } }
+          );
+        } else {
+          console.log(`  [nextConcepts] ${conceptSlugs[i]} → ${conceptSlugs[i + 1]}`);
+        }
       }
     }
 
     // ── Teaching items → Resource + Concept ──────────────────────────────────
     const conceptIds = [];
+    const topicHasPractice = (topic.exerciseItems ?? []).length > 0;
 
     if (!onlyQuestions) {
       for (let idx = 0; idx < (topic.teachingItems ?? []).length; idx++) {
@@ -304,8 +328,9 @@ for (const { unit, topics } of unitBatches) {
           probingTree:       null,
           masteryQuestions:  [],
           examQuestions:     [],
+          supportedPhases:   ['learn', ...(topicHasPractice ? ['master'] : [])],
           lessonPlan: [{ type: 'ido', instruction: null, resources: [item.kaSlug], learningIndicator: null }],
-        });
+        }, { preserve: ['probingTree', 'misconceptions'] });
         conceptIds.push(item.kaSlug);
         nConcepts++;
       }

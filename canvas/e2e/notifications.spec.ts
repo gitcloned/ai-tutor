@@ -1,0 +1,26 @@
+import {test,expect,type WebSocketRoute} from '@playwright/test';
+test('warnings stay in tray; unexpected disconnect offers recovery',async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/notification-test',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/notification-test');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  socket!.send(JSON.stringify({type:'error',message:'Annotation target was not found',attrs:{}}));
+  await expect(page.getByRole('button',{name:'Lesson warnings (1)',exact:true})).toBeVisible();
+  await expect(page.locator('.lesson-issue')).not.toBeVisible();
+  await expect(page.locator('.toast')).toHaveCount(0);
+  await page.getByRole('button',{name:'Lesson warnings (1)',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Annotation target was not found');
+  await page.getByRole('button',{name:'Close warnings',exact:true}).click();
+  socket!.close();
+  await expect(page.getByRole('dialog',{name:'Let’s reconnect'})).toBeVisible();
+  await page.getByRole('button',{name:'Reconnect to tutor',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Meet on the canvas.'})).toBeVisible();
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  await page.locator('.connection').click();
+  await page.getByRole('button',{name:'Disconnect and keep my notebook'}).click();
+  await expect(page.locator('.connection')).toContainText('Connect tutor');
+  await expect(page.locator('.lesson-issue')).not.toBeVisible();
+});

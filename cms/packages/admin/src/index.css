@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* react-select style overrides to match Tailwind theme */
+.rs__control {
+  @apply border-gray-300 rounded-md shadow-sm min-h-[38px] !important;
+}
+.rs__control--is-focused {
+  @apply border-blue-500 ring-1 ring-blue-500 !important;
+}
+.rs__multi-value {
+  @apply bg-blue-50 rounded !important;
+}
+.rs__multi-value__label {
+  @apply text-blue-800 text-xs !important;
+}
+.rs__multi-value__remove:hover {
+  @apply bg-blue-200 text-blue-900 !important;
+}

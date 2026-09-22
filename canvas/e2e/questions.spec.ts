@@ -20,7 +20,9 @@ test('annotation lookback finds a spaced target three steps back and stays insid
   const updated=await records(page);
   expect(updated.find(r=>r.meta?.mark==='underline').meta.stepId).toBe(updated.find(r=>r.meta?.questionStep===3).id);
   send('question','Q2');send('text_chunk','x = 10');send('annotate','',{mark:'circle',target:'-3'});
-  await expect(page.locator('.toast')).toContainText('last three steps');
+  await page.getByRole('button',{name:/Lesson warnings \(/}).click();
+  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('last three steps');
+  await page.getByRole('button',{name:'Close warnings',exact:true}).click();
 });
 
 async function records(page:Page){

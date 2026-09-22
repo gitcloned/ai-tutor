@@ -3,7 +3,7 @@ import {Mic,Check,LoaderCircle} from 'lucide-react';
 import type {Phase} from './useLesson';
 import {blobInput,type MediaInput} from './studentWork';
 
-export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,watching=false,onTap,onAudio,onRecording,notify}:{tutorBusy?:boolean;phase:Phase;submission?:'idle'|'sent'|'waiting';preparing?:boolean;watching?:boolean;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string)=>void}) {
+export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,watching=false,onTap,onAudio,onRecording,notify}:{tutorBusy?:boolean;phase:Phase;submission?:'idle'|'sent'|'waiting';preparing?:boolean;watching?:boolean;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string,action?:'connect'|'reply'|'retry'|'sound')=>void}) {
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null),held=useRef(false),pressed=useRef(false),cancelled=useRef(false);
   const generation=useRef(0),recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null);
   const callbacks=useRef({onAudio,onRecording,notify});callbacks.current={onAudio,onRecording,notify};
@@ -27,7 +27,7 @@ export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,wat
     held.current=true;
     if(phase==='offline'){onTap();return;}
     if(phase==='connecting')return;
-    if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){notify('Audio recording is unavailable in this browser. You can type your reply.');return;}
+    if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){notify('Audio recording is unavailable in this browser. You can type your reply.','reply');return;}
     const token=++generation.current;
     setRequesting(true);
     try {
@@ -37,7 +37,7 @@ export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,wat
       const mimeType=['audio/webm;codecs=opus','audio/mp4','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t));
       const r=new MediaRecorder(mic,mimeType?{mimeType}:undefined),chunks:Blob[]=[];recorder.current=r;
       r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-      r.onerror=()=>{cancelled.current=true;stopTracks();setListening(false);callbacks.current.onRecording(false);notify('Recording failed. Please try again.');};
+      r.onerror=()=>{cancelled.current=true;stopTracks();setListening(false);callbacks.current.onRecording(false);notify('Recording failed. You can type your reply or try holding the orb again.','reply');};
       r.onstop=async()=>{
         stopTracks();recorder.current=null;setListening(false);callbacks.current.onRecording(false);
         if(cancelled.current||token!==generation.current)return;
@@ -45,7 +45,7 @@ export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,wat
         try{const audio=await blobInput(blob);if(token===generation.current)callbacks.current.onAudio(audio);}catch(e){callbacks.current.notify((e as Error).message);}
       };
       r.start();setListening(true);callbacks.current.onRecording(true);
-    } catch {stopTracks();setListening(false);notify('Microphone access failed. Allow microphone access or type your reply.');}
+    } catch {stopTracks();setListening(false);notify('Microphone access failed. Allow microphone access in your browser, or type your reply.','reply');}
     finally{if(token===generation.current)setRequesting(false);}
   }
   function begin(){if(unavailable||pressed.current||recorder.current)return;pressed.current=true;setPressing(true);held.current=false;cancelled.current=false;timer.current=setTimeout(start,420);}

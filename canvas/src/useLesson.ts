@@ -12,7 +12,8 @@ declare global {interface Window {canvasPlaybackDiagnostics?:()=>unknown;}}
 export function useLesson(editor:Editor|null) {
   const [phase,setPhase]=useState<Phase>('offline'); const [connected,setConnected]=useState(false);
   const [caption,setCaption]=useState(''); const [question,setQuestion]=useState(''); const [title,setTitle]=useState('A little room to think');
-  const [notice,setNotice]=useState(''); const [entries,setEntries]=useState<Entry[]>([]);
+  const [warnings,setWarnings]=useState<string[]>([]);
+  const [issue,setIssue]=useState<{text:string;action:'connect'|'reply'|'retry'|'sound'}|null>(null); const [entries,setEntries]=useState<Entry[]>([]);
   const turnActive=useRef(false),busyRef=useRef(false);
   const [tutorBusy,setTutorBusy]=useState(false);
   const [endedTurns,setEndedTurns]=useState(0);
@@ -24,7 +25,16 @@ export function useLesson(editor:Editor|null) {
   const receivedReply=()=>{pendingReply.current=false;setSubmission(current=>current==='sent'?'sent':'idle');};
   const socket=useRef<WebSocket|null>(null), player=useRef<Playback|null>(null), renderer=useRef<CanvasRenderer|null>(null);
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
-  const notify=useCallback((text:string)=>setNotice(text),[]);
+  const notify=useCallback((text:string,action?:'connect'|'reply'|'retry'|'sound')=>{
+    if(!text)return;
+    if(action)setIssue({text,action});
+    else setWarnings(previous=>[...previous.filter(item=>item!==text),text].slice(-30));
+  },[]);
+  useEffect(()=>{
+    const offline=()=>{if(socket.current)notify('Your internet connection was lost. Check your Wi-Fi, then reconnect to your tutor. Your notebook is saved.', 'connect');};
+    window.addEventListener('offline',offline);
+    return()=>window.removeEventListener('offline',offline);
+  },[notify]);
   const connectionVersion=useRef(0),recordingPause=useRef(false);
   const untitledConnectionPage=useRef<ReturnType<Editor['getCurrentPageId']>|null>(null);
   // Metadata only: never retain student input, audio bytes, or lesson text here.
@@ -111,14 +121,14 @@ export function useLesson(editor:Editor|null) {
     return ()=>{if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
-    try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.');return false;}
+    try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.','connect');return false;}
     if(!player.current) return false;
     connectionVersion.current++;
-    setEndedTurns(0);
+    setEndedTurns(0);setIssue(null);
     clearSubmission();
     socket.current?.close();player.current.cancel();adapter.current.reset();paused.current=false;audio.current.pause(false);
-    void audio.current.unlock().catch(()=>notify('Sound is blocked. Tap the tutor to enable audio.'));
-    const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setNotice('');setQuestion('');waiting.current=false;
+    void audio.current.unlock().catch(()=>notify('Your browser paused lesson audio. Enable sound to hear your tutor.','sound'));
+    const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setQuestion('');waiting.current=false;
     ws.onopen=()=>{
       if(socket.current!==ws)return;
       renderer.current!.newLesson('New lesson');
@@ -139,17 +149,17 @@ export function useLesson(editor:Editor|null) {
       }
       catch {notify('One tutor event could not be read. You can reconnect if the lesson stops.');}
     };
-    ws.onerror=()=>{if(socket.current===ws)notify('Could not reach the tutor. Check the replay server and connection address.');};
-    ws.onclose=()=>{if(socket.current!==ws)return;clearSubmission();player.current?.cancel();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;};
+    ws.onerror=()=>{if(socket.current===ws)notify('We could not reach your tutor. Check your connection and try again.','connect');};
+    ws.onclose=()=>{if(socket.current!==ws)return;clearSubmission();player.current?.cancel();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
     return true;
   }
-  function disconnect(){connectionVersion.current++;clearSubmission();socket.current?.close();player.current?.cancel();setConnected(false);setPhase('offline');}
+  function disconnect(){connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();setConnected(false);setPhase('offline');}
   function send(value:string|StudentInput,videoDone=false) {
-    if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.');return false;}
+    if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.','connect');return false;}
     if(pendingReply.current||(busyRef.current&&!videoDone)){notify('Your work was sent. Wait for your tutor to respond.');return false;}
     const input=typeof value==='string'?{text:value.trim()}:value;
     if(!input.text?.trim()&&!input.audio&&!input.images?.length&&!input.activity)return false;
-    try{socket.current.send(JSON.stringify({type:'message',...input}));}catch{notify('Could not send. Your work is still pending; tap to retry.');return false;}
+    try{socket.current.send(JSON.stringify({type:'message',...input}));}catch{notify('Could not send. Your work is still pending. Try sending it again.','retry');return false;}
     pendingReply.current=true;setBusy(true);setSubmission('sent');
     if(renderer.current)renderer.current.follow=true;setFollow(true);
     if(sentTimer.current)clearTimeout(sentTimer.current);
@@ -172,5 +182,5 @@ export function useLesson(editor:Editor|null) {
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
   function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.refocus();}setFollow(true);}
-  return {endedTurns,tutorBusy,phase,connected,caption,question,title,notice,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
+  return {enableSound:()=>audio.current.unlock().catch(()=>notify('Sound is still blocked. Check this site’s sound permission in your browser, then try again.','sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
 }

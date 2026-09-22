@@ -5,6 +5,7 @@ import {VideoLesson} from './VideoLesson';
 import {upgradeQuestionLayout} from './questions';
 import { ArrowUpRight, ArrowLeft, BookOpen, X, Send, Focus, Minus, Plus, Plug, Download, Volume2, Leaf } from 'lucide-react';
 import { Toolbar } from './Toolbar';
+import {LessonNotifications} from './LessonNotifications';
 import { Orb } from './Orb';
 import {InputHints,learnedInput} from './InputHints';
 import {McqShapeUtil,McqContext} from './McqShape';
@@ -52,7 +53,6 @@ export default function App() {
     document.addEventListener('keydown',trap);return()=>{clearTimeout(timer);document.removeEventListener('keydown',trap);previous?.focus();};
   },[sheet]);
   useEffect(()=>{if(!editor)return;const refresh=()=>setHasContent(editor.getCurrentPageShapes().length>0);refresh();return editor.store.listen(refresh);},[editor]);
-  useEffect(()=>{if(!lesson.notice)return;const timeout=setTimeout(()=>lesson.notify(''),9000);return()=>clearTimeout(timeout);},[lesson.notice]);
   useEffect(()=>{function escape(e:KeyboardEvent){if(e.key==='Escape'){setSheet(null);setNotebook(false);}}window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);},[]);
   async function sendWork(audio?:MediaInput,activity?:ChoiceAttempt):Promise<boolean>{
     if(audio)pendingAudio.current=audio;
@@ -68,7 +68,7 @@ export default function App() {
       if(lesson.send({...(activity?{activity}:{}),...(text?{text}:{}),...(voice?{audio:voice}:{}),...(delta.images.length?{images:delta.images}:{})})){
         delta.commit();if(replyRef.current.trim()===draft)setReply('');if(pendingAudio.current===voice)pendingAudio.current=undefined;setSheet(null);return true;
       }
-    }catch{lesson.notify('Could not prepare your work. It is still pending; tap to retry.');}finally{sending.current=false;setPreparing(false);}
+    }catch{lesson.notify('Could not prepare your work. It is still pending. Try sending it again.','retry');}finally{sending.current=false;setPreparing(false);}
     return false;
   }
   function tapOrb(){if(!lesson.connected){setSheet('connect');return;}void sendWork();}
@@ -101,7 +101,7 @@ export default function App() {
     </footer>
     {editor&&<InputHints key={lesson.connectionVersion.current} editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&['ready','waiting'].includes(lesson.phase)} blocked={!!lesson.video||!!sheet||notebook}/>}
     {lesson.video&&<VideoLesson media={lesson.video} onDone={lesson.doneWatching}/>}
-    {lesson.notice&&<div className="toast" role="status">{lesson.notice}<button aria-label="Dismiss notification" onClick={()=>lesson.notify('')}><X size={16}/></button></div>}
+    <LessonNotifications warnings={lesson.warnings} clear={lesson.clearWarnings} issue={lesson.issue} dismiss={lesson.dismissIssue} act={action=>{lesson.dismissIssue();if(action==='retry')void sendWork();else if(action==='sound')void lesson.enableSound();else setSheet(action==='reply'?'reply':'connect');}}/>
     {notebook&&editor&&<Notebook editor={editor} connected={lesson.connected} close={()=>setNotebook(false)}/>}
     {sheet&&<div className="sheet-backdrop" onPointerDown={e=>{if(e.target===e.currentTarget)setSheet(null);}}><section ref={dialogRef} className={`sheet ${sheet==='transcript'?'transcript-sheet':''}`} role="dialog" aria-modal="true" aria-labelledby="sheet-title"><button className="close-sheet" aria-label="Close dialog" onClick={()=>setSheet(null)}><X size={20}/></button>
       {sheet==='connect'&&<><div className="sheet-symbol"><Plug size={24}/></div><h2 id="sheet-title">Meet on the canvas.</h2><p>Connect to a lesson and watch your tutor bring ideas to life.</p><form onSubmit={e=>{e.preventDefault();if(lesson.connect(url)){localStorage.setItem('prodigy-ws',url);setSheet(null);}}}><label htmlFor="ws-url">Tutor address</label><input autoFocus id="ws-url" value={url} onChange={e=>setUrl(e.target.value)} placeholder={defaultTutorUrl(window.location)} spellCheck={false}/><button className="primary" type="submit">{lesson.connected?'Reconnect':'Connect to tutor'}<ArrowUpRight size={17}/></button></form><div className="connection-note"><Volume2 size={17}/><span>Sound is enabled when you connect. The replay tool displays narration as captions.</span></div>{lesson.connected&&<button className="text-button" onClick={()=>{lesson.disconnect();setSheet(null);}}>Disconnect and keep my notebook</button>}</>}

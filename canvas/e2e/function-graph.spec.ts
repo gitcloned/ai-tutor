@@ -81,7 +81,9 @@ test('invalid equations produce a recoverable error and reset/remove commands wo
   await expect(page.locator('.connection')).toContainText('Connected');
   const model=(attrs:Record<string,string>)=>{socket!.send(JSON.stringify({type:'model',content:'function-graph',attrs}));socket!.send(JSON.stringify({type:'event',event:{type:'tutor-ended'}}));};
   model({equation:'y = window.alert(1)',action:'plot'});
-  await expect(page.locator('.toast')).toContainText('Unsupported');
+  await page.getByRole('button',{name:/Lesson warnings \(/}).click();
+  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Unsupported');
+  await page.getByRole('button',{name:'Close warnings',exact:true}).click();
   await expect(page.locator('.function-graph')).toHaveCount(0);
   model({equation:'y = x^2',action:'ask',targets:'1,2'});
   await expect(page.locator('.function-graph')).toHaveAttribute('data-ready','true');

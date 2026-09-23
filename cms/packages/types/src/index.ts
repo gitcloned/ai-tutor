@@ -10,7 +10,20 @@ export type ResourceType = 'teaching-video' | 'practice-test' | 'article' | 'sim
 export type QuestionType = 'mcq' | 'fib' | 'subjective' | 'perseus';
 export type DifficultyLevel = 'lots' | 'mots' | 'hots';
 export type LessonStepType = 'ido' | 'wedo' | 'youdo';
-export type ConceptState = 'not_assessed' | 'learning' | 'learn-pre-req-before' | 'clarity' | 'mastered' | 'exam_ready';
+/** Single source of truth for concept state string values. Use CS.* everywhere instead of bare literals. */
+export const CS = {
+  NOT_ASSESSED:          'not_assessed',
+  ASSESSING:             'assessing',
+  LEARNING:              'learning',
+  LEARN_PRE_REQ_BEFORE:  'learn-pre-req-before',
+  CLARITY:               'clarity',
+  MASTERING:             'mastering',
+  MASTERED:              'mastered',
+  GETTING_EXAM_READY:    'getting_exam_ready',
+  EXAM_READY:            'exam_ready',
+} as const;
+
+export type ConceptState = typeof CS[keyof typeof CS];
 export type MasteryLevel = 'lots' | 'mots' | 'hots';
 export type SessionStatus = 'initialised' | 'started' | 'completed';
 export type MemoryType = 'factual' | 'reflected';
@@ -149,6 +162,7 @@ export interface IConcept {
   topic: ObjectId;
   order: number;
   conceptWeightage?: number | null;
+  supportedPhases?: string[];
   classApplicableTo: ObjectId[];
   boards: ObjectId[];
   prerequisites: ObjectId[];
@@ -208,6 +222,10 @@ export interface ISession {
   memory: string[];
   createdAt: Date;
   endedAt?: Date | null;
+  /** Step id to restart at when returning from a prereq redirect. */
+  resumeFromStep?: string | null;
+  /** Per-question outcomes recorded during a practice exercise. */
+  questionProgress?: Array<{ questionId: string; outcome: 'pass' | 'fail' | 'not_sure' }>;
 }
 
 export interface IMemory {

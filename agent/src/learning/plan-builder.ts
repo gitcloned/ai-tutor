@@ -1,3 +1,4 @@
+import { CS } from '../types.js';
 import type { Concept, ConceptState, PlanStep, PlanStepType } from '../types.js';
 
 /**
@@ -12,11 +13,11 @@ import type { Concept, ConceptState, PlanStep, PlanStepType } from '../types.js'
  */
 export function buildPlan(concept: Concept, state: ConceptState): PlanStep[] {
   switch (state) {
-    case 'not_assessed': return buildProbingPlan(concept);
-    case 'learning':     return buildTeachingPlan(concept);
-    case 'clarity':      return buildMasteryPlan('lots');
-    case 'mastered':     return buildMasteryPlan('hots');
-    default:             return [step(1, { instruction: `Work through "${concept.title}" with the student` }, 'probe')];
+    case CS.NOT_ASSESSED: return buildProbingPlan(concept);
+    case CS.LEARNING:     return buildTeachingPlan(concept);
+    case CS.CLARITY:      return buildMasteryPlan('lots');
+    case CS.MASTERED:     return buildMasteryPlan('hots');
+    default:              return [step('1', { instruction: `Work through "${concept.title}" with the student` }, 'probe')];
   }
 }
 
@@ -28,9 +29,9 @@ function buildProbingPlan(concept: Concept): PlanStep[] {
   }
   // Fallback for concepts without a probing tree — flat linear plan
   return linearPlan([
-    step(1, { instruction: `Ask a probing question about "${concept.title}"` }, 'probe'),
-    step(2, { instruction: 'Store a memory: what the student knows and where they got stuck' }, 'store_memory'),
-    step(3, { instruction: 'Advance state to "learning"' }, 'advance_state'),
+    step('1', { instruction: `Ask a probing question about "${concept.title}"` }, 'probe'),
+    step('2', { instruction: 'Store a memory: what the student knows and where they got stuck' }, 'store_memory'),
+    step('3', { state: CS.LEARNING }, 'redirect'),
   ]);
 }
 
@@ -51,13 +52,13 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
   let nextId = 1;
 
   function alloc(type: PlanStepType, content: Record<string, unknown>): PlanStep {
-    const s: PlanStep = { id: nextId++, content, status: 'pending', type, ifCorrect: null, ifWrong: null };
+    const s: PlanStep = { id: String(nextId++), content, status: 'pending', type, ifCorrect: null, ifWrong: null };
     compiled.push(s);
     return s;
   }
 
   // Returns first step id of the compiled branch, or null (= terminal)
-  function compileBranch(branch: any): number | null {
+  function compileBranch(branch: any): string | null {
     if (!branch) return null;
 
     switch (branch.type) {
@@ -67,7 +68,7 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
       }
 
       case 'teach': {
-        const s = alloc('teach', { conceptId: branch.conceptId, conceptTitle: branch.title, reason: branch._comment ?? null });
+        const s = alloc('redirect', { conceptId: branch.conceptId, conceptTitle: branch.title, reason: branch._comment ?? null });
         const next = branch.thenAsk ? compileNode(branch.thenAsk) : null;
         s.ifCorrect = next;
         s.ifWrong   = next;
@@ -90,7 +91,7 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
     }
   }
 
-  function compileNode(node: any): number {
+  function compileNode(node: any): string {
     const s = alloc('probe', { question: node.probe, idealAnswer: node.idealAnswer });
     s.ifCorrect = compileBranch(node.ifCorrect);
     s.ifWrong   = compileBranch(node.ifWrong);
@@ -107,7 +108,7 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
   }
 
   // Compile the root nodes
-  let firstNodeId: number | null = null;
+  let firstNodeId: string | null = null;
   for (const node of (tree.nodes ?? [])) {
     const id = compileNode(node);
     if (firstNodeId === null) firstNodeId = id;
@@ -119,8 +120,8 @@ export function compileProbingTree(tree: { nodes: any[]; entryQuestion?: any }):
   }
 
   // Add terminal steps
-  const storeStep   = alloc('store_memory',  { instruction: 'Store what you learned about this student' });
-  const advanceStep = alloc('advance_state', { instruction: 'Advance state to "learning"', targetState: 'learning' });
+  const storeStep   = alloc('store_memory', { instruction: 'Store what you learned about this student' });
+  const advanceStep = alloc('redirect',     { state: 'learning' });
 
   storeStep.ifCorrect = advanceStep.id;
   storeStep.ifWrong   = advanceStep.id;
@@ -156,7 +157,7 @@ function buildTeachingPlan(concept: Concept): PlanStep[] {
   const steps: PlanStep[] = [];
 
   function alloc(type: PlanStepType, content: Record<string, unknown>): void {
-    steps.push(step(nextId++, content, type));
+    steps.push(step(String(nextId++), content, type));
   }
 
   const ORDER: Record<string, number> = { ido: 0, wedo: 1, youdo: 2 };
@@ -217,7 +218,7 @@ function buildTeachingPlan(concept: Concept): PlanStep[] {
     alloc('practice', { question: `Can you solve an example of ${concept.title}?`, lessonType: 'youdo' });
   }
 
-  alloc('advance_state', { instruction: 'Advance state to "clarity"', targetState: 'clarity' });
+  alloc('redirect', { state: CS.CLARITY });
   return linearPlan(steps);
 }
 
@@ -225,18 +226,15 @@ function buildTeachingPlan(concept: Concept): PlanStep[] {
 
 function buildMasteryPlan(level: 'lots' | 'hots'): PlanStep[] {
   return linearPlan([
-    step(1, { instruction: `Present a ${level === 'lots' ? 'LOTS' : 'MOTS/HOTS'} mastery question` }, 'probe'),
-    step(2, { instruction: "Assess the student's answer — probe if wrong, affirm if correct" }, 'probe'),
-    step(3, { instruction: level === 'lots'
-      ? 'Advance state to "mastered" once student clears LOTS consistently'
-      : 'Advance state to "exam_ready" once student clears HOTS',
-              targetState: level === 'lots' ? 'mastered' : 'exam_ready' }, 'advance_state'),
+    step('1', { instruction: `Present a ${level === 'lots' ? 'LOTS' : 'MOTS/HOTS'} mastery question` }, 'probe'),
+    step('2', { instruction: "Assess the student's answer — probe if wrong, affirm if correct" }, 'probe'),
+    step('3', { state: level === 'lots' ? CS.MASTERED : CS.EXAM_READY }, 'redirect'),
   ]);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function step(id: number, content: Record<string, unknown>, type: PlanStepType): PlanStep {
+function step(id: string, content: Record<string, unknown>, type: PlanStepType): PlanStep {
   return { id, content, status: 'pending', type, ifCorrect: null, ifWrong: null };
 }
 

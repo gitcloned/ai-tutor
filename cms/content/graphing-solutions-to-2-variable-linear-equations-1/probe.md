@@ -1,34 +1,102 @@
-# Probe: Completing solutions to 2-variable equations
-# Concept: graphing-solutions-to-2-variable-linear-equations-1
+# Probe: Two-variable linear equations — solutions
+# Concept: 2-variable-linear-equations-graphs
+# Subsumes: checking-ordered-pair-solutions-to-equations-1
+#           checking-ordered-pair-solutions-to-equations-2
+#           graphing-solutions-to-2-variable-linear-equations-1
+# Models: function-graph
 
-## 1 (Ask entry question)
-Ask: Given the equation x − 5y = −15, complete the ordered pair ( ___, −2 ).
-Correct answer: −25. If correct, go to Step 7. If wrong, go to Step 2 to understand the misconception further.
+## 1 (Entry — production)
+Greet and start.
 
-## 2 (Check ordered pair knowledge)
-Ask: In the pair ( ___, −2 ), does −2 represent x or y?
-Correct answer: y. If correct, the student knows ordered pair notation — go to Step 3 to teach substitution. If wrong, go to Step 4 to test if they can substitute at all.
+Goal of this lesson plan is to see if a student does understand linear equations in 2 variable, understand its forms a line, and can solve for multiple combination of x and y. A student may know the concept and have mastery, may know the concept but have misconceptions, may have some pre-requisites missed, dont understand at all.
 
-## 3 (Check substitution)
-Ask: Good — so y = −2. Help student solve by substitution step by step. Ex, Substitute into x − 5(−2) = −15. What does the left side simplify to?
-If can solve with substitution with some help, go to Step 7 for more repetition. If cannot understand and solve with substitution, check if they know the concept, go to step 4
+Approach you are using is to ask one difficult question, and up or down the path to the evaluate the student understanding.
 
-## 4 (Check what makes two values a solution)
-Ask: Ok lets check if you understand What makes two values a solution. The equation is y = 2x - 3. Riya says x = 3 and y = 3. Do you agree? How can you tell?
-Correct answer: Yes, because 2*3 - 3 = 3, so these values make the equation true.
-After the student's response, go to Step 6 to teach, whether the answer is correct, incorrect, or uncertain. Use their explanation to tailor the teaching; do not ask another assessment question here.
+Question to ask: "Give me two different pairs of values (x, y) that make this equation true: -3x - y = 6"
 
-## 5 (Prereq: ordered pairs)
-redirect: checking-ordered-pair-solutions-to-equations-1
+Possible path to go up the ladder for a child
+ - Solved and provided two valid pairs that justify the equation
+ - Understand that there could be infinite solutions for a linear equation - Use Step 2
+ - Can also plot the pairs on a linear graph - Use Step 5
+
+Possible path to go down the ladder for a child
+ - Understand the linear equation but found this question difficult - Move to step 3
+   - Solved and gave different pairs by just specifying values of x
+   - Can solve a simple equation and specify pairs
+ - Do not understand what does pair (x, y) means - Move to step 4
+   - Doing mistakes in specifying pairs after subsitution and telling how to write pair
+   - Does not know about line and inifinite solutions of linear equation, and can solve with help
+ - Cannot solve for y, when x is given - Move to step 8
+   - Even after steps mentioned, cannot solve 
+   - Dont understand x or what expressions are
+
+While trying to understand, you can give hint if a child is not able to solve. Hint should be given ONE STEP AT A TIME and should not jump!. ex
+
+Follow exact hints as below, share 1 hint, while explaing do annotate term 
+
+ - put x = 0, annotate x and let student solve
+
+if cannot solve then next hint
+
+ - Write -3*(0) -y = 6, annote and let student solve
+
+if cannot solve then next hint
+
+ - What is y, if -y = 6,  annote and let student solve
+
+if was solving, what is the ordered pair is in case of x = 0 (__, __)
+
+You can ask MCQs if required
+
+If not sure before moving, you can ask a few more question (1/2). Your goal is to figure out the learning level of child and the next step.
+
+## 2 (Ceiling — how big is the solution set?)
+Ask MCQ question "How many pairs like this are there altogether?"
+ - one
+ - two
+ - ten
+ - infinite
+
+If correct, move to 7b-ok
+If not, move to 5
+
+## 3 (Revise ordered pairs)
+redirect: checking-ordered-pair-solutions-to-equations-2
 mode: teach
-reason: Student can substitute correctly but doesn't understand that in (x, y) the first blank is x, not y.
+reason: can substitute, but getting confused by terms
+then: 7
 
-## 6 (Prereq: linear equations intro)
+## 4 (Teach two variable equation)
 redirect: 2-variable-linear-equations-graphs
 mode: teach
-reason: Lets learn about Linear equations in two variables.
+reason: Student does not know what it means for a pair to satisfy an equation.
+then: 3
 
-## 7 (Concept is clear)
-Ask one or two more similar question (make one up with different numbers). While teaching a question, do use question tag, and also be socratic. Let student commplete question, and help them with their mistakes if any. Ask what would be the next step.
+## 5 (Check if can plot on graph)
+Open function-graph in ask mode, curve hidden, for the equation child is solving, ask him to plot points on the graph. point by point
 
-If they answer that too, move the concept to clarity (advance state). If wrong, move the concept to learning (advance state)
+Once done and plotted 2 or 3 points, draw the line on the graph
+
+Ask does he understand
+
+Remove graph
+
+After this, continue at Step 7b-ok. nextStep: 7b-ok
+
+## 7 (Check once before moving to clarity)
+Ask: "Complete the ordered pair ( -5, ___ ) for the equation -3*x + 7*y =  5*x + 2*y"
+Correct answer: −8. 
+
+if correct, move to 7b-ok
+if wrong, move to 7b-learn
+
+## 7b-ok   
+state:clarity
+                                                      
+## 7b-learn                 
+state: learning
+
+## 8 (teach algebraic expression)
+redirect:algebraic-expression-basics
+mode: teach
+then: 4

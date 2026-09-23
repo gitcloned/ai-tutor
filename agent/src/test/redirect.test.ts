@@ -18,6 +18,7 @@ import {
   CONCEPT_ORDERED_PAIRS,
   CONCEPT_TWO_VAR_INTRO,
   makeNode,
+  makeSession,
   makeCtx,
 } from './fixtures.js';
 import { compileProbingTree } from '../learning/plan-builder.js';
@@ -96,6 +97,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -119,6 +121,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -144,6 +147,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -162,6 +166,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -170,14 +175,14 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
       expect(result.ok).toBe(true);
       // nextStep lets the agent deliver the prereq content inline in the same turn
       expect(result.nextStep).toBeDefined();
-      expect(result.nextStep.id).toBe(1);
+      expect(result.nextStep.id).toBe('1');
       expect(result.message).toContain(CONCEPT_ORDERED_PAIRS.title);
       // send-ok is the safety net: auto-triggers the next turn so the prereq
       // content plays even if the agent skips nextStep
       expect(result.action).toEqual({ type: 'send-ok' });
     });
 
-    it('then a planHistory entry is appended for the prereq concept', async () => {
+    it('then a planHistory entry is seeded on the new prereq session', async () => {
       const { probe, ctx } = setup();
 
       vi.mocked(lp.get).mockResolvedValueOnce([]);
@@ -186,11 +191,13 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
       await update_step.run({ id: probe.id, outcome: 'fail' }, ctx);
 
+      // ctx.session is now the prereq session — it has one planHistory entry
       expect(ctx.session.planHistory).toHaveLength(1);
       expect(ctx.session.planHistory[0].conceptId).toBe(CONCEPT_ORDERED_PAIRS.id);
     });
@@ -204,6 +211,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -232,6 +240,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         conceptId: CONCEPT_TWO_VAR_INTRO.id, state: 'learning',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_TWO_VAR_INTRO);
 
@@ -266,6 +275,7 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
         goTo: null, cameFrom: null, preReqToLearn: null,
       };
       vi.mocked(lp.get).mockResolvedValueOnce([existingNode]);
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
@@ -294,7 +304,7 @@ describe('return to origin — triggered by update_step when advance_state compl
 
     function setup() {
       const plan        = plainProbingPlan();
-      const advanceStep = plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       const ctx         = makeCtx({
         concept: CONCEPT_ORDERED_PAIRS,
         journeyNode: makeNode({
@@ -311,6 +321,7 @@ describe('return to origin — triggered by update_step when advance_state compl
 
     function mockReturnToOrigin() {
       vi.mocked(lp.patch).mockResolvedValue({});
+      // First lp.get: origin journey node
       vi.mocked(lp.get).mockResolvedValueOnce([{
         id: 'node-completing', journeyId: 'journey-1',
         conceptId: CONCEPT_COMPLETING_SOLUTIONS.id,
@@ -318,6 +329,8 @@ describe('return to origin — triggered by update_step when advance_state compl
         preReqToLearn: CONCEPT_ORDERED_PAIRS.id,
       }]);
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_COMPLETING_SOLUTIONS);
+      // Second lp.get: origin session (found by studentId + conceptId + status=started)
+      vi.mocked(lp.get).mockResolvedValueOnce([makeSession({ status: 'started', planHistory: [] })]);
     }
 
     it('then ctx is swapped back to the origin concept and node', async () => {
@@ -353,19 +366,17 @@ describe('return to origin — triggered by update_step when advance_state compl
       expect(result.concept).toBe(CONCEPT_COMPLETING_SOLUTIONS.title);
     });
 
-    it('then a planHistory entry is appended for the resumed origin concept', async () => {
+    it('then a planHistory entry is appended to the origin session on return', async () => {
       const { advanceStep, ctx } = setup();
-      ctx.session.planHistory = [
-        { conceptId: CONCEPT_COMPLETING_SOLUTIONS.id, conceptTitle: CONCEPT_COMPLETING_SOLUTIONS.title, plan: [], startedAt: new Date().toISOString() },
-        { conceptId: CONCEPT_ORDERED_PAIRS.id,        conceptTitle: CONCEPT_ORDERED_PAIRS.title,        plan: [], startedAt: new Date().toISOString() },
-      ];
+      // mockReturnToOrigin provides origin session with 1 existing entry;
+      // returnToOrigin appends a second (resumed) entry → 2 total on origin session
       mockReturnToOrigin();
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 
-      // History: origin (start) → prereq → origin (resumed) = 3 entries
-      expect(ctx.session.planHistory).toHaveLength(3);
-      expect(ctx.session.planHistory[2].conceptId).toBe(CONCEPT_COMPLETING_SOLUTIONS.id);
+      // ctx.session is now the origin session (swapped by returnToOrigin)
+      expect(ctx.session.planHistory).toHaveLength(1); // origin session had [] + 1 appended
+      expect(ctx.session.planHistory[0].conceptId).toBe(CONCEPT_COMPLETING_SOLUTIONS.id);
     });
 
     it('then teachingPlan.content is updated to reflect the return', async () => {
@@ -383,7 +394,7 @@ describe('return to origin — triggered by update_step when advance_state compl
   describe('when goTo is not set — the node is not a prereq node', () => {
     it('then the plan is rebuilt for the new state and ctx stays on the same concept', async () => {
       const plan        = plainProbingPlan();
-      const advanceStep = plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       const ctx         = makeCtx({
         concept:     CONCEPT_COMPLETING_SOLUTIONS,
         journeyNode: makeNode({ id: 'node-completing', goTo: null }),
@@ -409,12 +420,13 @@ describe('return to origin — triggered by update_step when advance_state compl
       // Stack: completing-solutions → two-var-intro → ordered-pairs
       // ordered-pairs advance_state fires → should return to two-var-intro only
       const plan        = plainProbingPlan();
-      const advanceStep = plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       const ctx         = makeCtx({
         concept: CONCEPT_ORDERED_PAIRS,
         journeyNode: makeNode({
           id:        'node-ordered-pairs',
           conceptId: CONCEPT_ORDERED_PAIRS.id,
+          state:     'assessing',  // transition state — advance_state triggers go-to-origin
           goTo:      CONCEPT_TWO_VAR_INTRO.id,    // immediate origin is two-var-intro
           cameFrom:  CONCEPT_TWO_VAR_INTRO.id,
         }),
@@ -431,6 +443,7 @@ describe('return to origin — triggered by update_step when advance_state compl
         preReqToLearn: CONCEPT_ORDERED_PAIRS.id,
       }]);
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_TWO_VAR_INTRO);
+      vi.mocked(lp.get).mockResolvedValueOnce([makeSession({ status: 'started', conceptId: CONCEPT_TWO_VAR_INTRO.id })]);
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 

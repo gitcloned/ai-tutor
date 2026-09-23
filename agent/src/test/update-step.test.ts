@@ -73,11 +73,11 @@ describe('buildPlan — learning state', () => {
     );
   });
 
-  it('ends with advance_state targeting "clarity"', () => {
-    const plan    = buildPlan(CONCEPT_COMPLETING_SOLUTIONS, 'learning');
-    const advance = plan[plan.length - 1];
-    expect(advance.type).toBe('advance_state');
-    expect((advance.content as any).targetState).toBe('clarity');
+  it('ends with redirect to state "clarity"', () => {
+    const plan     = buildPlan(CONCEPT_COMPLETING_SOLUTIONS, 'learning');
+    const redirect = plan[plan.length - 1];
+    expect(redirect.type).toBe('redirect');
+    expect((redirect.content as any).state).toBe('clarity');
   });
 
   it('steps are wired linearly — each step\'s ifCorrect points to the next', () => {
@@ -171,7 +171,7 @@ describe('update_step — navigating the learning plan', () => {
 
     it('transitions ctx.journeyNode.state to "clarity"', async () => {
       const ctx         = makeLearningCtx();
-      const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
@@ -181,7 +181,7 @@ describe('update_step — navigating the learning plan', () => {
 
     it('patches the journey node in LP with state "clarity"', async () => {
       const ctx         = makeLearningCtx();
-      const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
@@ -192,34 +192,35 @@ describe('update_step — navigating the learning plan', () => {
       );
     });
 
-    it('rebuilds ctx.plan with clarity mastery steps after advance_state', async () => {
+    it('does NOT rebuild ctx.plan — clarity is a checkpoint so session ends here', async () => {
       const ctx         = makeLearningCtx();
-      const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
+      const planBefore  = ctx.plan;
+      const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 
-      // clarity uses buildMasteryPlan — should have steps
-      expect(ctx.plan.length).toBeGreaterThan(0);
+      // plan is NOT replaced — clarity plan is built by the next session via buildContext
+      expect(ctx.plan).toBe(planBefore);
     });
 
-    it('returns nextStep pointing to first clarity step after advance_state', async () => {
+    it('returns allDone when reaching a checkpoint state after advance_state', async () => {
       const ctx         = makeLearningCtx();
-      const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       const result = await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx) as any;
 
       expect(result.ok).toBe(true);
       expect(ctx.journeyNode.state).toBe('clarity');
-      // clarity has a real plan — nextStep should be defined, not allDone
-      expect(result.nextStep).toBeDefined();
-      expect(result.allDone).toBeFalsy();
+      // clarity is a checkpoint — session ends, next session starts the mastery plan
+      expect(result.allDone).toBe(true);
+      expect(result.nextStep).toBeUndefined();
     });
 
     it('does not trigger return-to-origin — goTo is null on this node', async () => {
       const ctx         = makeLearningCtx();
-      const advanceStep = ctx.plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
@@ -230,8 +231,8 @@ describe('update_step — navigating the learning plan', () => {
 
   // ── ──────────────────────────────────────────────────────────────────────────
 
-  describe('full walk — resource → practice → advance_state', () => {
-    it('can complete all steps in sequence; node state advances to "clarity" with a new plan', async () => {
+  describe('full walk — resource → practice → redirect(state:clarity)', () => {
+    it('completes all steps; node state advances to "clarity" and session ends (allDone)', async () => {
       const ctx = makeLearningCtx();
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -240,23 +241,20 @@ describe('update_step — navigating the learning plan', () => {
       while (guard-- > 0) {
         const step = ctx.plan.find(s => s.status === 'in_progress')
                   ?? ctx.plan.find(s => s.status === 'pending');
-        if (!step) break;
+        // Stop when the redirect(state) step comes up — it's handled internally by update_step
+        if (!step || (step.type === 'redirect' && !(step.content as any).conceptId)) break;
 
         step.status   = 'in_progress';
-        const outcome = step.type === 'advance_state' ? 'done'
-                      : step.type === 'resource'      ? 'done'
-                      : 'pass';
+        const outcome = step.type === 'resource' ? 'done' : 'pass';
         lastResult = await update_step.run({ id: step.id, outcome }, ctx) as any;
 
-        // stop once we've hit advance_state (clarity plan is now in ctx.plan)
-        if (step.type === 'advance_state') break;
+        if (lastResult?.allDone) break;
       }
 
-      // node transitions to clarity
+      // node transitions to clarity (checkpoint) — session ends here
       expect(ctx.journeyNode.state).toBe('clarity');
-      // clarity has a real plan — nextStep defined, not allDone
       expect(lastResult.ok).toBe(true);
-      expect(lastResult.nextStep).toBeDefined();
+      expect(lastResult.allDone).toBe(true);
     });
   });
 

@@ -1,4 +1,5 @@
 import { Schema, model, Types } from 'mongoose';
+import { CS } from '@prodigy/types';
 import type { ILearningJourneyNode } from '@prodigy/types';
 
 const learningJourneyNodeSchema = new Schema<ILearningJourneyNode>({
@@ -6,7 +7,7 @@ const learningJourneyNodeSchema = new Schema<ILearningJourneyNode>({
   journeyId:    { type: String, required: true },
   conceptId:    { type: String, required: true },
   order:        { type: Number, required: true },
-  state:          { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: 'not_assessed' },
+  state:          { type: String, enum: Object.values(CS), default: CS.NOT_ASSESSED },
   masteryLevel:   { type: String, enum: ['lots', 'mots', 'hots'], default: null },
   probingPath:    { type: [Schema.Types.Mixed], default: [] },
   goTo:           { type: String, default: null },

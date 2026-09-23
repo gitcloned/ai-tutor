@@ -92,6 +92,19 @@ app.get('/questions/:id', wrap(async (req, res) => {
   res.json(question);
 }));
 
+app.get('/concepts/:id/mastery-questions', wrap(async (req, res) => {
+  const concept = await Concept.findOne({ id: req.params.id })
+    .populate<{ masteryQuestions: Array<{ id: string; questions: unknown[] }> }>({
+      path:         'masteryQuestions',
+      foreignField: 'id',
+      justOne:      false,
+      populate:     { path: 'questions', foreignField: 'id', justOne: false },
+    });
+  if (!concept) return res.status(404).json({ error: 'Not found' });
+  const questions = (concept.masteryQuestions ?? []).flatMap((r: any) => r.questions ?? []);
+  res.json(questions);
+}));
+
 // ── Admin routes (raw MongoDB — bypass Mongoose type casting) ─────────────────
 // Refs (strand, unit, topic, prerequisites, nextConcepts) are stored as string
 // IDs, not ObjectIds. Raw driver operations avoid cast failures.

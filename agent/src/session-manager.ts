@@ -7,6 +7,7 @@ import { OutputParser }   from './medium/modalities/output/parser.js';
 import { InputParser }    from './medium/modalities/input/parser.js';
 import { makeSessionEvent } from './session-meta.js';
 import type { Session, Journey, JourneyNode, Concept } from './types.js';
+import { CS } from './types.js';
 
 type Agent = Awaited<ReturnType<typeof newAgent>>;
 
@@ -54,7 +55,7 @@ export class SessionManager {
         journeyId:    journey.id,
         conceptId,
         order:        1,
-        state:        forceState ?? 'not_assessed',
+        state:        forceState ?? CS.NOT_ASSESSED,
         masteryLevel: null,
         goTo,
         cameFrom:     null,
@@ -95,7 +96,8 @@ export class SessionManager {
     const inputParser  = new InputParser(medium);
 
     const pipe = async (event: TurnEvent): Promise<void> => {
-      for await (const result of outputParser.parse(event)) {
+      const enriched: TurnEvent = { ...event, sessionId: agent.ctx.session.id, nodeId: agent.ctx.journeyNode.id };
+      for await (const result of outputParser.parse(enriched)) {
         transport.handle(result);
       }
     };

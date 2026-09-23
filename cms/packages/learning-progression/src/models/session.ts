@@ -27,14 +27,19 @@ const rawTurnSchema = new Schema({
   timestamp: { type: Date, default: Date.now },
 }, { _id: false });
 
+const questionProgressSchema = new Schema({
+  questionId: { type: String, required: true },
+  outcome:    { type: String, enum: ['pass', 'fail', 'not_sure'], required: true },
+}, { _id: false });
+
 const sessionSchema = new Schema<ISession>({
   id:                  { type: String, required: true, unique: true },
   studentId:           { type: String, required: true },
   conceptId:           { type: String, required: true },
   journeyNodeId:       { type: String, required: true },
   status:              { type: String, enum: ['initialised', 'started', 'completed'], default: 'initialised' },
-  conceptStateAtStart: { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], required: true },
-  conceptStateAtEnd:   { type: String, enum: ['not_assessed', 'learning', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: null },
+  conceptStateAtStart: { type: String, enum: ['not_assessed', 'assessing', 'learning', 'mastering', 'getting_exam_ready', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], required: true },
+  conceptStateAtEnd:   { type: String, enum: ['not_assessed', 'assessing', 'learning', 'mastering', 'getting_exam_ready', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: null },
   teachingPlan:        { type: teachingPlanSchema, required: true },
   planHistory:         { type: [planHistoryEntrySchema], default: [] },
   history:             { type: [messageSchema], default: [] },
@@ -43,6 +48,8 @@ const sessionSchema = new Schema<ISession>({
   memory:              [{ type: String }],
   createdAt:           { type: Date, default: Date.now },
   endedAt:             { type: Date, default: null },
+  resumeFromStep:      { type: String, default: null },
+  questionProgress:    { type: [questionProgressSchema], default: [] },
 }, { collection: 'sessions', id: false });
 
 sessionSchema.pre('validate', function (next) {

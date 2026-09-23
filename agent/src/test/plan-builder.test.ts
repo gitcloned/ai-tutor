@@ -58,13 +58,13 @@ function makeCtx(plan: ReturnType<typeof compileProbingTree>) {
 
 describe('compileProbingTree', () => {
 
-  it('always ends with store_memory → advance_state', () => {
-    const plan = compileProbingTree(simpleTree);
-    const store   = plan.find(s => s.type === 'store_memory');
-    const advance = plan.find(s => s.type === 'advance_state');
+  it('always ends with store_memory → redirect(state:learning)', () => {
+    const plan     = compileProbingTree(simpleTree);
+    const store    = plan.find(s => s.type === 'store_memory');
+    const redirect = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId);
     expect(store).toBeDefined();
-    expect(advance).toBeDefined();
-    expect(store!.ifCorrect).toBe(advance!.id);
+    expect(redirect).toBeDefined();
+    expect(store!.ifCorrect).toBe(redirect!.id);
   });
 
   it('first step is in_progress', () => {
@@ -79,7 +79,8 @@ describe('compileProbingTree', () => {
 
   it('no step has a null pointer (all wired to something)', () => {
     const plan = compileProbingTree(simpleTree);
-    const nonTerminal = plan.filter(s => s.type !== 'advance_state');
+    // redirect(state) is the terminal step — its pointers are intentionally null
+    const nonTerminal = plan.filter(s => !(s.type === 'redirect' && !(s.content as any).conceptId));
     nonTerminal.forEach(s => {
       expect(s.ifCorrect ?? s.ifWrong).not.toBeNull();
     });
@@ -91,11 +92,11 @@ describe('compileProbingTree', () => {
     expect((probe!.content as any).idealAnswer).toBe('y');
   });
 
-  it('teach step stores conceptId and title in content', () => {
-    const plan  = compileProbingTree(simpleTree);
-    const teach = plan.find(s => s.type === 'teach');
-    expect((teach!.content as any).conceptId).toBe('ordered-pairs');
-    expect((teach!.content as any).conceptTitle).toBe('Ordered Pairs');
+  it('redirect step stores conceptId and title in content', () => {
+    const plan     = compileProbingTree(simpleTree);
+    const redirect = plan.find(s => s.type === 'redirect' && (s.content as any).conceptId);
+    expect((redirect!.content as any).conceptId).toBe('ordered-pairs');
+    expect((redirect!.content as any).conceptTitle).toBe('Ordered Pairs');
   });
 
   it('correct path on two-level tree follows ifCorrect', () => {
@@ -106,11 +107,11 @@ describe('compileProbingTree', () => {
     expect((next?.content as any).question).toBe('What does x equal?');
   });
 
-  it('wrong path on two-level tree follows ifWrong to teach step', () => {
+  it('wrong path on two-level tree follows ifWrong to redirect step', () => {
     const plan  = compileProbingTree(simpleTree);
     const first = plan.find(s => s.status === 'in_progress')!;
     const next  = plan.find(s => s.id === first.ifWrong);
-    expect(next?.type).toBe('teach');
+    expect(next?.type).toBe('redirect');
   });
 
   it('inline step compiles thenAsk as a probe', () => {
@@ -127,18 +128,18 @@ describe('compileProbingTree', () => {
     expect(follow?.type).toBe('probe');
   });
 
-  it('store_memory chains to advance_state', () => {
-    const plan    = compileProbingTree(simpleTree);
-    const store   = plan.find(s => s.type === 'store_memory')!;
-    const advance = plan.find(s => s.type === 'advance_state')!;
-    expect(store.ifCorrect).toBe(advance.id);
-    expect(store.ifWrong).toBe(advance.id);
+  it('store_memory chains to redirect(state:learning)', () => {
+    const plan     = compileProbingTree(simpleTree);
+    const store    = plan.find(s => s.type === 'store_memory')!;
+    const redirect = plan.find(s => s.type === 'redirect' && (s.content as any).state === 'learning')!;
+    expect(store.ifCorrect).toBe(redirect.id);
+    expect(store.ifWrong).toBe(redirect.id);
   });
 
-  it('advance_state step has targetState learning', () => {
-    const plan    = compileProbingTree(simpleTree);
-    const advance = plan.find(s => s.type === 'advance_state')!;
-    expect((advance.content as any).targetState).toBe('learning');
+  it('state-redirect step has state learning', () => {
+    const plan     = compileProbingTree(simpleTree);
+    const redirect = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
+    expect((redirect.content as any).state).toBe('learning');
   });
 
 });
@@ -151,13 +152,13 @@ describe('traversal simulation', () => {
     const ctx = makeCtx(plan);
     for (const outcome of outcomes) {
       const step = plan.find(s => s.status === 'in_progress') ?? plan.find(s => s.status === 'pending');
-      if (!step || step.type === 'teach' || step.type === 'advance_state') break;
+      if (!step || step.type === 'redirect') break;
       step.status  = 'in_progress';
       step.outcome = outcome as any;
       step.status  = 'done';
       const nextId = outcome === 'fail' ? step.ifWrong : step.ifCorrect;
       const next   = nextId != null ? plan.find(s => s.id === nextId) : null;
-      if (next && next.type !== 'teach' && next.type !== 'advance_state') next.status = 'in_progress';
+      if (next && next.type !== 'redirect') next.status = 'in_progress';
     }
     return plan;
   }
@@ -168,13 +169,14 @@ describe('traversal simulation', () => {
     expect(plan.find(s => s.status === 'in_progress')?.type ?? plan.find(s => s.status === 'pending')?.type).toBe('store_memory');
   });
 
-  it('all-wrong path reaches teach step then store_memory', () => {
+  it('all-wrong path reaches redirect step (prereq)', () => {
     const plan  = compileProbingTree(simpleTree);
     const first = plan.find(s => s.status === 'in_progress')!;
-    // failing first probe → teach (prereq)
-    const wrongId = first.ifWrong;
-    const teach   = plan.find(s => s.id === wrongId);
-    expect(teach?.type).toBe('teach');
+    // failing first probe → redirect to prereq
+    const wrongId  = first.ifWrong;
+    const redirect = plan.find(s => s.id === wrongId);
+    expect(redirect?.type).toBe('redirect');
+    expect((redirect?.content as any).conceptId).toBeDefined();
   });
 
   it('correct then wrong still reaches store_memory after teach', () => {

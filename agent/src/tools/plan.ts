@@ -1,8 +1,13 @@
 import type { Tool } from './index.js';
 import type { ConceptState } from '../types.js';
+import { CS }                from '../types.js';
 import { redirectToPrereq }  from './redirect.js';
 import { transitionState }   from './state.js';
-import { nextConceptState, stateAction } from '../learning/types.js';
+import { stateAction }       from '../learning/types.js';
+import { isTransitionState } from '../learning/what-is-next.js';
+import { buildConceptPlan }  from '../learning/stateManagement.js';
+import { buildModelPrompt }  from '../learning/modelPrompt.js';
+import { lp }                from '../api.js';
 
 // ── read_plan ──────────────────────────────────────────────────────────────────
 
@@ -43,7 +48,7 @@ export const update_step: Tool = {
     type: 'object',
     properties: {
       id: {
-        type:        'number',
+        type:        'string',
         description: 'The id of the step you just completed',
       },
       outcome: {
@@ -52,7 +57,7 @@ export const update_step: Tool = {
         description: '"pass" if correct/understood, "fail" if wrong/confused, "done" for non-interactive steps (store_memory, advance_state), "not_sure" if unclear',
       },
       nextStep: {
-        type:        'number',
+        type:        'string',
         description: 'Optional: explicitly set the next step id, overriding the plan\'s pass/fail routing. Use when the student\'s response warrants a specific path not captured by pass/fail alone.',
       },
     },
@@ -67,103 +72,109 @@ export const update_step: Tool = {
     step.outcome = outcome as import('../types.js').PlanStep['outcome'];
     step.status  = 'done';
 
-    // ── advance_state step: handle state transition internally ─────────────────
-    if (step.type === 'advance_state') {
-      const targetState = step.content.targetState as ConceptState | undefined;
-      if (targetState) {
-        await transitionState(targetState, ctx);
-        // ctx may now be swapped to origin concept (if this was a prereq node)
-        const firstStep = ctx.plan.find(s => s.status === 'in_progress')
-                       ?? ctx.plan.find(s => s.status === 'pending');
-        if (firstStep) {
-          firstStep.status = 'in_progress';
-          return {
-            ok:       true,
-            state:    ctx.journeyNode.state,
-            concept:  ctx.concept.title,
-            nextStep: formatStep(firstStep),
-            message:  `State updated. ${ctx.journeyNode.cameFrom ? 'Returned to origin concept.' : 'Plan rebuilt.'} Follow nextStep.`,
-            reminder: 'Follow the plan. Do exactly what the next step says.',
-          };
-        }
-      }
-      return { ok: true, allDone: true, message: 'Session complete.' };
-    }
-
     // ── navigate to next step ─────────────────────────────────────────────────
     const nextId = nextStep ?? (outcome === 'fail' ? step.ifWrong : step.ifCorrect);
     let next     = nextId != null ? ctx.plan.find(s => s.id === nextId) ?? null : null;
 
-    // Fallback: if no pointer resolved, find the next pending step in sequence.
-    // Prevents premature allDone in v2 plans where the LLM occasionally omits nextStep.
-    if (!next) {
+    // If the completed step is a prereq redirect (has conceptId), skip the sequential
+    // fallback — fire the redirect immediately without looking for the next plan step.
+    // State-only redirects (no conceptId) still go through the fallback so that
+    // terminal steps can fall through to transitionState (which handles go-to-origin).
+    if (step.type === 'redirect' && (step.content as any).conceptId) {
+      next = step;
+    } else if (!next) {
+      // Fallback: next pending step in sequence.
+      // Prevents premature allDone in v2 plans where the LLM occasionally omits nextStep.
       const currentIdx = ctx.plan.findIndex(s => s.id === id);
       next = ctx.plan.slice(currentIdx + 1).find(s => s.status === 'pending') ?? null;
     }
 
     ctx.log({ level: 'debug', message: `update_step | next → ${next ? `[${next.id}] ${stepLabel(next)}` : 'null (terminal)'}` });
 
-    if (!next) {
-      // Plan exhausted — auto-advance the node to its next state.
-      const nextState = nextConceptState(ctx.journeyNode.state);
-      if (nextState) {
-        await transitionState(nextState, ctx);
+    // ── redirect step OR plan exhausted — unified navigation path ─────────────
+    if (next === null || next.type === 'redirect') {
+      const conceptId   = next?.content?.conceptId as string | undefined;
+      const targetState = next?.content?.state     as ConceptState | undefined;
+
+      if (next && next !== step) {
+        next.status  = 'done';
+        next.outcome = 'done' as any;
+      }
+
+      // ── prereq redirect: switch to another concept ──────────────────────────
+      if (conceptId) {
+        const conceptTitle = next!.content.conceptTitle as string;
+        const prereqState  = targetState as string | undefined;
+        const prereqMode: 'teach' | 'probe' = prereqState === CS.NOT_ASSESSED ? 'probe' : 'teach';
+        const resumeStep   = next!.content.resumeStep as string | undefined;
+        const reason       = next!.content.reason     as string | null ?? null;
+
+        await redirectToPrereq(conceptId, conceptTitle, ctx, prereqMode, resumeStep);
         const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                        ?? ctx.plan.find(s => s.status === 'pending');
-        if (firstStep) {
-          firstStep.status = 'in_progress';
+        if (firstStep) firstStep.status = 'in_progress';
+
+        const msg = reason
+          ? `${reason}. Now switching to teach "${conceptTitle}" — follow nextStep to deliver the first step of the prereq plan in this same turn.`
+          : `Switching to teach "${conceptTitle}" as a prerequisite — follow nextStep to deliver the first step of the prereq plan in this same turn.`;
+        return {
+          ok:       true,
+          message:  msg,
+          nextStep: firstStep ? formatStep(firstStep) : null,
+          action:   { type: 'send-ok' },
+          reminder: 'Acknowledge the topic switch naturally, then immediately follow nextStep — do it all in one response.',
+        };
+      }
+
+      // ── state transition: redirect current node to a specific state ─────────
+      if (targetState) {
+        await Promise.all([
+          lp.patch(`/journey-nodes/${ctx.journeyNode.id}`, { state: targetState }),
+          lp.patch(`/sessions/${ctx.session.id}`, { conceptStateAtEnd: targetState }),
+        ]);
+        ctx.journeyNode.state = targetState;
+
+        if (isTransitionState(targetState)) {
+          // Transition state — rebuild plan and continue within this session.
+          const { plan, models } = buildConceptPlan(ctx.concept, targetState);
+          ctx.plan        = plan;
+          ctx.modelPrompt = buildModelPrompt(models);
+          const firstStep = ctx.plan.find(s => s.status === 'in_progress')
+                         ?? ctx.plan.find(s => s.status === 'pending');
+          if (firstStep) firstStep.status = 'in_progress';
           return {
             ok:       true,
-            state:    ctx.journeyNode.state,
+            state:    targetState,
             concept:  ctx.concept.title,
-            nextStep: formatStep(firstStep),
-            message:  `Plan complete. Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
+            nextStep: firstStep ? formatStep(firstStep) : null,
+            message:  `State updated to "${targetState}". Now moving to ${stateAction(targetState)} phase for "${ctx.concept.title}". Follow nextStep.`,
             reminder: 'Follow the plan. Do exactly what the next step says.',
           };
         }
+        // Checkpoint state — session ends here; next session picks up.
+        return { ok: true, allDone: true, message: 'Session complete.' };
       }
-      // Terminal state — node is fully complete.
+
+      // ── plan exhausted naturally — let whatIsNext decide ───────────────────
+      const hasPlan = await transitionState(ctx);
+      if (hasPlan) {
+        const firstStep = ctx.plan.find(s => s.status === 'in_progress')
+                       ?? ctx.plan.find(s => s.status === 'pending');
+        if (firstStep) firstStep.status = 'in_progress';
+        return {
+          ok:       true,
+          state:    ctx.journeyNode.state,
+          concept:  ctx.concept.title,
+          nextStep: firstStep ? formatStep(firstStep) : null,
+          message:  `Plan complete. Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
+          reminder: 'Follow the plan. Do exactly what the next step says.',
+        };
+      }
       return { ok: true, allDone: true, message: 'All steps complete. Session is done.' };
     }
 
-    // ── teach step: handle prereq redirect internally ─────────────────────────
-    // Only redirect if the step has a conceptId (probing-context teach step).
-    // Learning-plan teach steps have only an instruction — they are lesson
-    // delivery steps and navigate normally.
-    if (next.type === 'teach' && next.content.conceptId) {
-      const prereqConceptId    = next.content.conceptId    as string;
-      const prereqConceptTitle = next.content.conceptTitle as string;
-      const prereqMode         = (next.content.mode as 'teach' | 'probe') ?? 'teach';
-
-      // Mark the teach step as in_progress then immediately done (it's handled internally)
-      next.status  = 'done';
-      next.outcome = 'done' as any;
-
-      await redirectToPrereq(prereqConceptId, prereqConceptTitle, ctx, prereqMode);
-      // ctx is now swapped to prereq concept
-      const firstStep = ctx.plan.find(s => s.status === 'in_progress')
-                     ?? ctx.plan.find(s => s.status === 'pending');
-      if (firstStep) firstStep.status = 'in_progress';
-
-      const reason = next.content.reason as string | null;
-      const msg = reason
-        ? `${reason}. Now switching to teach "${prereqConceptTitle}" — follow nextStep to deliver the first step of the prereq plan in this same turn.`
-        : `Switching to teach "${prereqConceptTitle}" as a prerequisite — follow nextStep to deliver the first step of the prereq plan in this same turn.`;
-      return {
-        ok:       true,
-        message:  msg,
-        nextStep: firstStep ? formatStep(firstStep) : null,
-        // send-ok auto-triggers the next turn as a safety net — if the agent
-        // delivers nextStep inline the student sees it immediately; if not,
-        // the auto-turn fires get_next_step and plays it anyway.
-        action:   { type: 'send-ok' },
-        reminder: 'Acknowledge the topic switch naturally, then immediately follow nextStep — do it all in one response.',
-      };
-    }
-
-    // ── normal navigation ─────────────────────────────────────────────────────
+    // ── normal step ───────────────────────────────────────────────────────────
     next.status = 'in_progress';
-
     return {
       ok:       true,
       nextStep: formatStep(next),
@@ -182,12 +193,14 @@ function stepLabel(step: import('../types.js').PlanStep): string {
   const c = step.content as Record<string, any>;
   switch (step.type) {
     case 'probe':         return `probe: "${String(c.question ?? '').slice(0, 60)}"`;
-    case 'teach':         return `teach: ${c.conceptTitle ?? c.conceptId ?? '?'}`;
-    case 'inline':        return `inline: "${String(c.explanation ?? '').slice(0, 60)}"`;
-    case 'practice':      return `practice: "${String(c.question ?? '').slice(0, 60)}"`;
-    case 'resource':      return `resource: ${(c.resources as any[])?.[0]?.title ?? c.instruction ?? '?'}`;
-    case 'store_memory':  return 'store_memory';
-    case 'advance_state': return `advance_state → ${c.targetState ?? '?'}`;
+    case 'teach':         return `teach: ${c.conceptTitle ?? c.instruction ?? '?'}`;
+    case 'redirect':     return c.conceptId
+                           ? `redirect → ${c.conceptTitle ?? c.conceptId}`
+                           : `redirect → state:${c.state ?? '?'}`;
+    case 'inline':       return `inline: "${String(c.explanation ?? '').slice(0, 60)}"`;
+    case 'practice':     return `practice: "${String(c.question ?? '').slice(0, 60)}"`;
+    case 'resource':     return `resource: ${(c.resources as any[])?.[0]?.title ?? c.instruction ?? '?'}`;
+    case 'store_memory': return 'store_memory';
     default:              return step.type;
   }
 }

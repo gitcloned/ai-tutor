@@ -67,19 +67,15 @@ describe('planHistory — tracking plans across concept hops in one session', ()
 
   describe('when the student fails a probe and update_step redirects to a prereq', () => {
 
-    it('appends one prereq entry and preserves the existing origin entry', async () => {
+    it('creates a new prereq session with one planHistory entry for the prereq', async () => {
       const plan  = planWithTeachStep(CONCEPT_ORDERED_PAIRS.id, CONCEPT_ORDERED_PAIRS.title);
       const probe = plan.find(s => s.type === 'probe')!;
+      // Origin session has its own planHistory; prereq session starts fresh
       const ctx   = makeCtx({
         concept:     CONCEPT_COMPLETING_SOLUTIONS,
         journeyNode: makeNode({ id: 'node-completing' }),
         plan,
-        session: makeSession({
-          planHistory: [
-            // Simulates the entry seeded by buildContext for the starting concept
-            { conceptId: CONCEPT_COMPLETING_SOLUTIONS.id, conceptTitle: CONCEPT_COMPLETING_SOLUTIONS.title, plan: [], startedAt: new Date().toISOString() },
-          ],
-        }),
+        session: makeSession({ status: 'started', planHistory: [] }),
       });
 
       vi.mocked(lp.get).mockResolvedValueOnce([]);
@@ -88,17 +84,18 @@ describe('planHistory — tracking plans across concept hops in one session', ()
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'not_assessed',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
       await update_step.run({ id: probe.id, outcome: 'fail' }, ctx);
 
-      expect(ctx.session.planHistory).toHaveLength(2);
-      expect(ctx.session.planHistory[0].conceptId).toBe(CONCEPT_COMPLETING_SOLUTIONS.id); // preserved
-      expect(ctx.session.planHistory[1].conceptId).toBe(CONCEPT_ORDERED_PAIRS.id);        // appended
+      // ctx.session is now the prereq session — one entry for the prereq concept
+      expect(ctx.session.planHistory).toHaveLength(1);
+      expect(ctx.session.planHistory[0].conceptId).toBe(CONCEPT_ORDERED_PAIRS.id);
     });
 
-    it('persists the updated planHistory and teachingPlan to LP', async () => {
+    it('persists the updated planHistory and teachingPlan to the prereq session in LP', async () => {
       const plan  = planWithTeachStep(CONCEPT_ORDERED_PAIRS.id, CONCEPT_ORDERED_PAIRS.title);
       const probe = plan.find(s => s.type === 'probe')!;
       const ctx   = makeCtx({
@@ -113,11 +110,13 @@ describe('planHistory — tracking plans across concept hops in one session', ()
         conceptId: CONCEPT_ORDERED_PAIRS.id, state: 'not_assessed',
         goTo: CONCEPT_COMPLETING_SOLUTIONS.id, cameFrom: CONCEPT_COMPLETING_SOLUTIONS.id, preReqToLearn: null,
       });
+      vi.mocked(lp.post).mockResolvedValueOnce(makeSession());  // createSession for prereq
       vi.mocked(lp.patch).mockResolvedValue({});
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
 
       await update_step.run({ id: probe.id, outcome: 'fail' }, ctx);
 
+      // After redirect ctx.session is the prereq session; LP should be patched with its planHistory
       expect(lp.patch).toHaveBeenCalledWith(
         `/sessions/${ctx.session.id}`,
         expect.objectContaining({
@@ -132,27 +131,29 @@ describe('planHistory — tracking plans across concept hops in one session', ()
 
   describe('when the prereq plan finishes and update_step returns to the origin concept', () => {
 
-    it('planHistory grows to 3 entries: origin → prereq → origin (resumed)', async () => {
+    it('origin session gets a new planHistory entry for the resumed concept', async () => {
       const plan        = plainProbingPlan();
-      const advanceStep = plan.find(s => s.type === 'advance_state')!;
+      const advanceStep = plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
+      // ctx.session is the prereq session — has one entry for the prereq
       const ctx         = makeCtx({
         concept: CONCEPT_ORDERED_PAIRS,
         journeyNode: makeNode({
           id:        'node-ordered-pairs',
           conceptId: CONCEPT_ORDERED_PAIRS.id,
+          state:     'assessing',
           goTo:      CONCEPT_COMPLETING_SOLUTIONS.id,
           cameFrom:  CONCEPT_COMPLETING_SOLUTIONS.id,
         }),
         plan,
         session: makeSession({
           planHistory: [
-            { conceptId: CONCEPT_COMPLETING_SOLUTIONS.id, conceptTitle: CONCEPT_COMPLETING_SOLUTIONS.title, plan: [], startedAt: new Date().toISOString() },
-            { conceptId: CONCEPT_ORDERED_PAIRS.id,        conceptTitle: CONCEPT_ORDERED_PAIRS.title,        plan: [], startedAt: new Date().toISOString() },
+            { conceptId: CONCEPT_ORDERED_PAIRS.id, conceptTitle: CONCEPT_ORDERED_PAIRS.title, plan: [], startedAt: new Date().toISOString() },
           ],
         }),
       });
 
       vi.mocked(lp.patch).mockResolvedValue({});
+      // lp.get #1: origin journey node
       vi.mocked(lp.get).mockResolvedValueOnce([{
         id: 'node-completing', journeyId: 'journey-1',
         conceptId: CONCEPT_COMPLETING_SOLUTIONS.id,
@@ -160,12 +161,21 @@ describe('planHistory — tracking plans across concept hops in one session', ()
         preReqToLearn: CONCEPT_ORDERED_PAIRS.id,
       }]);
       vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_COMPLETING_SOLUTIONS);
+      // lp.get #2: origin session (found by studentId + conceptId + status=started)
+      vi.mocked(lp.get).mockResolvedValueOnce([makeSession({
+        status:      'started',
+        conceptId:   CONCEPT_COMPLETING_SOLUTIONS.id,
+        planHistory: [
+          { conceptId: CONCEPT_COMPLETING_SOLUTIONS.id, conceptTitle: CONCEPT_COMPLETING_SOLUTIONS.title, plan: [], startedAt: new Date().toISOString() },
+        ],
+      })]);
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 
-      expect(ctx.session.planHistory).toHaveLength(3);
-      // Third entry is completing-solutions (resumed in learning state)
-      expect(ctx.session.planHistory[2].conceptId).toBe(CONCEPT_COMPLETING_SOLUTIONS.id);
+      // After return, ctx.session is the origin session
+      // It had 1 entry (initial); returnToOrigin appends one more (resumed) → 2 total
+      expect(ctx.session.planHistory).toHaveLength(2);
+      expect(ctx.session.planHistory[1].conceptId).toBe(CONCEPT_COMPLETING_SOLUTIONS.id);
     });
   });
 

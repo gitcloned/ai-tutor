@@ -36,14 +36,27 @@ export function loadTeachPlan(conceptId: string): MarkdownPlan {
   return buildPlanFromMarkdown(md);
 }
 
+export function masteryPlanPath(conceptId: string): string {
+  return join(CONTENT_ROOT, conceptId, 'mastery.md');
+}
+
+export function hasMasteryPlan(conceptId: string): boolean {
+  return existsSync(masteryPlanPath(conceptId));
+}
+
+export function loadMasteryPlan(conceptId: string): MarkdownPlan {
+  const md = readFileSync(masteryPlanPath(conceptId), 'utf8');
+  return buildPlanFromMarkdown(md);
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 interface RawStep {
-  id:         number;
+  id:         string;
   type:       PlanStepType;
   content:    Record<string, unknown>;
-  ifCorrect:  number | null;
-  ifWrong:    number | null;
+  ifCorrect:  string | null;
+  ifWrong:    string | null;
 }
 
 export interface MarkdownPlan {
@@ -51,9 +64,9 @@ export interface MarkdownPlan {
   models: string[];  // model IDs declared via "# Models: a, b" in the preamble
 }
 
-// Header pattern: ## N (optional name) or ## Step N (optional name)
-const HEADER_RE = /^## (?:Step )?(\d+)(?:\s+\(([^)]+)\))?\s*$/gm;
-const HEADER_SPLIT_RE = /^## (?:Step )?\d+(?:\s+\([^)]+\))?\s*$/m;
+// Header pattern: ## N or ## Step N (optional name); supports alpha-numeric and hyphenated IDs like 2a, 6b, 7b-ok, 7b-learn
+const HEADER_RE = /^## (?:Step )?([\w][\w-]*)(?:\s+\(([^)]+)\))?\s*$/gm;
+const HEADER_SPLIT_RE = /^## (?:Step )?[\w][\w-]*(?:\s+\([^)]+\))?\s*$/m;
 const MODELS_RE  = /^#\s+Models:\s*(.+)$/im;
 
 export function buildPlanFromMarkdown(markdown: string): MarkdownPlan {
@@ -70,16 +83,13 @@ export function buildPlanFromMarkdown(markdown: string): MarkdownPlan {
 
   // parts[1..] are step bodies
   const raw: RawStep[] = headers.map((h, i) =>
-    parseStep(parseInt(h[1], 10), h[2]?.trim() ?? null, parts[i + 1] ?? ''),
+    parseStep(h[1], h[2]?.trim() ?? null, parts[i + 1] ?? ''),
   );
 
-  // Auto-append store_memory. State advancement is automatic — when the plan
-  // exhausts (no next step), update_step calls nextConceptState() and transitions.
-  const lastId  = raw.at(-1)?.id ?? 0;
-  const storeId = lastId + 1;
-
+  // Auto-append store_memory with a fixed ID. State advancement is automatic —
+  // when the plan exhausts (no next step), update_step calls transitionState().
   raw.push(
-    { id: storeId, type: 'store_memory', content: { instruction: 'Store what you learned about this student' }, ifCorrect: null, ifWrong: null },
+    { id: '__store', type: 'store_memory', content: { instruction: 'Store what you learned about this student' }, ifCorrect: null, ifWrong: null },
   );
 
   // Authored steps: ifCorrect/ifWrong stay null — LLM navigates via nextStep.
@@ -96,9 +106,9 @@ export function buildPlanFromMarkdown(markdown: string): MarkdownPlan {
   return { steps, models };
 }
 
-const KV_RE      = /^(redirect|mode|reason|play):\s*(.+)$/i;
+const KV_RE      = /^(redirect|mode|reason|play|then|state|practice):\s*(.+)$/i;
 
-function parseStep(id: number, name: string | null, body: string): RawStep {
+function parseStep(id: string, name: string | null, body: string): RawStep {
   const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
 
   const kv: Record<string, string> = {};
@@ -120,16 +130,36 @@ function parseStep(id: number, name: string | null, body: string): RawStep {
     return { id, type: 'resource', content, ifCorrect: null, ifWrong: null };
   }
 
-  // Redirect step — maps to type 'teach' which update_step handles automatically.
+  // Redirect to prereq — switches to another concept.
   if (kv['redirect']) {
     const content: Record<string, unknown> = {};
     if (name) content.name = name;
     content.conceptId    = kv['redirect'];
     content.conceptTitle = kv['redirect']; // title not available in md; redirect.ts uses conceptId as fallback
-    content.mode         = kv['mode'] ?? 'teach';
-    if (kv['reason']) content.reason = kv['reason'];
-    if (prose.length)  content.instruction = prose.join('\n');
-    return { id, type: 'teach', content, ifCorrect: null, ifWrong: null };
+    // state: specifies the initial state for the prereq node (replaces mode:).
+    // mode: probe → not_assessed, mode: teach → learning (backward compat).
+    if (kv['state'])       content.state = kv['state'];
+    else if (kv['mode'])   content.state = kv['mode'] === 'probe' ? 'not_assessed' : 'learning';
+    if (kv['reason'])      content.reason     = kv['reason'];
+    if (kv['then'])        content.resumeStep = kv['then'];
+    if (prose.length)      content.instruction = prose.join('\n');
+    return { id, type: 'redirect', content, ifCorrect: null, ifWrong: null };
+  }
+
+  // State directive — advance the current node to a specific state (no concept switch).
+  if (kv['state']) {
+    const content: Record<string, unknown> = {};
+    if (name) content.name = name;
+    content.state = kv['state'];
+    return { id, type: 'redirect', content, ifCorrect: null, ifWrong: null };
+  }
+
+  // Practice step — drives the get_next_question loop.
+  if (kv['practice']) {
+    const content: Record<string, unknown> = {};
+    if (name) content.name = name;
+    if (prose.length) content.instruction = prose.join('\n');
+    return { id, type: 'practice', content, ifCorrect: null, ifWrong: null };
   }
 
   const content: Record<string, unknown> = {};

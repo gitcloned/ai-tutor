@@ -36,7 +36,7 @@ Ask a follow-up.
 ## 1 (Check substitution)
 Ask: What is y?
 `);
-    const s1 = plan.find(s => s.id === 1)!;
+    const s1 = plan.find(s => s.id === '1')!;
     expect(s1.content.name).toBe('Check substitution');
   });
 
@@ -46,7 +46,7 @@ Ask: What is y?
 Ask: Given x − 5y = −15, complete ( ___, −2 ).
 Correct answer: −25. If correct, advance state.
 `);
-    const s1 = plan.find(s => s.id === 1)!;
+    const s1 = plan.find(s => s.id === '1')!;
     expect(s1.content.instruction).toContain('−25');
     expect(s1.content.instruction).toContain('advance state');
   });
@@ -58,8 +58,8 @@ Some instruction.
 ## 2 (Second)
 Another instruction.
 `);
-    expect(plan.find(s => s.id === 1)).toBeDefined();
-    expect(plan.find(s => s.id === 2)).toBeDefined();
+    expect(plan.find(s => s.id === '1')).toBeDefined();
+    expect(plan.find(s => s.id === '2')).toBeDefined();
   });
 
   it('auto-appends store_memory as the final step — state advancement is now implicit', () => {
@@ -70,7 +70,7 @@ Ask: What is x?
     const store = plan.find(s => s.type === 'store_memory')!;
     expect(store).toBeDefined();
     expect(store.ifCorrect).toBeNull(); // no explicit advance_state wired — auto-advance fires instead
-    expect(plan.find(s => s.type === 'advance_state')).toBeUndefined();
+    // state advancement via redirect(state) — no separate advance_state step in v2 plans
   });
 
   it('first step is in_progress, rest are pending', () => {
@@ -90,7 +90,7 @@ Something else.
 
 describe('buildPlanFromMarkdown — redirect steps', () => {
 
-  it('a step with redirect: becomes type "teach" with the right conceptId', () => {
+  it('a step with redirect: becomes type "redirect" with the right conceptId', () => {
     const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Entry)
 Ask the entry question.
@@ -99,14 +99,14 @@ redirect: checking-ordered-pair-solutions-to-equations-1
 mode: teach
 reason: Student does not know ordered pair notation.
 `);
-    const redirect = plan.find(s => s.id === 2)!;
-    expect(redirect.type).toBe('teach');
+    const redirect = plan.find(s => s.id === '2')!;
+    expect(redirect.type).toBe('redirect');
     expect(redirect.content.conceptId).toBe('checking-ordered-pair-solutions-to-equations-1');
-    expect(redirect.content.mode).toBe('teach');
+    expect(redirect.content.state).toBe('learning');
     expect(redirect.content.reason).toBe('Student does not know ordered pair notation.');
   });
 
-  it('a redirect step with mode: probe sets mode correctly', () => {
+  it('a redirect step with mode: probe maps to state not_assessed', () => {
     const { steps: plan } = buildPlanFromMarkdown(`
 ## 1 (Only step)
 Ask something.
@@ -115,8 +115,8 @@ redirect: some-prereq-concept
 mode: probe
 reason: Student needs probing first.
 `);
-    const redirect = plan.find(s => s.id === 2)!;
-    expect(redirect.content.mode).toBe('probe');
+    const redirect = plan.find(s => s.id === '2')!;
+    expect(redirect.content.state).toBe('not_assessed');
   });
 
   it('non-redirect steps stay as type "step" even when redirect step is present', () => {
@@ -128,7 +128,7 @@ redirect: some-concept
 mode: teach
 reason: Student needs this first.
 `);
-    expect(plan.find(s => s.id === 1)!.type).toBe('step');
+    expect(plan.find(s => s.id === '1')!.type).toBe('step');
   });
 
 });
@@ -149,8 +149,8 @@ Ask follow-up.
     plan[0].status = 'in_progress';
     const ctx = makeCtx({ plan });
 
-    const result = await update_step.run({ id: 1, outcome: 'pass', nextStep: 3 }, ctx) as any;
-    expect(result.nextStep?.id).toBe(3);
+    const result = await update_step.run({ id: '1', outcome: 'pass', nextStep: '3' }, ctx) as any;
+    expect(result.nextStep?.id).toBe('3');
   });
 
   it('when the LLM forgets to provide nextStep, it falls back to the next pending step rather than ending the session', async () => {
@@ -166,9 +166,9 @@ One more question.
     const ctx = makeCtx({ plan });
 
     // LLM marks step 1 done but gives no nextStep — authored steps have null pointers
-    const result = await update_step.run({ id: 1, outcome: 'pass' }, ctx) as any;
+    const result = await update_step.run({ id: '1', outcome: 'pass' }, ctx) as any;
     expect(result.allDone).toBeUndefined();
-    expect(result.nextStep?.id).toBe(2);
+    expect(result.nextStep?.id).toBe('2');
   });
 
   it('when the LLM forgets nextStep mid-plan, the fallback still skips already-done steps', async () => {
@@ -187,7 +187,7 @@ One more question.
     const ctx = makeCtx({ plan });
 
     // LLM is on step 3, no nextStep — next pending is store_memory
-    const result = await update_step.run({ id: 3, outcome: 'pass' }, ctx) as any;
+    const result = await update_step.run({ id: '3', outcome: 'pass' }, ctx) as any;
     const storeStep = plan.find(s => s.type === 'store_memory')!;
     expect(result.nextStep?.id).toBe(storeStep.id);
   });
@@ -203,7 +203,7 @@ Ask the question.
     // exam_ready is terminal — no further state to advance to
     const ctx = makeCtx({ plan, journeyNode: { id: 'node-1', journeyId: 'j-1', conceptId: 'c-1', state: 'exam_ready', goTo: null, cameFrom: null, preReqToLearn: null } });
 
-    const result = await update_step.run({ id: 1, outcome: 'pass' }, ctx) as any;
+    const result = await update_step.run({ id: '1', outcome: 'pass' }, ctx) as any;
     expect(result.allDone).toBe(true);
   });
 
@@ -217,8 +217,8 @@ Ask follow-up.
     plan[0].status = 'in_progress';
     const ctx = makeCtx({ plan });
 
-    const result = await update_step.run({ id: 1, outcome: 'not_sure', nextStep: 2 }, ctx) as any;
-    expect(result.nextStep?.id).toBe(2);
+    const result = await update_step.run({ id: '1', outcome: 'not_sure', nextStep: '2' }, ctx) as any;
+    expect(result.nextStep?.id).toBe('2');
     expect(result.allDone).toBeUndefined();
   });
 

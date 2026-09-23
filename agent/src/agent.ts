@@ -6,7 +6,8 @@ import { SkillLoader }   from './skills.js';
 import { TurnEngine }    from './engine.js';
 import { ToolRegistry }  from './tools/index.js';
 import { read_plan, get_next_step, update_step } from './tools/plan.js';
-import { store_memory }  from './tools/memory.js';
+import { store_memory }      from './tools/memory.js';
+import { get_next_question } from './tools/question.js';
 import { buildContext }  from './context.js';
 import type { AgentContext } from './context.js';
 import type { TurnEvent }   from './engine.js';
@@ -19,6 +20,7 @@ const skills     = new SkillLoader(join(__dir, '../skills'));
 const tools = new ToolRegistry().add(
   read_plan, get_next_step, update_step,
   store_memory,
+  get_next_question,
 );
 const engine = new TurnEngine(tools, basePrompt);
 

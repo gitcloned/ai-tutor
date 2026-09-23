@@ -66,3 +66,25 @@ test('MCQ allows ink, sends a tapped choice with pending work, and retries after
   }))).toEqual(['a']);
   await page.reload();await expect(page.locator('[data-mcq="Q1"]')).toHaveAttribute('data-selected','a');
 });
+
+
+test('reused worked-question ID can introduce a new MCQ before parallel writing',async({page})=>{
+  await page.emulateMedia({reducedMotion:'reduce'});
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/mcq-reused',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/mcq-reused');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  send({type:'question',content:'Q01',attrs:{}});
+  send({type:'text_chunk',content:'An earlier worked example',attrs:{}});
+  await expect(page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'An earlier worked example'})).toBeVisible();
+  send({type:'question',content:'Q01',attrs:{stem:'Which of these is not an algebraic expression?','choice-a':'2 + 3','choice-b':'x + y - 2','choice-c':'x + 2*x + 3','choice-d':'4 + y',answer:'a'}});
+  send({type:'action',action:{type:'parallel-start'}});
+  send({type:'text_chunk',content:'Pick the option that is not an algebraic expression.',attrs:{}});
+  send({type:'action',action:{type:'parallel-end'}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.locator('[data-mcq="Q01"] .mcq-option')).toHaveCount(4);
+  await expect(page.getByRole('button',{name:'A 2 + 3',exact:true})).toBeEnabled();
+});

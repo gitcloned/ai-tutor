@@ -7,7 +7,20 @@ export interface LogEntry {
   message: string;
 }
 
-export type ConceptState = 'not_assessed' | 'learning' | 'learn-pre-req-before' | 'clarity' | 'mastered' | 'exam_ready';
+/** Single source of truth for concept state string values. Use CS.* everywhere instead of bare literals. */
+export const CS = {
+  NOT_ASSESSED:          'not_assessed',
+  ASSESSING:             'assessing',
+  LEARNING:              'learning',
+  LEARN_PRE_REQ_BEFORE:  'learn-pre-req-before',
+  CLARITY:               'clarity',
+  MASTERING:             'mastering',
+  MASTERED:              'mastered',
+  GETTING_EXAM_READY:    'getting_exam_ready',
+  EXAM_READY:            'exam_ready',
+} as const;
+
+export type ConceptState = typeof CS[keyof typeof CS];
 
 export interface HintAction { type: string; [key: string]: unknown; }
 export interface HintStep   { probe: string; idealAnswer: string; ifCorrect: HintAction; ifWrong: HintAction; }
@@ -28,6 +41,9 @@ export interface Question {
   type:        string;
 }
 
+export type QuestionOutcome = 'pass' | 'fail' | 'not_sure';
+export interface QuestionResult { questionId: string; outcome: QuestionOutcome; }
+
 export interface LessonIndicator {
   text?:               string | null;
   assessmentQuestion?: Question | null;
@@ -41,23 +57,24 @@ export interface LessonStep {
 }
 
 export interface Concept {
-  id:            string;
-  title:         string;
-  nextConcepts?: string[];
-  probingTree?:  ProbingTree | null;
-  lessonPlan?:   LessonStep[];
+  id:              string;
+  title:           string;
+  nextConcepts?:   string[];
+  supportedPhases?: string[];
+  probingTree?:    ProbingTree | null;
+  lessonPlan?:     LessonStep[];
 }
 
-export type PlanStepType = 'probe' | 'teach' | 'inline' | 'store_memory' | 'advance_state' | 'resource' | 'practice' | 'step';
+export type PlanStepType = 'probe' | 'teach' | 'redirect' | 'inline' | 'store_memory' | 'resource' | 'practice' | 'step';
 
 export interface PlanStep {
-  id:         number;
+  id:         string;
   content:    Record<string, unknown>;   // flexible JSON — shape depends on step type
   status:     'pending' | 'in_progress' | 'done';
   outcome?:   'pass' | 'fail' | 'not_sure';  // recorded when step completes
   type:       PlanStepType;
-  ifCorrect:  number | null;   // step id to follow on pass or not_sure
-  ifWrong:    number | null;   // step id to follow on fail
+  ifCorrect:  string | null;   // step id to follow on pass or not_sure
+  ifWrong:    string | null;   // step id to follow on fail
 }
 
 export interface Message { role: 'student' | 'agent'; content: string; timestamp: string; }
@@ -88,6 +105,10 @@ export interface Session {
   history:             Message[];
   rawHistory:          RawTurn[];
   systemPrompt?:       string;
+  /** Step id to restart at when returning from a prereq redirect. */
+  resumeFromStep?:     string | null;
+  /** Per-question outcomes recorded during a practice exercise. */
+  questionProgress?:   QuestionResult[];
 }
 
 export interface Journey { id: string; studentId: string; objective: string; }

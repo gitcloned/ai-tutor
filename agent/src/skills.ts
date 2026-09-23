@@ -17,6 +17,7 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import type { ConceptState } from './types.js';
+import { CS } from './types.js';
 import type { AgentContext } from './context.js';
 
 export interface Skill {
@@ -31,6 +32,9 @@ export class SkillLoader {
 
   constructor(dir: string) {
     this.load(dir);
+    // assessing is mid-flow probing — reuse the not_assessed skill
+    const probing = this.skills.get(CS.NOT_ASSESSED);
+    if (probing) this.skills.set(CS.ASSESSING, probing);
   }
 
   get(state: ConceptState): Skill {

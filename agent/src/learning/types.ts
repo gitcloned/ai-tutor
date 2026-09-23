@@ -1,37 +1,22 @@
 /**
- * State progression tables for the concept node lifecycle.
+ * Display labels for concept states — what the tutor does in each state.
  *
- * Single source of truth for:
- *   - What state comes after each state (NEXT_STATE)
- *   - What the tutor does in each state (STATE_ACTION)
- *
- * Used by: stateManagement.ts, tools/plan.ts, tools/state.ts, and any other
- * file that needs to reason about state without pulling in plan-building logic.
+ * The authoritative state progression logic lives in `learning/what-is-next.ts`.
  */
 
+import { CS } from '../types.js';
 import type { ConceptState } from '../types.js';
 
-export const NEXT_STATE: Partial<Record<ConceptState, ConceptState>> = {
-  'not_assessed': 'learning',
-  'learning':     'clarity',
-  'clarity':      'mastered',
-  'mastered':     'exam_ready',
-  // 'exam_ready' → null (terminal)
-  // 'learn-pre-req-before' → internal holding state, not part of the progression
+const STATE_ACTION: Partial<Record<ConceptState, string>> = {
+  [CS.NOT_ASSESSED]:       'assess',
+  [CS.ASSESSING]:          'assess',
+  [CS.LEARNING]:           'teach',
+  [CS.CLARITY]:            'master',
+  [CS.MASTERING]:          'master',
+  [CS.MASTERED]:           'prepare_for_exam',
+  [CS.GETTING_EXAM_READY]: 'prepare_for_exam',
+  [CS.EXAM_READY]:         'ready',
 };
-
-export const STATE_ACTION: Partial<Record<ConceptState, string>> = {
-  'not_assessed': 'assess',
-  'learning':     'teach',
-  'clarity':      'master',
-  'mastered':     'prepare_for_exam',
-  'exam_ready':   'ready',
-};
-
-/** The next state in the progression, or null if this is the terminal state. */
-export function nextConceptState(current: ConceptState): ConceptState | null {
-  return NEXT_STATE[current] ?? null;
-}
 
 /** The action label for a given state — what the tutor does in that state. */
 export function stateAction(state: ConceptState): string {

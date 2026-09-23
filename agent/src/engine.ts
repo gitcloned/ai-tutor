@@ -17,7 +17,7 @@ export type AgentEvent =
   | { type: 'tutor-started' }
   | { type: 'tutor-ended' };
 
-export type TurnEvent =
+type TurnEventPayload =
   // Internal agent events
   | { type: 'session';      sessionId: string; conceptId: string; title: string }
   | { type: 'text';         content: string }
@@ -41,6 +41,9 @@ export type TurnEvent =
   | { type: 'ask';         content: string; attrs: Record<string, string> }
   | { type: 'question';    content: string; attrs: Record<string, string> }
   | { type: 'annotate';    content: string; attrs: Record<string, string> };
+
+/** Every turn event is enriched with the current session and node context. */
+export type TurnEvent = TurnEventPayload & { sessionId?: string; nodeId?: string };
 
 /** Union of all output event type strings. */
 export type OutputEventType = 'audio_chunk' | 'audio' | 'svg' | 'model3d' | 'model' | 'play' | 'ask' | 'question' | 'annotate' | 'text_chunk';

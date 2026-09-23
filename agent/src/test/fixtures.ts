@@ -9,9 +9,10 @@ import type { AgentContext } from '../context.js';
 // ── Concepts ──────────────────────────────────────────────────────────────────
 
 export const CONCEPT_COMPLETING_SOLUTIONS: Concept = {
-  id:           'graphing-solutions-to-2-variable-linear-equations-1',
-  title:        'Completing solutions to 2-variable equations',
-  nextConcepts: [],   // end of the sequence for now
+  id:              'graphing-solutions-to-2-variable-linear-equations-1',
+  title:           'Completing solutions to 2-variable equations',
+  nextConcepts:    [],   // end of the sequence for now
+  supportedPhases: ['learn', 'master'],
   lessonPlan: [
     {
       type: 'ido',
@@ -124,17 +125,19 @@ export const CONCEPT_COMPLETING_SOLUTIONS: Concept = {
 };
 
 export const CONCEPT_ORDERED_PAIRS: Concept = {
-  id:           'checking-ordered-pair-solutions-to-equations-1',
-  title:        'Solutions to 2-variable equations',
-  nextConcepts: [],
-  lessonPlan:   [],
-  probingTree:  null,
+  id:              'checking-ordered-pair-solutions-to-equations-1',
+  title:           'Solutions to 2-variable equations',
+  nextConcepts:    [],
+  supportedPhases: ['learn'],
+  lessonPlan:      [],
+  probingTree:     null,
 };
 
 export const CONCEPT_TWO_VAR_INTRO: Concept = {
-  id:           '2-variable-linear-equations-graphs',
-  title:        'Two-variable linear equations intro',
-  nextConcepts: [],
+  id:              '2-variable-linear-equations-graphs',
+  title:           'Two-variable linear equations intro',
+  nextConcepts:    [],
+  supportedPhases: ['learn'],
   lessonPlan: [
     { type: 'ido', instruction: null },
   ],

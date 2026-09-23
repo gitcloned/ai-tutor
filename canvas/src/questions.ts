@@ -50,7 +50,12 @@ export class Questions {
     const key=content.trim();if(!key)return;
     const mcq=key==='end'?null:mcqConfig(attrs);
     const active=this.active;
-    if(key!=='end'&&active?.meta.questionId===key)return active.id;
+    if(key!=='end'&&active?.meta.questionId===key){
+      const existing=this.editor.getCurrentPageShapes().find(s=>s.type==='mcq'&&s.parentId===active.id);
+      // An ID may be reused by the tutor for a new MCQ. Only resume when the
+      // actual question is unchanged; otherwise create a new notebook entry.
+      if(!mcq||(existing?.type==='mcq'&&existing.props.config===JSON.stringify(mcq)))return active.id;
+    }
     if(active&&this.editor.getCurrentPageShapes().some(s=>s.type==='mcq'&&s.parentId===active.id))this.editor.setCurrentTool('draw');
     if(active)this.editor.updateShape({id:active.id,type:'frame',meta:{...active.meta,questionActive:false}});
     this.lastWritten=null;

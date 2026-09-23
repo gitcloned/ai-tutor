@@ -87,6 +87,9 @@ export function useLesson(editor:Editor|null) {
       }
       if(block.kind==='error') {turnActive.current=false;pendingReply.current=false;setSubmission('idle');notify(block.content);return;}
       if(block.kind==='play'){
+        // Playback has already drained this turn's narration and visuals.
+        await delay(2000,signal,()=>paused.current);
+        if(signal.aborted)return;
         await renderer.current!.render(block,signal);
         const media=safeMedia(block.content);
         if(media&&media.kind!=='link'&&!signal.aborted){

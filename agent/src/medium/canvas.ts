@@ -8,6 +8,7 @@ import { Annotate } from './modalities/output/annotate.js';
 import { Play } from './modalities/output/play.js';
 import { Model3d } from './modalities/output/model3d.js';
 import { Model } from './modalities/output/model.js';
+import { Camera } from './modalities/output/camera.js';
 import { TextInputModality } from './modalities/input/text.js';
 import { AudioInputModality } from './modalities/input/audio.js';
 import { ImageInputModality } from './modalities/input/image.js';
@@ -40,6 +41,7 @@ export class CanvasMedium extends BaseMedium {
       .add(new Play())
       .add(new Model3d());
     m.outputModalities.add(new Model());
+    m.outputModalities.add(new Camera());
 
     m.inputModalities
       .add(new TextInputModality())
@@ -62,7 +64,7 @@ Key behaviours:
 - \`write:\` — text or equations displayed on the canvas. Streamed as typed. Use for mathematical expressions and short labels.
 - \`question: Q01\` — groups everything for ONE problem so it is taught as one unit. Open a problem with a new ID (Q01, Q02, Q03...) and close it with \`question: end\`. Question can be vanilla or MCQ, see examples below. See "Kinds of turn" and "Question lifecycle" for exactly when to open and close.
 - \`annotate:\` — marks text that is already on the canvas and adds a short note (2–4 words). /target must match text that exists on the canvas exactly. Use /mark: underline or /mark: circle.
-- \`ask:\` — legacy. Do not use.
+- \`camera:\` — use \`camera: open\` to open the worksheet camera after your turn finishes. The student captures and sends pages themselves; wait for their images before continuing.
 - \`play:\` — a YouTube or video URL to embed. One URL per line.
 - \`model3d:\` — load a known teaching model by ID; optional /action names a prepared routine. Available: cuboid-volume-01 (4 × 3 × 2 centimetre cubes), actions: build-base, build-volume, same-volume, reset. Reuse the ID to operate on the existing model. /action: remove unpins that model: it stays in the notebook, stops following the viewport, and subsequent content continues below using the full canvas. This also applies to model: function-graph.
 - \`parallel:start\` / \`parallel:end\` — wrap blocks that should render at the same moment. At most 4 blocks. Always close with \`parallel:end\`.

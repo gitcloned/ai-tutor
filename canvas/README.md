@@ -27,6 +27,14 @@ Open http://127.0.0.1:32000, choose **Start learning**, and connect to `ws://loc
 
 Canvas binds to `0.0.0.0:32000`, making it reachable from other devices on your network. It fails if port **32000** is occupied rather than silently switching ports. The default tutor socket uses the site's hostname on port **32004**, with `ws://` for HTTP and `wss://` for HTTPS. Saved addresses are reused only when their hostname and protocol match the current site. You can edit the tutor address before connecting. Preview also binds to `0.0.0.0`, on port **32005**.
 
+## Firebase Hosting
+
+Run `npm run deploy` from `canvas/` with the Firebase CLI signed into an account that can deploy to `prodigy-tutor`. Its predeploy hook builds the app and includes `cms/packages/resources/interactive-models/` under `dist/api/models/`. Hosting serves only the `dist` directory; agent configuration and secrets are not included. No Firebase browser SDK is needed for Hosting.
+
+Set `VITE_TUTOR_WS_URL=wss://your-public-tutor-server` in `.env.production.local` to provide a default public tutor address before building. Without this setting, the hosted connection field starts empty and accepts a student-entered secure WebSocket URL. Production remembers manually entered `wss://` addresses across reloads. Firebase Hosting serves the UI and model resources; the tutor backend still needs a separate secure WebSocket endpoint.
+
+Connect and Start learning try the last successful tutor address when available. An unsuccessful attempt opens the connection sheet; pending attempts time out after 10 seconds. Tapping the disconnected orb always opens the sheet directly. It offers the shared Cloudflare tunnel, up to four recent successful addresses, and a manual address field. Pasted HTTPS links are converted to WSS. Addresses are remembered only after the WebSocket opens, and insecure WS addresses are rejected on the HTTPS site. Quick-tunnel addresses may change when the tunnel restarts; use the manual field to connect to the replacement.
+
 ## Cuboid volume chapter
 
 Start the static CMS resource package (no database needed):
@@ -66,6 +74,9 @@ CANVAS_URL=http://127.0.0.1:32000 npm exec -- playwright test e2e/cuboid.spec.ts
 
 ## Controls
 
+- Double-tap the tutor orb to photograph paper work. Single taps wait 350ms to distinguish them from a double tap; holding still records speech. The camera starts with the front camera and remembers the last camera selected during this browser session.
+- Capture as many pages as needed, tap a thumbnail to preview or delete it, then tap the camera's orb to send. Closing the camera keeps pending pages attached to the current notebook page; a regular orb submission includes them with pending text, drawings, and audio. Unsent photos stay in memory until reload. Camera access requires HTTPS on tablets and permission from the student.
+- Photos are separate JPEG images, at most 1,600 pixels on the longest edge, with 82% quality. They are sent in capture order, followed by any canvas drawing image. Saved photos are never mirrored. Successful sends create a “Your work” stack on the canvas, persisted with the notebook; tap it to browse the original submitted pages. The saved stack is excluded from future work diffs.
 - Left toolbar: select, pencil, erase, text, shapes, pan, ink colors, undo/redo. Standard tldraw keyboard shortcuts remain available.
 - Tutor orb: tap to send pending student work. Hold for 420ms to start microphone recording; release to send audio together with pending text and drawings. Move more than 90 pixels away to cancel. Tutor playback pauses while recording. A tap with nothing pending shows a short notice.
 - Keyboard button: type a reply. Conversation button: review this connection's transcript.

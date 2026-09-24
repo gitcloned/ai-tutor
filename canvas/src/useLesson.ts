@@ -1,3 +1,4 @@
+import {normalizeTutorUrl,rememberTutor} from './tutorUrl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from 'tldraw';
 import { BlockAdapter, safeMedia, type WireEvent, type Block } from './protocol';
@@ -10,7 +11,11 @@ export type Phase='offline'|'connecting'|'ready'|'thinking'|'speaking'|'writing'
 export type Entry={kind:string;text:string};
 declare global {interface Window {canvasPlaybackDiagnostics?:()=>unknown;}}
 export function useLesson(editor:Editor|null) {
+  const [connectionError,setConnectionError]=useState(''),[successfulUrl,setSuccessfulUrl]=useState('');
+  const connectTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const clearConnectTimer=()=>{if(connectTimer.current)clearTimeout(connectTimer.current);connectTimer.current=null;};
   const [phase,setPhase]=useState<Phase>('offline'); const [connected,setConnected]=useState(false);
+  const [openCamera,setOpenCamera]=useState(false);
   const [caption,setCaption]=useState(''); const [question,setQuestion]=useState(''); const [title,setTitle]=useState('A little room to think');
   const [warnings,setWarnings]=useState<string[]>([]);
   const [issue,setIssue]=useState<{text:string;action:'connect'|'reply'|'retry'|'sound'}|null>(null); const [entries,setEntries]=useState<Entry[]>([]);
@@ -21,6 +26,7 @@ export function useLesson(editor:Editor|null) {
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
   const rewatching=useRef(false);
   const [video,setVideo]=useState<LessonVideo|null>(null),[submission,setSubmission]=useState<'idle'|'sent'|'waiting'>('idle');
+  const preserveVideoOnAbort=useRef(false);
   const pendingReply=useRef(false),sentTimer=useRef<ReturnType<typeof setTimeout>|null>(null),finishVideo=useRef<(()=>void)|null>(null);
   const clearSubmission=()=>{turnActive.current=false;setBusy(false);pendingReply.current=false;if(sentTimer.current)clearTimeout(sentTimer.current);setSubmission('idle');};
   const receivedReply=()=>{pendingReply.current=false;setSubmission(current=>current==='sent'?'sent':'idle');};
@@ -108,7 +114,7 @@ export function useLesson(editor:Editor|null) {
         if(media&&media.kind!=='link'&&!signal.aborted){
           setVideo(media);setPhase('waiting');log('play',media.url);
           await new Promise<void>(resolve=>{
-            const done=()=>{signal.removeEventListener('abort',done);finishVideo.current=null;setVideo(null);resolve();};
+            const done=()=>{signal.removeEventListener('abort',done);finishVideo.current=null;if(!preserveVideoOnAbort.current)setVideo(null);resolve();};
             finishVideo.current=done;signal.addEventListener('abort',done,{once:true});
             if(signal.aborted)done();
           });
@@ -116,8 +122,12 @@ export function useLesson(editor:Editor|null) {
         return;
       }
       if(block.kind==='action') {
-        if(block.action && typeof block.action==='object' && 'type' in block.action && block.action.type==='send-ok') {
-          if(socket.current?.readyState===WebSocket.OPEN){pendingReply.current=true;setBusy(true);socket.current.send(JSON.stringify({type:'message',text:'Ok'}));}
+        if(block.action && typeof block.action==='object' && 'type' in block.action) {
+          if(block.action.type==='send-ok') {
+            if(socket.current?.readyState===WebSocket.OPEN){pendingReply.current=true;setBusy(true);socket.current.send(JSON.stringify({type:'message',text:'Ok'}));}
+          } else if(block.action.type==='open-camera') {
+            setOpenCamera(true);
+          }
         } return;
       }
       setPhase('writing');setCaption(block.kind==='svg'?'Let’s look at this together.':'Follow along, or try it yourself.');
@@ -134,25 +144,34 @@ export function useLesson(editor:Editor|null) {
     player.current=playback;
     const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;
-    return ()=>{if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
+    return ()=>{clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
-    try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.','connect');return false;}
+    setConnectionError('');
+    try{url=normalizeTutorUrl(url);}catch(error){setConnectionError((error as Error).message);return false;}
     if(!player.current) return false;
+    clearConnectTimer();setConnected(false);
     connectionVersion.current++;connectionPage.current=null;
     setEndedTurns(0);setIssue(null);narration.current=[];lastNarration.current=[];narrationBytes.current=0;setCanRepeat(false);
     clearSubmission();rewatching.current=false;setVideo(null);
     socket.current?.close();player.current.cancel();adapter.current.reset();paused.current=false;audio.current.pause(false);
     void audio.current.unlock().catch(()=>notify('Your browser paused lesson audio. Enable sound to hear your tutor.','sound'));
-    const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setQuestion('');waiting.current=false;
+    let ws:WebSocket;
+    try{ws=new WebSocket(url);}catch{socket.current=null;setPhase('offline');setConnectionError('This address could not be opened. Check it and try again.');return false;}
+    socket.current=ws;setPhase('connecting');setQuestion('');waiting.current=false;
+    let opened=false;const connectedAt=Date.now();let lastReceivedAt=connectedAt;
+    const failed=(message:string)=>{if(socket.current!==ws)return;clearConnectTimer();socket.current=null;ws.close();setConnected(false);setPhase('offline');setConnectionError(message);};
+    connectTimer.current=setTimeout(()=>failed('Your tutor did not respond. Check that the server and tunnel are running, or choose another address.'),10000);
     ws.onopen=()=>{
       if(socket.current!==ws)return;
+      opened=true;clearConnectTimer();rememberTutor(url);setSuccessfulUrl(url);
       setEntries([]);setFollow(true);
       setConnected(true);setPhase('ready');setCaption('Your tutor is getting ready.');
     };
     ws.onmessage=e=>{
       if(socket.current!==ws)return;
       try {
+        lastReceivedAt=Date.now();
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
@@ -174,11 +193,13 @@ export function useLesson(editor:Editor|null) {
       }
       catch {notify('One tutor event could not be read. You can reconnect if the lesson stops.');}
     };
-    ws.onerror=()=>{if(socket.current===ws)notify('We could not reach your tutor. Check your connection and try again.','connect');};
-    ws.onclose=()=>{if(socket.current!==ws)return;rewatching.current=false;setVideo(null);clearSubmission();player.current?.cancel();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
+    ws.onerror=()=>{if(socket.current!==ws)return;if(!opened)failed('We could not reach this tutor. Check your Wi-Fi and that the tunnel is running, or choose another address.');else notify('We could not reach your tutor. Check your connection and try again.','connect');};
+    ws.onclose=event=>{if(socket.current!==ws)return;
+      const details={time:new Date().toISOString(),code:event.code,reason:event.reason,wasClean:event.wasClean,connectedMs:Date.now()-connectedAt,lastMessageAgoMs:Date.now()-lastReceivedAt,online:navigator.onLine};
+      console.warn('Tutor WebSocket closed',details);record(`socket-close:${JSON.stringify(details)}`);if(!opened){failed('The tutor connection closed before it was ready. Try another address or check that the server is running.');return;}clearConnectTimer();rewatching.current=false;clearSubmission();preserveVideoOnAbort.current=true;player.current?.cancel();preserveVideoOnAbort.current=false;setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
     return true;
   }
-  function disconnect(){rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();setConnected(false);setPhase('offline');}
+  function disconnect(){clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();setConnected(false);setPhase('offline');}
   function send(value:string|StudentInput,videoDone=false) {
     if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.','connect');return false;}
     if(pendingReply.current||(busyRef.current&&!videoDone)){notify('Your work was sent. Wait for your tutor to respond.');return false;}
@@ -193,6 +214,7 @@ export function useLesson(editor:Editor|null) {
     log('you',[input.text,input.audio?'Voice message':null,input.images?.length?'Canvas work shared':null,input.activity?(input.activity.type==='choice-selected'?`Selected ${input.activity.choice.toUpperCase()}: ${input.activity.text}`:`Plotted (${input.activity.x}, ${input.activity.y}) — ${input.activity.correct?'correct':'try again'}`):null].filter(Boolean).join('\n'));setQuestion('');waiting.current=false;setPhase('thinking');return true;
   }
   function doneWatching(){
+    if(!connected&&video){setVideo(null);rewatching.current=false;notify('Reconnect to tell your tutor you have finished watching.','connect');return true;}
     if(rewatching.current){rewatching.current=false;setVideo(null);paused.current=false;player.current?.setPaused(false);audio.current.pause(false);setBusy(turnActive.current||pendingReply.current);setPhase(connected?'ready':'offline');return true;}
     if(!finishVideo.current)return false;
     if(!send('I am done watching',true))return false;
@@ -219,5 +241,5 @@ export function useLesson(editor:Editor|null) {
     const media=safeMedia(url);if(!media||media.kind==='link')return;
     rewatching.current=true;paused.current=true;player.current?.setPaused(true);setVideo(media);setBusy(true);
   }
-  return {rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify('Sound is still blocked. Check this site’s sound permission in your browser, then try again.','sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
+  return {connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
 }

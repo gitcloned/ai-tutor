@@ -17,3 +17,13 @@ it('sends changed student drawings only, commits after send, and preserves edits
   const changed=work.prepare();resolve({url:'data:image/jpeg;base64,Yg=='});(await changed).commit();
   expect((await work.prepare()).images).toEqual([]);
 });
+
+it('does not resend submitted photo stacks as new drawings',async()=>{
+  let shapes:TLShape[]=[];
+  const exportImage=vi.fn();
+  const editor={store:{allRecords:()=>shapes},getCurrentPageShapes:()=>shapes,toImageDataUrl:exportImage} as unknown as Editor;
+  const work=new StudentWork(editor);
+  shapes=[{id:'shape:pages',type:'page-stack',meta:{author:'student'},props:{w:260,h:310,assets:['asset:photo']}} as TLShape];
+  expect((await work.prepare()).images).toEqual([]);
+  expect(exportImage).not.toHaveBeenCalled();
+});

@@ -4,3 +4,7 @@ test-results/
 playwright-report/
 *.tsbuildinfo
 artifacts/
+.firebase/
+firebase-debug.log*
+.env.local
+.env.production.local

@@ -5,7 +5,7 @@ import type {ChoiceAttempt} from './mcq';
 export type MediaInput={data:string;mimeType:string};
 export type StudentInput={text?:string;audio?:MediaInput;images?:MediaInput[];activity?:GraphAttempt|ChoiceAttempt};
 export const fingerprint=(shape:TLShape)=>JSON.stringify({type:shape.type,props:shape.props});
-export const isStudentWork=(shape:TLShape)=>shape.meta.author!=='tutor'&&shape.type!=='model3d'&&shape.type!=='group';
+export const isStudentWork=(shape:TLShape)=>shape.meta.author!=='tutor'&&shape.type!=='model3d'&&shape.type!=='group'&&shape.type!=='page-stack';
 
 /** Baselines track content, not camera movements or repositioning. */
 export class StudentWork {

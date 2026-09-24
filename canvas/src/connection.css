@@ -1,0 +1,12 @@
+.connection-sheet{width:480px;max-height:calc(100dvh - 36px);overflow-y:auto;padding:32px}
+.connection-emblem{display:inline-flex;color:#416653;background:#e9eee2;border-radius:15px;width:52px;height:52px;align-items:center;justify-content:center;margin-bottom:18px}
+.connection-sheet .connection-intro{font-size:14px;line-height:1.6;margin:10px 0 23px;color:#6c7966}
+.connection-choices{display:flex;flex-direction:column;gap:9px}
+.connection-sheet .connection-choice{display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:14px;border:1px solid #dbe3d4;border-radius:12px;background:#f5f7ef;min-height:68px;color:#416653;touch-action:manipulation}
+.connection-choice>span:nth-child(2){min-width:0;flex:1}.connection-choice strong{display:block;font-size:14px;font-weight:600}.connection-choice small{display:block;font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere;color:#74816f}.connection-choice>svg{flex-shrink:0}.connection-choice-icon{display:flex;align-items:center}
+.connection-choice:hover:not(:disabled){border-color:#91ad89;background:#edf2e6}.connection-sheet button:focus-visible{outline:2px solid #416653;outline-offset:3px}
+.connection-divider{display:flex;align-items:center;gap:12px;margin:22px 0 16px;font-size:12px;color:#7a8474}.connection-divider::before,.connection-divider::after{content:'';height:1px;background:#e3e7dc;flex:1}
+.connection-sheet form{gap:9px}.connection-sheet label{font-size:12px}.connection-sheet input{font-size:14px;min-height:46px}.connection-sheet .primary{justify-content:space-between;min-height:46px}
+.connection-sheet .connection-error{font-size:13px;color:#9c4036;background:#fff0e8;border-radius:8px;padding:12px;line-height:1.5;margin:0;overflow-wrap:anywhere}
+.connection-sheet .connection-footnote{display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.5;color:#7b8771;margin:18px 0 0}.connection-footnote svg{flex-shrink:0}.connection-spinner{animation:orbit 1.5s linear infinite}
+@media(max-width:600px){.connection-sheet{padding:26px 22px}.connection-choices{gap:8px}}

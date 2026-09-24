@@ -110,3 +110,25 @@ test('YouTube opens with autoplay enabled and disconnect closes the overlay',asy
   await expect(modal.getByRole('button',{name:'I’m done watching'})).toBeInViewport();
   socket!.close();await expect(modal).toHaveCount(0);
 });
+
+test('socket loss preserves the video and records disconnect diagnostics',async({page})=>{
+  let socket:WebSocketRoute;
+  const warnings:string[]=[];page.on('console',msg=>{if(msg.type()==='warning')warnings.push(msg.text());});
+  await page.route('https://www.youtube.com/**',route=>route.fulfill({contentType:'text/html',body:'Video provider'}));
+  await page.routeWebSocket('**/disconnect-video',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/disconnect-video');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  socket!.send(JSON.stringify({type:'play',content:'https://www.youtube.com/watch?v=AOxMJRtoR2A',attrs:{}}));
+  socket!.send(JSON.stringify({type:'event',event:{type:'tutor-ended'}}));
+  const viewer=page.getByRole('dialog',{name:'Watch together'});
+  await expect(viewer).toBeVisible();
+  await viewer.locator('iframe').evaluate(el=>el.setAttribute('data-preserved','yes'));
+  socket!.close({code:1011,reason:'Test disconnection'});
+  await expect(page.locator('.connection')).not.toContainText('Connected');
+  await expect(viewer).toBeVisible();await expect(viewer.locator('iframe')).toHaveAttribute('data-preserved','yes');
+  expect(warnings.some(w=>w.includes('Tutor WebSocket closed')&&w.includes('1011'))).toBe(true);
+  await viewer.getByRole('button',{name:"I’m done watching"}).click();
+  await expect(viewer).toHaveCount(0);
+});

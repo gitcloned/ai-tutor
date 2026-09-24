@@ -72,3 +72,23 @@ it('waits before sequential speech but respects explicit parallel presentation',
   expect(seen).toEqual(['write','speech','svg','speech']);
   expect(waits).toEqual([1200]);
 });
+
+it('defers camera until turn-end and narration finish, then releases the turn',async()=>{
+  const seen:string[]=[];let finish!:()=>void;let idle=false;
+  const player=new Playback(async b=>{seen.push(b.kind);if(b.kind==='speech')await new Promise<void>(r=>{finish=r;});},()=>{},()=>{idle=true;});
+  player.add([
+    {kind:'action',content:'',attrs:{},action:{type:'open-camera'}},
+    {kind:'action',content:'',attrs:{},action:{type:'parallel-start'}},
+    {kind:'speech',content:'Take a photo',attrs:{}},
+    {kind:'write',content:'Your worksheet',attrs:{}},
+    {kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}},
+  ]);
+  await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['speech','write']);expect(idle).toBe(false);
+  finish();await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['speech','write','action']);expect(idle).toBe(true);
+});
+it('cancels a deferred camera request',async()=>{
+  const seen:string[]=[];const player=new Playback(async b=>{seen.push(b.kind);},()=>{});
+  player.add([{kind:'action',content:'',attrs:{},action:{type:'open-camera'}}]);player.cancel();
+  player.add([{kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}}]);
+  await new Promise(r=>setTimeout(r,0));expect(seen).toEqual([]);
+});

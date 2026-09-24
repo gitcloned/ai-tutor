@@ -1,3 +1,4 @@
+import { startHeartbeat } from './heartbeat.js';
 import { createServer }              from 'http';
 import { readFileSync }              from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -103,6 +104,8 @@ export class WebSocketTransport implements Transport {
       }
 
       this.socket = ws;
+      const connectedAt = Date.now();
+      startHeartbeat(ws, message => process.stderr.write(`[WebSocket ${new Date().toISOString()}] ${message}\n`));
       process.stdout.write('Client connected.\n');
 
       Promise.all(this.connectedHandlers.map(h => h()))
@@ -131,13 +134,14 @@ export class WebSocketTransport implements Transport {
         }
       });
 
-      ws.on('close', () => {
+      ws.on('close', (code, reason) => {
         this.socket = null;
-        process.stdout.write('Client disconnected.\n');
+        process.stdout.write(`[WebSocket ${new Date().toISOString()}] Client disconnected: code=${code}, reason=${JSON.stringify(reason.toString())}, connectedMs=${Date.now()-connectedAt}\n`);
         this.disconnectedHandlers.forEach(h => h());
       });
 
       ws.on('error', (err: Error) => {
+        process.stderr.write(`[WebSocket ${new Date().toISOString()}] ${err.message}\n`);
         this.handle({ type: 'error', message: err.message });
       });
     });

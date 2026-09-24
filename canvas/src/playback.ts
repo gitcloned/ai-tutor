@@ -7,6 +7,7 @@ export class Playback {
   private parallelDepth = 0;
   private parallelTasks: Promise<void>[] = [];
   private turnVideos:Block[]=[];
+  private turnCamera:Block|null=null;
   private narrationTail: Promise<void> | null = null;
   private previousKind: Block['kind'] | null = null;
   paused = false;
@@ -30,6 +31,7 @@ export class Playback {
     this.parallelDepth=0;
     this.parallelTasks=[];
     this.turnVideos=[];
+    this.turnCamera=null;
     this.narrationTail=null;
     this.previousKind=null;
     this.paused=false;
@@ -45,11 +47,14 @@ export class Playback {
         if(block.kind==='play'){this.turnVideos.push(block);continue;}
         const action = block.action;
         if (block.kind === 'action' && action && typeof action === 'object' && 'type' in action) {
+          if(action.type==='open-camera'){this.turnCamera=block;continue;}
           if(action.type==='tutor-ended'){
-            const videos=this.turnVideos.splice(0),signal=this.controller.signal;
+            const videos=this.turnVideos.splice(0),camera=this.turnCamera,signal=this.controller.signal;
+            this.turnCamera=null;
             await Promise.all(this.parallelTasks.splice(0));
             this.parallelDepth=0;
             for(const video of videos){if(signal.aborted)break;await this.run(video);}
+            if(camera&&!signal.aborted)await this.run(camera);
             continue;
           }
           if (action.type === 'parallel-start') { this.parallelDepth++; continue; }
@@ -71,7 +76,7 @@ export class Playback {
         if (isPresentationBlock(block)) this.previousKind = block.kind;
       }
       if (this.parallelDepth === 0 && this.parallelTasks.length) await Promise.all(this.parallelTasks.splice(0));
-    } finally { this.running=false; if(!this.queue.length&&!this.parallelTasks.length&&!this.turnVideos.length&&!this.narrationTail) this.idle(); }
+    } finally { this.running=false; if(!this.queue.length&&!this.parallelTasks.length&&!this.turnVideos.length&&!this.turnCamera&&!this.narrationTail) this.idle(); }
   }
   private run(block: Block): Promise<void> {
     // Capture this connection's signal now: a queued sentence must never inherit

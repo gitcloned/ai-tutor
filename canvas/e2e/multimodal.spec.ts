@@ -11,7 +11,7 @@ test('orb sends only new drawing work and combines held audio with typed text',a
   socket!.send(JSON.stringify({type:'text_chunk',content:'Tutor content',attrs:{}}));
   await expect(page.locator('.orb-label')).toHaveText('Here with you');
   const orb=page.getByRole('button',{name:'Send new work; hold to speak',exact:true});
-  await orb.click();await expect(page.getByRole('status')).toContainText('No new work');expect(messages).toHaveLength(0);
+  await orb.click();await expect(page.getByRole('button',{name:/Lesson warnings/})).toBeVisible();await page.waitForTimeout(400);expect(messages).toHaveLength(0);
   await page.getByRole('button',{name:'Pencil (D)',exact:true}).click();
   await page.mouse.move(850,300);await page.mouse.down();await page.mouse.move(950,350,{steps:10});await page.mouse.up();
   await orb.click();await expect.poll(()=>messages.length).toBe(1);
@@ -20,7 +20,7 @@ test('orb sends only new drawing work and combines held audio with typed text',a
   await expect(page.locator('.orb-label')).toHaveText('Waiting for tutor…');
   socket!.send(JSON.stringify({type:'text_chunk',content:'Thanks for your work.',attrs:{}}));
   await expect(orb).toBeEnabled();
-  await orb.click();await expect(page.getByRole('status')).toContainText('No new work');expect(messages).toHaveLength(1);
+  await orb.click();await expect(page.getByRole('button',{name:/Lesson warnings/})).toBeVisible();await page.waitForTimeout(400);expect(messages).toHaveLength(1);
   await page.getByRole('button',{name:'Text (T)',exact:true}).click();await page.mouse.click(850,450);await page.keyboard.type('x = 2');await page.keyboard.press('Escape');
   await orb.click();await expect.poll(()=>messages.length).toBe(2);expect(messages[1].text).toBe('x = 2');expect(messages[1].images).toBeUndefined();
   socket!.send(JSON.stringify({type:'text_chunk',content:'Keep going.',attrs:{}}));await expect(orb).toBeEnabled();
@@ -32,7 +32,7 @@ test('orb sends only new drawing work and combines held audio with typed text',a
   await expect.poll(()=>messages.length).toBe(3);
   expect(messages[2].text).toBe('I counted 24 cubes.');expect(messages[2].audio.mimeType).toMatch(/^audio\//);expect(messages[2].audio.data.length).toBeGreaterThan(100);expect(messages[2].images).toHaveLength(1);
   socket!.send(JSON.stringify({type:'text_chunk',content:'I heard you.',attrs:{}}));await expect(orb).toBeEnabled();
-  await orb.click();await expect(page.getByRole('status')).toContainText('No new work');expect(messages).toHaveLength(3);
+  await orb.click();await expect(page.getByRole('button',{name:/Lesson warnings/})).toBeVisible();await page.waitForTimeout(400);expect(messages).toHaveLength(3);
   await page.mouse.move(b!.x+b!.width/2,b!.y+b!.height/2);await page.mouse.down();await expect(page.locator('.orb-label')).toHaveText('Listening…');
   await page.mouse.move(b!.x-120,b!.y,{steps:5});await page.mouse.up();
   await expect(page.locator('.orb-label')).not.toHaveText('Listening…');expect(messages).toHaveLength(3);

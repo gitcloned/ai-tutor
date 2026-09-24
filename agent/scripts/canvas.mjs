@@ -53,6 +53,7 @@ const activeTTS = process.env.USE_TTS_PROVIDER;
 const __dir = new URL('.', import.meta.url).pathname;
 const htmlPath = resolve(__dir, '../src/transports/test-ws.html');
 
+const { startHeartbeat } = await import('../dist/transports/heartbeat.js');
 const { CanvasMedium } = await import('../dist/medium/canvas.js');
 const { OutputParser } = await import('../dist/medium/modalities/output/parser.js');
 
@@ -259,6 +260,8 @@ async function play(ws, q) {
 }
 
 wss.on('connection', async ws => {
+  startHeartbeat(ws, message => console.warn(`[WebSocket ${new Date().toISOString()}] ${message}`));
+  ws.on('close', (code, reason) => console.log(`[WebSocket ${new Date().toISOString()}] Closed: code=${code}, reason=${JSON.stringify(reason.toString())}`));
   console.log('Client connected — starting playback.');
   let playing = true;
   ws.on('message', async data => {

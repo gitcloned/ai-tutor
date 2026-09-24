@@ -75,3 +75,12 @@ export function writingFrames(text: string) {
   const characters = [...text];
   return characters.map((_, index) => characters.slice(0, index + 1).join(''));
 }
+
+/** Fit a complete activity, with a readable zoom floor and top-aligned overflow. */
+export function activityCamera(area:Rect, content:Rect, currentZoom:number) {
+  const widthZoom=area.w/content.w;
+  const z=Math.min(1,widthZoom,Math.max(.75,Math.min(currentZoom,area.h/content.h)));
+  const spareY=Math.max(0,area.h-content.h*z);
+  return {x:(area.x+Math.max(0,area.w-content.w*z)/2)/z-content.x,
+    y:(area.y+Math.min(32,spareY*.2))/z-content.y,z};
+}

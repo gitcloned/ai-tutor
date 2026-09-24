@@ -8,7 +8,7 @@ import type { ModelShape } from './models/ModelShape';
 import {renderFunctionGraph,type FunctionGraphShape} from './models/FunctionGraphShape';
 import type {TLShape} from 'tldraw';
 import {Questions} from './questions';
-import { cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
+import { activityCamera, cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
 
 const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape=>(s.type==='model3d'||s.type==='function-graph')&&s.meta.unpinned!==true;
 
@@ -94,6 +94,27 @@ export class CanvasRenderer {
     if(!this.follow) return;
     const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
     if(id===model?.id&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
+    // A question frame reserves an annotation column; focus the actual MCQ
+    // children instead of including that empty space in the camera bounds.
+    const children=this.editor.getCurrentPageShapes().filter(s=>s.parentId===id);
+    if(!model&&children.some(s=>s.type==='mcq')){
+      const boxes=children.map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
+      if(boxes.length){
+        const left=Math.min(...boxes.map(b=>b.x)),top=Math.min(...boxes.map(b=>b.y));
+        const content={x:left,y:top,w:Math.max(...boxes.map(b=>b.maxX))-left,h:Math.max(...boxes.map(b=>b.maxY))-top};
+        const screen=this.editor.getViewportScreenBounds();
+        const toolbar=this.editor.getContainer().closest('.app')?.querySelector('.toolbar')?.getBoundingClientRect();
+        const visible=window.visualViewport;
+        const x=Math.max(24,toolbar?toolbar.right-screen.x+24:100,visible?visible.offsetLeft-screen.x+24:0);
+        const y=Math.max(24,visible?visible.offsetTop-screen.y+24:0);
+        const right=Math.min(screen.w,visible?visible.offsetLeft+visible.width-screen.x:screen.w)-24;
+        const bottom=Math.min(screen.h,visible?visible.offsetTop+visible.height-screen.y:screen.h)-32;
+        this.focused=id;
+        this.editor.setCamera(activityCamera({x,y,w:Math.max(100,right-x),h:Math.max(100,bottom-y)},content,this.editor.getZoomLevel()),
+          {animation:{duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:350}});
+        return;
+      }
+    }
     const row=this.questions.rowBounds(id);
     const bounds=row??this.editor.getShapePageBounds(id); if(!bounds) return;
     if(id!==model?.id)this.focused=id;

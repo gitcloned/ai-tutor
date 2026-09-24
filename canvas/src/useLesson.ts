@@ -54,7 +54,9 @@ export function useLesson(editor:Editor|null) {
     let timer:ReturnType<typeof setTimeout>;
     const resize=()=>{clearTimeout(timer);timer=setTimeout(()=>renderer.current?.refocus(),200);};
     window.addEventListener('resize',resize);
-    return()=>{clearTimeout(timer);window.removeEventListener('resize',resize);};
+    window.visualViewport?.addEventListener('resize',resize);
+    window.visualViewport?.addEventListener('scroll',resize);
+    return()=>{clearTimeout(timer);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);};
   },[]);
   useEffect(()=>{
     if(!editor) return;

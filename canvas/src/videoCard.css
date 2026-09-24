@@ -1,0 +1,5 @@
+.watch-again-card{position:relative;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;background:#e8eee2;border:1px solid #d3decb;border-radius:16px;color:#416653;pointer-events:all}
+.watch-again-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.65)}
+.watch-again-play{position:relative;display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:#fffef9;box-shadow:0 4px 20px #0002}
+.watch-again-label{position:relative;padding:6px 12px;border-radius:18px;background:#fffef9;font-size:17px}
+.watch-again-card:hover .watch-again-play{transform:scale(1.06)}

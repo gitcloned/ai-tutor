@@ -1,3 +1,5 @@
+import {Appreciation} from './appreciation';
+import {LessonEmbedUtil,LessonVideoUtil,VideoCardContext} from './VideoCard';
 import { useEffect, useState, useRef } from 'react';
 import { Tldraw, DefaultColorStyle, type Editor, useValue } from 'tldraw';
 import {QuestionFrameUtil} from './QuestionFrame';
@@ -16,10 +18,10 @@ import {defaultTutorUrl,initialTutorUrl} from './tutorUrl';
 import {StudentWork,type MediaInput} from './studentWork';
 import { ModelShapeUtil } from './models/ModelShape';
 import {FunctionGraphShapeUtil,GraphActivityContext} from './models/FunctionGraphShape';
-const modelShapeUtils=[McqShapeUtil,ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
+const modelShapeUtils=[LessonEmbedUtil,LessonVideoUtil,McqShapeUtil,ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
 function applyCanvasTheme(editor:Editor) {
   const theme=editor.getTheme('default');
-  if(theme)editor.updateTheme({...theme,colors:{...theme.colors,light:{...theme.colors.light,green:{...theme.colors.light.green,solid:'#416653',fill:'#416653'}}}});
+  if(theme)editor.updateTheme({...theme,fontSize:18,colors:{...theme.colors,light:{...theme.colors.light,green:{...theme.colors.light.green,solid:'#416653',fill:'#416653'}}}});
 }
 import { useLesson } from './useLesson';
 import 'tldraw/tldraw.css';
@@ -79,11 +81,13 @@ export default function App() {
   }
   return <main className="app">
     <section className="canvas-area" aria-label="Shared learning canvas" onPointerDown={e=>{canvasPointer.current=(e.target as HTMLElement).closest('.tl-canvas')?{x:e.clientX,y:e.clientY}:null;}} onPointerMove={e=>{const start=canvasPointer.current;if(start&&e.buttons&&(editor?.inputs.isPanning||editor?.getCurrentToolId()==='hand'||e.buttons===4)&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>8){lesson.stopFollowing();canvasPointer.current=null;}}} onPointerUp={()=>{canvasPointer.current=null;}} onPointerCancel={()=>{canvasPointer.current=null;}} onWheel={()=>lesson.stopFollowing()}>
+      <VideoCardContext.Provider value={{enabled:!lesson.tutorBusy&&!preparing&&!lesson.video,open:lesson.rewatch}}>
       <McqContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
       <GraphActivityContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
         <Tldraw hideUi shapeUtils={modelShapeUtils} persistenceKey="prodigy-canvas-v1" onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
       </GraphActivityContext.Provider>
       </McqContext.Provider>
+      </VideoCardContext.Provider>
     </section>
     {!hasContent && !lesson.connected && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={()=>setSheet('connect')}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
@@ -100,9 +104,10 @@ export default function App() {
     {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p ref={captionText} tabIndex={0} aria-label="Tutor captions">{lesson.caption}</p></div>}
     <Orb tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
     </footer>
+    {editor&&<Appreciation editor={editor}/>}
     {editor&&<HelpChips editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&!lesson.video&&!sheet&&!notebook&&!lesson.issue&&['ready','waiting'].includes(lesson.phase)} canRepeat={lesson.canRepeat} repeat={lesson.repeatNarration} send={text=>lesson.send(text)}/>}
     {editor&&<InputHints key={lesson.connectionVersion.current} editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&['ready','waiting'].includes(lesson.phase)} blocked={!!lesson.video||!!sheet||notebook}/>}
-    {lesson.video&&<VideoLesson media={lesson.video} onDone={lesson.doneWatching}/>}
+    {lesson.video&&<VideoLesson rewatching={lesson.rewatching} media={lesson.video} onDone={lesson.doneWatching}/>}
     <LessonNotifications warnings={lesson.warnings} clear={lesson.clearWarnings} issue={lesson.issue} dismiss={lesson.dismissIssue} act={action=>{lesson.dismissIssue();if(action==='retry')void sendWork();else if(action==='sound')void lesson.enableSound();else setSheet(action==='reply'?'reply':'connect');}}/>
     {notebook&&editor&&<Notebook editor={editor} connected={lesson.connected} close={()=>setNotebook(false)}/>}
     {sheet&&<div className="sheet-backdrop" onPointerDown={e=>{if(e.target===e.currentTarget)setSheet(null);}}><section ref={dialogRef} className={`sheet ${sheet==='transcript'?'transcript-sheet':''}`} role="dialog" aria-modal="true" aria-labelledby="sheet-title"><button className="close-sheet" aria-label="Close dialog" onClick={()=>setSheet(null)}><X size={20}/></button>

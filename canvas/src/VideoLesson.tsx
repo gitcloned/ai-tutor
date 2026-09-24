@@ -4,7 +4,7 @@ import type {safeMedia} from './protocol';
 
 export type LessonVideo=NonNullable<ReturnType<typeof safeMedia>>;
 
-export function VideoLesson({media,onDone}:{media:LessonVideo;onDone:()=>boolean}){
+export function VideoLesson({media,onDone,rewatching=false}:{media:LessonVideo;onDone:()=>boolean;rewatching?:boolean}){
   const dialog=useRef<HTMLDialogElement>(null),video=useRef<HTMLVideoElement>(null),iframe=useRef<HTMLIFrameElement>(null);
   const [blocked,setBlocked]=useState(false),[failed,setFailed]=useState(false);
   useEffect(()=>{
@@ -32,6 +32,6 @@ export function VideoLesson({media,onDone}:{media:LessonVideo;onDone:()=>boolean
       {blocked&&!failed&&<button className="video-start" onClick={()=>{void video.current?.play().then(()=>setBlocked(false)).catch(()=>setBlocked(true));}}><Play size={22}/>Play video</button>}
       {failed&&<p className="video-failed">This video couldn’t load. You can return to your tutor.</p>}
     </div>
-    <footer><p>Take your time. Let your tutor know when you’re done.</p><button className="primary" onClick={done}><Check size={18}/>I’m done watching</button></footer>
+    <footer><p>{rewatching?'Watch at your own pace.':'Take your time. Let your tutor know when you’re done.'}</p><button className="primary" onClick={done}><Check size={18}/>{rewatching?'Back to canvas':'I’m done watching'}</button></footer>
   </dialog>;
 }

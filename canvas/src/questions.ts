@@ -7,7 +7,7 @@ import {mcqConfig} from './mcq';
 import type {Attrs} from './protocol';
 import type {McqShape} from './McqShape';
 
-const STEP_WIDTH=500,NOTE_X=640,NOTE_WIDTH=460,PADDING=32,GAP=44;
+const STEP_WIDTH=500,NOTE_X=640,NOTE_WIDTH=460,PADDING=32,GAP=56;
 
 /** Saved shapes retain their original dimensions; upgrade older question rows once. */
 export function upgradeQuestionLayout(editor:Editor){

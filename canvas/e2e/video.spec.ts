@@ -83,6 +83,14 @@ test('video waits for narration, autoplays, then pauses and sends one completion
   expect(messages).toEqual([{type:'message',text:'I am done watching'}]);
   expect(await page.evaluate(()=>(window as any).mediaStats.videoPause)).toBeGreaterThan(0);
   await expect(page.locator('.tl-shape[data-shape-type="video"]')).toHaveCount(1);
+  send({type:'event',event:{type:'tutor-ended'}});
+  const rewatch=page.getByRole('button',{name:'Watch video again',exact:true});
+  await expect(rewatch).toBeEnabled();await rewatch.click();
+  await expect(modal).toBeVisible();
+  await modal.getByRole('button',{name:'Back to canvas',exact:true}).click();
+  await expect(modal).toHaveCount(0);
+  expect(messages).toEqual([{type:'message',text:'I am done watching'}]);
+
   const orb=page.getByRole('button',{name:'Send new work; hold to speak',exact:true});await expect(orb).toBeDisabled();
   send({type:'text_chunk',content:'What did you notice?',attrs:{}});await expect(orb).toBeEnabled();
 });

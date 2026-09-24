@@ -1,3 +1,4 @@
+import {appreciate,isPraise} from './appreciation';
 import { Box, Editor, DefaultFontFaces, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
 import { safeMedia, type Block } from './protocol';
 import { sanitizeDiagram } from './diagram';
@@ -87,7 +88,7 @@ export class CanvasRenderer {
     if(block.attrs.position) point.y+=this.origin;
     if(model){point.x=right;point.y=Math.max(point.y,this.cursor);}
     if(block.kind==='ask')point.y=Math.max(point.y,this.cursor+24);
-    if(block.kind!=='model3d'&&block.kind!=='model')this.cursor=Math.max(this.cursor,point.y+h+38); return point;
+    if(block.kind!=='model3d'&&block.kind!=='model')this.cursor=Math.max(this.cursor,point.y+h+50); return point;
   }
   private focus(id:TLShapeId) {
     if(!this.follow) return;
@@ -96,9 +97,11 @@ export class CanvasRenderer {
     const row=this.questions.rowBounds(id);
     const bounds=row??this.editor.getShapePageBounds(id); if(!bounds) return;
     if(id!==model?.id)this.focused=id;
+    const screenBounds=this.editor.getViewportScreenBounds();
+    const tabletInset=matchMedia('(pointer: coarse)').matches&&screenBounds.w>=600?60:0;
     if(model) {
       const screen=this.editor.getViewportScreenBounds();
-      const zoom=Math.min(1,(screen.w-140)/(model.props.w+40+Math.max(560,id===model.id?0:bounds.w)),(screen.h-180)/Math.max(model.props.h,bounds.h));
+      const zoom=Math.min(1,(screen.w-140-tabletInset)/(model.props.w+40+Math.max(560,id===model.id?0:bounds.w)),(screen.h-180)/Math.max(model.props.h,bounds.h));
       const z=Math.max(.1,zoom),view=this.editor.getViewportPageBounds();
       let top=view.y;
       if(id===model.id)top=model.y-80/z;
@@ -107,14 +110,15 @@ export class CanvasRenderer {
       const animation={duration,easing:(t:number)=>t};
       // Move the real canvas model with the camera; all writing keeps its page
       // coordinates, so earlier work scrolls away while the model stays beside it.
-      this.editor.setCamera({x:100/z-model.x,y:-top,z},{animation});
+      this.editor.setCamera({x:(100+tabletInset)/z-model.x,y:-top,z},{animation});
       this.keepModelVisible();
       return;
     }
-    if(row){const camera=this.editor.getCamera(),screen=this.editor.getViewportScreenBounds();const z=Math.min(camera.z,(screen.w-120)/(bounds.w+80));if(z<camera.z)this.editor.setCamera({...camera,z});}
+    if(row){const camera=this.editor.getCamera(),screen=this.editor.getViewportScreenBounds();const z=Math.min(camera.z,(screen.w-120-tabletInset)/(bounds.w+80));if(z<camera.z)this.editor.setCamera({...camera,z});}
     const view=this.editor.getViewportPageBounds();
+    const inset=tabletInset/this.editor.getZoomLevel();
     const shift=cameraShift(
-      {x:view.x,y:view.y,w:view.w,h:view.h},
+      {x:view.x+inset,y:view.y,w:view.w-inset,h:view.h},
       {x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h},
     );
     if(!shift) return;
@@ -181,9 +185,9 @@ export class CanvasRenderer {
         if(step)this.questions.resize(id);
         if(!reduced) await delay(WRITE_CHARACTER_DELAY_MS,signal,this.paused);
       }
-      const bounds=this.editor.getShapePageBounds(id); if(bounds) this.cursor=Math.max(this.cursor,bounds.maxY+35);
+      const bounds=this.editor.getShapePageBounds(id); if(bounds) this.cursor=Math.max(this.cursor,bounds.maxY+47);
       if(block.kind==='write')this.questions.written(id);
-      this.focus(id); return;
+      this.focus(id);if(block.kind==='write'&&isPraise(text))appreciate(this.editor,`praise:${id}`,id,true); return;
     }
     if(block.kind==='svg') {
       const svg=sanitizeDiagram(block.content);

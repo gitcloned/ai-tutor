@@ -1,3 +1,4 @@
+import {appreciate} from '../appreciation';
 import {BaseBoxShapeUtil,DefaultFontFaces,HTMLContainer,T,createShapeId,useEditor,type Editor,type TLShape,type TLShapeId} from 'tldraw';
 import {createContext,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import type {Board} from 'jsxgraph';
@@ -23,10 +24,10 @@ export class FunctionGraphShapeUtil extends BaseBoxShapeUtil<FunctionGraphShape>
     const sy=(y:number)=>75+(c.yRange[1]-y)/(c.yRange[1]-c.yRange[0])*(shape.props.h-140);
     let path='',connected=false;
     for(let i=0;i<=400;i++){const x=c.xRange[0]+i/400*(c.xRange[1]-c.xRange[0]),y=f(x);if(!Number.isFinite(y)||y<c.yRange[0]||y>c.yRange[1]){connected=false;continue;}path+=`${connected?'L':'M'}${sx(x)},${sy(y)} `;connected=true;}
-    return <g><rect width={shape.props.w} height={shape.props.h} rx={18} fill="#fffef9"/><text x={30} y={40} fill="#416653" fontSize={22}>{c.equation}</text>
+    return <g><rect width={shape.props.w} height={shape.props.h} rx={18} fill="#fffef9"/><text x={30} y={40} fill="#416653" fontSize={28}>{c.equation}</text>
       <path d={`M30,${sy(0)}H${shape.props.w-30} M${sx(0)},75V${shape.props.h-65}`} stroke="#849181"/>
       {c.mode!=='ask'&&<path d={path} stroke="#356aca" strokeWidth={3.5} fill="none"/>}
-      {points.map((p,i)=><g key={i}><circle cx={sx(p.x)} cy={sy(p.y)} r={7} fill={p.correct?'#356aca':'#b26b51'}/><text x={sx(p.x)+9} y={sy(p.y)-9} fontSize={13}>{`(${p.x}, ${p.y})`}</text></g>)}
+      {points.map((p,i)=><g key={i}><circle cx={sx(p.x)} cy={sy(p.y)} r={7} fill={p.correct?'#356aca':'#b26b51'}/><text x={sx(p.x)+9} y={sy(p.y)-9} fontSize={16}>{`(${p.x}, ${p.y})`}</text></g>)}
     </g>;
   }
 }
@@ -77,7 +78,7 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
         }
       const b=JXG.JSXGraph.initBoard(element,{boundingbox:[config.xRange[0],config.yRange[1],config.xRange[1],config.yRange[0]],
         axis:true,grid:true,keepaspectratio:true,showCopyright:false,showNavigation:false,registerEvents:false,resize:{enabled:false,throttle:10},
-        pan:{enabled:false},defaultAxes:{x:{name:'x',withLabel:true,label:{position:'rt',offset:[-12,16]}},y:{name:'y',withLabel:true,label:{position:'rt',offset:[12,-12]}}}});
+        pan:{enabled:false},defaultAxes:{x:{name:'x',withLabel:true,ticks:{label:{fontSize:16,offset:[0,-16]}},label:{fontSize:16,position:'rt',offset:[-16,20]}},y:{name:'y',withLabel:true,ticks:{label:{fontSize:16,offset:[-12,0]}},label:{fontSize:16,position:'rt',offset:[16,-16]}}}});
       current=b;board.current=b;
       b.resizeContainer(width,height,true);
       b.setBoundingBox([config.xRange[0],config.yRange[1],config.xRange[1],config.yRange[0]],true);
@@ -110,6 +111,7 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
     const attempt:GraphAttempt={type:'graph-point',model:'function-graph',activityId:shape.props.activityId,equation:config.equation,...point,...result};
     if(!activity.submit(attempt)){setFeedback('Wait for your tutor, then try this point again.');return;}
     editor.updateShape<FunctionGraphShape>({id:shape.id,type:'function-graph',props:{points:JSON.stringify([...points.slice(-99),{...point,correct:result.correct}])}});
+    if(result.correct)appreciate(editor,`graph:${shape.id}:${config.equation}:${point.x}`,shape.id);
     setFeedback(result.correct?(result.complete?'All points plotted. Well done!':'That point fits. Well done!'):
       config.targets.length&&!config.targets.some(x=>Math.abs(x-point.x)<1e-7)?'Use one of the requested x-values shown below.':
       'Not quite. Substitute your x-value into the equation and try again.');
@@ -131,11 +133,11 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
           const y=config.mode==='ask'?snapped(Math.min(top,Math.max(bottom,old.y+(e.key==='ArrowUp'?config.snap:e.key==='ArrowDown'?-config.snap:0))),config.snap):fn(x);
           if(Number.isFinite(y))setCursor({x,y});
         }}>
-        {points.map((p,i)=><g key={i} data-result={p.correct?'correct':'incorrect'}><circle cx={sx(p.x)} cy={sy(p.y)} r={14} fill={p.correct?'#356aca':'#b26b51'} stroke="#fffef9" strokeWidth={3}/><text x={sx(p.x)+18} y={sy(p.y)-18} fontSize={24} fill={p.correct?'#356aca':'#96573f'}>{`(${p.x}, ${p.y})`}</text></g>)}
+        {points.map((p,i)=><g key={i} data-result={p.correct?'correct':'incorrect'}><circle cx={sx(p.x)} cy={sy(p.y)} r={14} fill={p.correct?'#356aca':'#b26b51'} stroke="#fffef9" strokeWidth={3}/><text x={sx(p.x)+18} y={sy(p.y)-18} fontSize={32} fill={p.correct?'#356aca':'#96573f'}>{`(${p.x}, ${p.y})`}</text></g>)}
         {cursor&&<g className="graph-crosshair"><path d={`M${sx(cursor.x)},0V1000 M0,${sy(cursor.y)}H1000`} stroke="#6c8d74" strokeWidth={2} strokeDasharray="7 7"/>
           <circle cx={sx(cursor.x)} cy={sy(cursor.y)} r={14} fill="#356aca" stroke="#fffef9" strokeWidth={3}/>
-          <text x={Math.min(920,Math.max(20,sx(cursor.x)+12))} y={Math.min(970,Math.max(30,sy(0)+30))} fontSize={26} fill="#416653">{cursor.x}</text>
-          <text x={Math.min(900,Math.max(10,sx(0)+12))} y={Math.min(980,Math.max(30,sy(cursor.y)-12))} fontSize={26} fill="#416653">{cursor.y}</text>
+          <text x={Math.min(920,Math.max(20,sx(cursor.x)+12))} y={Math.min(970,Math.max(30,sy(0)+30))} fontSize={34} fill="#416653">{cursor.x}</text>
+          <text x={Math.min(900,Math.max(10,sx(0)+12))} y={Math.min(980,Math.max(30,sy(cursor.y)-12))} fontSize={34} fill="#416653">{cursor.y}</text>
         </g>}
       </svg>}
     </div>

@@ -1,5 +1,14 @@
 # Mastery: Two-variable linear equations — solutions
 
 ## 1 (Practice)
-practice: true
-Work through the practice questions with the student one at a time. No hints upfront — let them attempt each question fully before you help. Push them to show their working.
+Ask these questions one by one.
+
+Nisha says: "If I double both sides of 3y = 6x + 3 
+
+I get 6y = 12x + 6.
+    That's a different equation, so it must have different solutions."
+    Do you agree? Explain.
+
+
+H10. The graph of a linear equation passes through (1, 5) and (4, 5).
+     Can you find the equation

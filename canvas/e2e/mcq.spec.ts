@@ -10,6 +10,7 @@ test('MCQ permits speech without a choice and sends ungraded selections without 
   const send=(event:unknown)=>socket!.send(JSON.stringify(event));
   send({type:'question',content:'Q2',attrs:{stem:'Which method would you try?','choice-a':'Draw a picture','choice-b':'Make a table'}});
   send({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.getByRole('button',{name:'A Draw a picture',exact:true})).toBeEnabled();
   const orb=page.getByRole('button',{name:'Send new work; hold to speak',exact:true});await expect(orb).toBeEnabled();
   const b=(await orb.boundingBox())!;await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();
   await expect(page.locator('.orb-label')).toHaveText('Listening…');await page.waitForTimeout(300);await page.mouse.up();
@@ -59,12 +60,18 @@ test('MCQ allows ink, sends a tapped choice with pending work, and retries after
   await expect.poll(()=>messages.length).toBe(2);
   expect(messages[1].activity.correct).toBe(true);expect(messages[1].images).toBeUndefined();
   await expect(options).toHaveAttribute('data-selected','a');await expect(options).toContainText('Correct');
+  await expect(page.getByLabel('1 claps earned')).toBeVisible();
+  send({type:'text_chunk',content:'Spot on!',attrs:{}});
+  send({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'Spot on!'})).toBeVisible();
+  await expect(page.getByLabel('1 claps earned')).toBeVisible();
+
   await expect(page.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
   await page.screenshot({path:'test-results/mcq.png'});
   await expect.poll(async()=>page.evaluate(()=>new Promise<string[]>(resolve=>{
     const r=indexedDB.open('TLDRAW_DOCUMENT_v2prodigy-canvas-v1');r.onsuccess=()=>{const db=r.result,q=db.transaction('records').objectStore('records').getAll();q.onsuccess=()=>{resolve(q.result.filter((s:any)=>s.type==='mcq').map((s:any)=>s.props.selected));db.close();};};
   }))).toEqual(['a']);
-  await page.reload();await expect(page.locator('[data-mcq="Q1"]')).toHaveAttribute('data-selected','a');
+  await page.reload();await expect(page.locator('[data-mcq="Q1"]')).toHaveAttribute('data-selected','a');await expect(page.getByLabel('1 claps earned')).toBeVisible();
 });
 
 

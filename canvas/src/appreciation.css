@@ -1,0 +1,5 @@
+.clap-counter{position:absolute;top:18px;right:24px;z-index:38;display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:18px;background:#fffefaeb;border:1px solid #e5e7df;color:#52694c;font-size:13px;pointer-events:none}
+.clap-counter>span:first-child{font-size:21px}
+.clap-burst{position:fixed;z-index:55;pointer-events:none;font-size:40px;animation:clap-flight 1.6s ease-in-out both}
+@keyframes clap-flight{0%{opacity:0;transform:scale(.3)}20%{opacity:1;transform:scale(1.18)}40%{opacity:1;transform:scale(1)}90%,100%{opacity:0;transform:translate(var(--clap-x),var(--clap-y)) scale(.4)}}
+@media(prefers-reduced-motion:reduce){.clap-burst{animation:none;font-size:30px}}

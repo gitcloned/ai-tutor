@@ -151,7 +151,22 @@ export const update_step: Tool = {
             reminder: 'Follow the plan. Do exactly what the next step says.',
           };
         }
-        // Checkpoint state — session ends here; next session picks up.
+        // Checkpoint state — check if the next state is a transition (e.g. clarity → mastering).
+        // If so, advance immediately and continue in the same session.
+        const hasPlan = await transitionState(ctx);
+        if (hasPlan) {
+          const firstStep = ctx.plan.find(s => s.status === 'in_progress')
+                         ?? ctx.plan.find(s => s.status === 'pending');
+          if (firstStep) firstStep.status = 'in_progress';
+          return {
+            ok:       true,
+            state:    ctx.journeyNode.state,
+            concept:  ctx.concept.title,
+            nextStep: firstStep ? formatStep(firstStep) : null,
+            message:  `State updated to "${targetState}". Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
+            reminder: 'Follow the plan. Do exactly what the next step says.',
+          };
+        }
         return { ok: true, allDone: true, message: 'Session complete.' };
       }
 

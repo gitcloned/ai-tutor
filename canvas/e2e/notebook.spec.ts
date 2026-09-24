@@ -1,32 +1,54 @@
 import {test,expect,type WebSocketRoute} from '@playwright/test';
 
-test('reconnecting opens a fresh page before metadata and a late title keeps new work',async({page})=>{
+test('initial session selects a saved canvas; later sessions remain on the same page',async({page})=>{
+  await page.emulateMedia({reducedMotion:'reduce'});
   let socket:WebSocketRoute;
-  await page.routeWebSocket('**/fresh-page',ws=>{socket=ws;});
+  await page.routeWebSocket('**/session-pages',ws=>{socket=ws;});
   await page.goto('/');
   await page.getByRole('button',{name:'Start learning'}).click();
-  await page.getByLabel('Tutor address').fill('ws://127.0.0.1:32004/fresh-page');
+  await page.getByLabel('Tutor address').fill('ws://127.0.0.1:32004/session-pages');
   await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
   await expect(page.locator('.connection')).toContainText('Connected');
   const send=(event:unknown)=>socket!.send(JSON.stringify(event));
-  send({type:'session',title:'Previous lesson'});
-  send({type:'text_chunk',content:'Previous work',attrs:{}});
+  const session=(id:string,title:string)=>send({type:'session',sessionId:id,conceptId:id,title});
+  const reconnect=async()=>{
+    await page.locator('.connection').click();
+    await page.getByRole('button',{name:'Reconnect',exact:true}).click();
+    await expect(page.locator('.connection')).toContainText('Connected');
+  };
   const text=page.locator('.tl-shape[data-shape-type="text"]');
+  session('first','First lesson');send({type:'text_chunk',content:'Previous work',attrs:{}});
   await expect(text).toContainText('Previous work');
-  await page.locator('.connection').click();
-  await page.getByRole('button',{name:'Reconnect',exact:true}).click();
+  await reconnect();
+  // Opening a socket alone must not discard the visible page.
+  await expect(text).toContainText('Previous work');
+  session('second','Second lesson');
   await expect(text).toHaveCount(0);
-  await expect(page.locator('.lesson-breadcrumb')).toContainText('New lesson');
-  send({type:'session',sessionId:'no-title'});
-  send({type:'text_chunk',content:'Fresh work',attrs:{}});
-  await expect(text).toContainText('Fresh work');
-  send({type:'session',sessionId:'no-title',title:'Current lesson'});
-  await expect(page.locator('.lesson-breadcrumb')).toContainText('Current lesson');
-  await expect(text).toContainText('Fresh work');
+  send({type:'text_chunk',content:'New work',attrs:{}});
+  await expect(text).toContainText('New work');
+  session('third','Next topic');
+  await expect(page.locator('.lesson-breadcrumb')).toContainText('Next topic');
+  await expect(text).toContainText('New work');
+  await reconnect();session('first','First lesson');
+  await expect(text).toContainText('Previous work');
+  await reconnect();session('third','Next topic');
+  await expect(text).toContainText('New work');
   await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
   await expect(page.locator('.notebook-row')).toHaveCount(2);
-  await page.locator('.notebook-open').filter({hasText:'Previous lesson'}).click();
-  await expect(text).toContainText('Previous work');
+  await page.getByRole('button',{name:'Close notebook'}).click();
+  // Wait for notebook persistence before reloading, then resume via the alias.
+  await expect.poll(()=>page.evaluate(()=>new Promise<boolean>(resolve=>{
+    const request=indexedDB.open('TLDRAW_DOCUMENT_v2prodigy-canvas-v1');
+    request.onsuccess=()=>{const db=request.result,query=db.transaction('records').objectStore('records').getAll();query.onsuccess=()=>{resolve(query.result.some((r:any)=>r.typeName==='page'&&r.meta.sessionIds?.includes('third')));db.close();};};
+  }))).toBe(true);
+  await page.reload();
+  await page.locator('.connection').click();
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  session('second','Second lesson');
+  await expect(text).toContainText('New work');
+  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.locator('.notebook-row')).toHaveCount(2);
 });
 
 function silence(seconds:number) {
@@ -100,4 +122,27 @@ test('connection hides welcome, audio types captions, deleted notebook page can 
   await page.getByRole('button',{name:'Undo',exact:true}).click();
   await expect(page.locator('.lesson-breadcrumb')).toContainText('Notebook test');
   await expect(page.locator('.tl-shape[data-shape-type="text"]')).toHaveCount(1);
+});
+
+test('a full notebook deletes its oldest half and creates the new session page',async({page})=>{
+  test.setTimeout(90000);
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/many-pages',ws=>{socket=ws;});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/many-pages');
+  for(let i=0;i<41;i++){
+    await page.getByRole('button',{name:i?'Reconnect':'Connect to tutor',exact:true}).click();
+    await expect(page.locator('.connection')).toContainText('Connected');
+    socket!.send(JSON.stringify({type:'session',sessionId:`many-${i}`,conceptId:'topic',title:`Lesson ${i}`}));
+    await expect(page.locator('.lesson-breadcrumb')).toContainText(`Lesson ${i}`);
+    if(i<40)await page.locator('.connection').click();
+  }
+  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.locator('.notebook-row')).toHaveCount(21);
+  await expect(page.locator('.notebook-open').filter({hasText:/^.*Lesson 0$/})).toHaveCount(0);
+  await expect(page.locator('.notebook-open').filter({hasText:'Lesson 40'})).toHaveCount(1);
+  await page.getByRole('button',{name:'Close notebook'}).click();
+  await page.getByRole('button',{name:'Lesson warnings (1)',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Removed 20 oldest pages');
 });

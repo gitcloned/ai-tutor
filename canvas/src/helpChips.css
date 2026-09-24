@@ -1,0 +1,18 @@
+.help-chips{position:absolute;right:100px;bottom:calc(var(--tutor-space-height) + 54px);z-index:40;max-width:calc(100vw - 100px);animation:help-appear .3s ease-out;color:#62765f}
+.help-chips>div{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.help-chips button{min-height:40px;padding:9px 14px;border:1px solid #dce4d3;border-radius:20px;background:#fffef9;font-size:14px;box-shadow:0 2px 10px #304b3908;animation:help-pop .42s cubic-bezier(.2,.8,.3,1.15) both;transition:background .18s,border-color .18s;transform-origin:bottom center}
+.help-chips button:hover{background:#edf2e6;border-color:#a4b99c}
+@keyframes help-appear{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:760px){.help-chips{right:16px;max-width:calc(100vw - 80px)}.help-chips button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.help-chips{animation:none}}
+
+.help-chips button:nth-child(2){animation-delay:70ms}
+.help-chips button:nth-child(3){animation-delay:140ms}
+.help-chips .help-unsure{background:#fff5e4;border-color:#e8d7b5;color:#795e2e}
+.help-chips .help-understand{background:#edf4e8;border-color:#cedfc4;color:#416653}
+.help-chips .help-repeat{background:#eef3fc;border-color:#d0ddf1;color:#416492}
+.help-chips .help-unsure:hover{background:#f9ebd0}
+.help-chips .help-understand:hover{background:#deebd6}
+.help-chips .help-repeat:hover{background:#dfe9f9}
+@keyframes help-pop{from{opacity:0;transform:translateY(10px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.help-chips button{animation:none;transition:none}}

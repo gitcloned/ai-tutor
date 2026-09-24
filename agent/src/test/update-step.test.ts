@@ -231,18 +231,17 @@ describe('update_step — navigating the learning plan', () => {
 
   // ── ──────────────────────────────────────────────────────────────────────────
 
-  describe('full walk — resource → practice → redirect(state:clarity)', () => {
-    it('completes all steps; node state advances to "clarity" and session ends (allDone)', async () => {
+  describe('full walk — learning → clarity → mastering → mastered', () => {
+    it('completes all steps; continues through mastery and ends allDone at "mastered"', async () => {
       const ctx = makeLearningCtx();
       vi.mocked(lp.patch).mockResolvedValue({});
 
       let lastResult: any;
-      let guard = 20;
+      let guard = 30; // more steps now: teaching + mastery plan
       while (guard-- > 0) {
         const step = ctx.plan.find(s => s.status === 'in_progress')
                   ?? ctx.plan.find(s => s.status === 'pending');
-        // Stop when the redirect(state) step comes up — it's handled internally by update_step
-        if (!step || (step.type === 'redirect' && !(step.content as any).conceptId)) break;
+        if (!step) break;
 
         step.status   = 'in_progress';
         const outcome = step.type === 'resource' ? 'done' : 'pass';
@@ -251,10 +250,11 @@ describe('update_step — navigating the learning plan', () => {
         if (lastResult?.allDone) break;
       }
 
-      // node transitions to clarity (checkpoint) — session ends here
-      expect(ctx.journeyNode.state).toBe('clarity');
+      // teaching → clarity → mastering (immediate) → mastered (session ends)
       expect(lastResult.ok).toBe(true);
       expect(lastResult.allDone).toBe(true);
+      // node advanced all the way through mastery
+      expect(['mastered', 'exam_ready']).toContain(ctx.journeyNode.state);
     });
   });
 

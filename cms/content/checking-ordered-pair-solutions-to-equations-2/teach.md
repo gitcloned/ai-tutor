@@ -6,7 +6,9 @@ play: https://www.youtube.com/watch?v=qk69pR91R00
 Ask the student to watch the video. Wait for them to confirm they are done before moving on.
 
 ## 2 (Give them a few more exit question)
-Give them a 1/2 more question depending on their confidence, similar to one below
+Give them more question depending on their confidence, similar to one below
+
+Do write question:
 
 which of them is a ordered pair solution of 
    5x + 2 = 10y + 0

@@ -31,11 +31,41 @@ export class CanvasRenderer {
   newLesson(title:string) {
     // Each replay scenario becomes a notebook page; student work is never cleared.
     const current=this.editor.getCurrentPageShapes();
-    if(this.started || current.length) {
-      const id=PageRecordType.createId(); this.editor.createPage({id,name:title}); this.editor.setCurrentPage(id);
-    } else this.editor.updatePage({id:this.editor.getCurrentPageId(),name:title});
+    let removed=0;
+    const sessionIds=this.editor.getPage(this.editor.getCurrentPageId())?.meta.sessionIds;
+    if(this.started || current.length || (Array.isArray(sessionIds)&&sessionIds.length>0)) {
+      const pages=this.editor.getPages();
+      if(pages.length>=this.editor.options.maxPages){
+        // Legacy pages have no timestamp; their existing notebook order is the
+        // best available ordering. Treat them as older than dated new pages.
+        const oldest=[...pages].sort((a,b)=>{
+          const time=(page:typeof a)=>typeof page.meta.createdAt==='number'?page.meta.createdAt:0;
+          return time(a)-time(b);
+        }).slice(0,Math.ceil(pages.length/2));
+        this.editor.markHistoryStoppingPoint('make-room-for-lesson');
+        for(const page of oldest)this.editor.deletePage(page.id);
+        removed=oldest.length;
+        this.editor.markHistoryStoppingPoint('after-make-room-for-lesson');
+      }
+      const id=PageRecordType.createId();
+      this.editor.createPage({id,name:title,meta:{createdAt:Date.now()}});
+      if(!this.editor.getPage(id))throw new Error('Could not create a new canvas. Please free space in the lesson notebook.');
+      this.editor.setCurrentPage(id);
+    } else {
+      const page=this.editor.getPage(this.editor.getCurrentPageId())!;
+      this.editor.updatePage({id:page.id,name:title,meta:{...page.meta,createdAt:Date.now()}});
+    }
+    this.questions=new Questions(this.editor);
     this.started=true; this.cursor=100; this.origin=0; this.follow=true;this.focused=null;
     this.editor.setCamera({x:80,y:50,z:1});
+    return removed;
+  }
+  resumeLesson(id:ReturnType<typeof PageRecordType.createId>){
+    this.editor.setCurrentPage(id);
+    this.started=true;this.origin=0;this.follow=true;this.focused=null;
+    this.questions=new Questions(this.editor);
+    const bounds=this.editor.getCurrentPageBounds();
+    this.cursor=bounds?bounds.maxY+60:100;
   }
   private locate(block:Block,w:number,h:number) {
     const model=this.editor.getCurrentPageShapes().find(isTeachingModel);

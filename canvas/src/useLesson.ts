@@ -35,8 +35,10 @@ export function useLesson(editor:Editor|null) {
     window.addEventListener('offline',offline);
     return()=>window.removeEventListener('offline',offline);
   },[notify]);
+  const narration=useRef<Block[]>([]),lastNarration=useRef<Block[]>([]),narrationBytes=useRef(0);
+  const [canRepeat,setCanRepeat]=useState(false);
   const connectionVersion=useRef(0),recordingPause=useRef(false);
-  const untitledConnectionPage=useRef<ReturnType<Editor['getCurrentPageId']>|null>(null);
+  const connectionPage=useRef<ReturnType<Editor['getCurrentPageId']>|null>(null);
   // Metadata only: never retain student input, audio bytes, or lesson text here.
   const trace=useRef<{at:string;event:string}[]>([]);
   const record=(event:string)=>{trace.current.push({at:new Date().toISOString(),event});if(trace.current.length>200)trace.current.shift();};
@@ -50,18 +52,28 @@ export function useLesson(editor:Editor|null) {
   useEffect(()=>{
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
-    const nameLesson=(name:string)=>{
-      if(untitledConnectionPage.current){
-        editor.updatePage({id:untitledConnectionPage.current,name});
-        untitledConnectionPage.current=null;
-      }else renderer.current!.newLesson(name);
+    const nameLesson=(name:string,sessionId='',conceptId='')=>{
+      if(!connectionPage.current){
+        const saved=sessionId?editor.getPages().find(page=>Array.isArray(page.meta.sessionIds)&&page.meta.sessionIds.includes(sessionId)):undefined;
+        if(saved)renderer.current!.resumeLesson(saved.id);
+        else {
+          const removed=renderer.current!.newLesson(name);
+          if(removed)notify(`Notebook was full. Removed ${removed} oldest pages to make room for this lesson.`);
+        }
+        connectionPage.current=editor.getCurrentPageId();
+      }
+      const page=editor.getPage(connectionPage.current);
+      if(page){
+        const ids=Array.isArray(page.meta.sessionIds)?page.meta.sessionIds.filter((id):id is string=>typeof id==='string'):[];
+        editor.updatePage({id:page.id,name,meta:{...page.meta,sessionIds:sessionId?[...new Set([...ids,sessionId])]:ids,conceptId}});
+      }
       setTitle(name);setQuestion('');waiting.current=false;setFollow(true);log('lesson',name);
     };
     const playback=new Playback(async(block:Block,signal)=>{
       if(signal.aborted) return;
       record(`present:${block.kind}`);
       if(block.kind==='session') {
-        nameLesson(block.content);return;
+        nameLesson(block.content,block.attrs.sessionId,block.attrs.conceptId);return;
       }
       if(block.kind==='question'){
         waiting.current=false;setQuestion('');await renderer.current!.render(block,signal);return;
@@ -70,7 +82,7 @@ export function useLesson(editor:Editor|null) {
         nameLesson(block.content.replace(/^📖\s*/,''));return;
       }
       if(block.kind==='speech') {
-        waiting.current=false;setQuestion('');setSimulated(true);setPhase('speaking');log('tutor',block.content);
+        waiting.current=false;setQuestion('');setSimulated(true);setPhase('speaking');if(!block.attrs.localReplay)log('tutor',block.content);
         const duration=Math.min(4500,Math.max(1000,block.content.length*28));
         for(let elapsed=0;elapsed<duration;elapsed+=40) {
           if(signal.aborted)return;
@@ -82,7 +94,7 @@ export function useLesson(editor:Editor|null) {
       if(block.kind==='audio') {
         waiting.current=false;setQuestion('');setSimulated(false);setPhase('speaking');
         const sentence=block.attrs.sentence;
-        if(sentence){setCaption('');log('tutor',sentence);}
+        if(sentence){setCaption('');if(!block.attrs.localReplay)log('tutor',sentence);}
         await audio.current.play(block.content,signal,sentence?(elapsed,duration)=>setCaption(spokenPrefix(sentence,elapsed,duration)):undefined);return;
       }
       if(block.kind==='error') {turnActive.current=false;pendingReply.current=false;setSubmission('idle');notify(block.content);return;}
@@ -126,17 +138,15 @@ export function useLesson(editor:Editor|null) {
   function connect(url:string) {
     try { const parsed=new URL(url);if(!['ws:','wss:'].includes(parsed.protocol)) throw new Error(); } catch {notify('Enter a WebSocket address starting with ws:// or wss://.','connect');return false;}
     if(!player.current) return false;
-    connectionVersion.current++;
-    setEndedTurns(0);setIssue(null);
+    connectionVersion.current++;connectionPage.current=null;
+    setEndedTurns(0);setIssue(null);narration.current=[];lastNarration.current=[];narrationBytes.current=0;setCanRepeat(false);
     clearSubmission();
     socket.current?.close();player.current.cancel();adapter.current.reset();paused.current=false;audio.current.pause(false);
     void audio.current.unlock().catch(()=>notify('Your browser paused lesson audio. Enable sound to hear your tutor.','sound'));
     const ws=new WebSocket(url);socket.current=ws;setPhase('connecting');setQuestion('');waiting.current=false;
     ws.onopen=()=>{
       if(socket.current!==ws)return;
-      renderer.current!.newLesson('New lesson');
-      untitledConnectionPage.current=editor!.getCurrentPageId();
-      setTitle('New lesson');setEntries([]);setFollow(true);
+      setEntries([]);setFollow(true);
       setConnected(true);setPhase('ready');setCaption('Your tutor is getting ready.');
     };
     ws.onmessage=e=>{
@@ -148,7 +158,18 @@ export function useLesson(editor:Editor|null) {
         if(event.type==='event'&&event.event?.type==='tutor-ended'){turnActive.current=false;setEndedTurns(count=>count+1);}
         if(['text_chunk','audio_chunk','question','model','model3d','ask','annotate','svg','play'].includes(event.type))setBusy(true);
         if(['text_chunk','audio_chunk','model','model3d','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
-        player.current!.add(adapter.current.accept(event));
+        const blocks=adapter.current.accept(event);
+        if(event.type==='event'&&event.event?.type==='tutor-started'){narration.current=[];narrationBytes.current=0;setCanRepeat(false);}
+        for(const block of blocks)if(block.kind==='audio'||block.kind==='speech'){
+          narrationBytes.current+=block.content.length;
+          if(narrationBytes.current<=16_000_000)narration.current.push(block);
+          else narration.current=[];
+        }
+        if(event.type==='event'&&event.event?.type==='tutor-ended'){
+          lastNarration.current=narration.current;narration.current=[];narrationBytes.current=0;
+          setCanRepeat(lastNarration.current.length>0);
+        }
+        player.current!.add(blocks);
       }
       catch {notify('One tutor event could not be read. You can reconnect if the lesson stops.');}
     };
@@ -185,5 +206,10 @@ export function useLesson(editor:Editor|null) {
   }
   function stopFollowing(){if(renderer.current)renderer.current.follow=false;setFollow(false);}
   function resumeFollowing(){if(renderer.current){renderer.current.follow=true;renderer.current.refocus();}setFollow(true);}
-  return {enableSound:()=>audio.current.unlock().catch(()=>notify('Sound is still blocked. Check this site’s sound permission in your browser, then try again.','sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
+  function repeatNarration(){
+    if(!connected||busyRef.current||pendingReply.current||video||!lastNarration.current.length)return;
+    setBusy(true);setPhase('speaking');
+    player.current?.add(lastNarration.current.map(block=>({...block,attrs:{...block.attrs,localReplay:'true'}})));
+  }
+  return {canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify('Sound is still blocked. Check this site’s sound permission in your browser, then try again.','sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);}};
 }

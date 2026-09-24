@@ -7,6 +7,7 @@ import { ArrowUpRight, ArrowLeft, BookOpen, X, Send, Focus, Minus, Plus, Plug, D
 import { Toolbar } from './Toolbar';
 import {LessonNotifications} from './LessonNotifications';
 import { Orb } from './Orb';
+import {HelpChips} from './HelpChips';
 import {InputHints,learnedInput} from './InputHints';
 import {McqShapeUtil,McqContext} from './McqShape';
 import type {ChoiceAttempt} from './mcq';
@@ -99,6 +100,7 @@ export default function App() {
     {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p ref={captionText} tabIndex={0} aria-label="Tutor captions">{lesson.caption}</p></div>}
     <Orb tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
     </footer>
+    {editor&&<HelpChips editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&!lesson.video&&!sheet&&!notebook&&!lesson.issue&&['ready','waiting'].includes(lesson.phase)} canRepeat={lesson.canRepeat} repeat={lesson.repeatNarration} send={text=>lesson.send(text)}/>}
     {editor&&<InputHints key={lesson.connectionVersion.current} editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&['ready','waiting'].includes(lesson.phase)} blocked={!!lesson.video||!!sheet||notebook}/>}
     {lesson.video&&<VideoLesson media={lesson.video} onDone={lesson.doneWatching}/>}
     <LessonNotifications warnings={lesson.warnings} clear={lesson.clearWarnings} issue={lesson.issue} dismiss={lesson.dismissIssue} act={action=>{lesson.dismissIssue();if(action==='retry')void sendWork();else if(action==='sound')void lesson.enableSound();else setSheet(action==='reply'?'reply':'connect');}}/>

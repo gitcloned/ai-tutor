@@ -5,6 +5,7 @@ import { whatIsNext, isTransitionState } from './learning/what-is-next.js';
 import { buildConceptPlan } from './learning/stateManagement.js';
 import { buildModelPrompt } from './learning/modelPrompt.js';
 import { PracticeExercise } from './learning/practiceExercise.js';
+import { hasQuestionsJson, loadQuestionsFromJson } from './learning/plan-builder-v2.js';
 import { cms, lp }          from './api.js';
 
 export interface AgentContext {
@@ -115,7 +116,13 @@ export async function buildContext(studentId: string, conceptId: string, journey
  */
 async function loadPractice(state: ConceptState, conceptId: string, session: Session): Promise<PracticeExercise | undefined> {
   if (state !== CS.MASTERING && state !== CS.GETTING_EXAM_READY) return undefined;
-  const questions = await cms.get<Question[]>(`/concepts/${conceptId}/mastery-questions`).catch(() => []);
+  // Prefer questions.json from content folder; fall back to CMS DB.
+  let questions: Question[];
+  if (hasQuestionsJson(conceptId)) {
+    questions = loadQuestionsFromJson(conceptId);
+  } else {
+    questions = await cms.get<Question[]>(`/concepts/${conceptId}/mastery-questions`).catch(() => []);
+  }
   if (!questions.length) return undefined;
   return new PracticeExercise(questions, session.questionProgress ?? [], session.id);
 }

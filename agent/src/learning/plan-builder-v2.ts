@@ -49,6 +49,21 @@ export function loadMasteryPlan(conceptId: string): MarkdownPlan {
   return buildPlanFromMarkdown(md);
 }
 
+// ── Practice questions from JSON ────────────────────────────────────────────
+
+export function questionsJsonPath(conceptId: string): string {
+  return join(CONTENT_ROOT, conceptId, 'questions.json');
+}
+
+export function hasQuestionsJson(conceptId: string): boolean {
+  return existsSync(questionsJsonPath(conceptId));
+}
+
+export function loadQuestionsFromJson(conceptId: string): import('../types.js').Question[] {
+  const raw = readFileSync(questionsJsonPath(conceptId), 'utf8');
+  return JSON.parse(raw) as import('../types.js').Question[];
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 interface RawStep {

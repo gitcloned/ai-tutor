@@ -35,10 +35,16 @@ export interface Resource {
 }
 
 export interface Question {
-  id:          string;
-  stem?:       string | null;
+  id:           string;
+  stem?:        string | null;
   idealAnswer?: string | null;
-  type:        string;
+  type:         string;
+  difficulty?:  string | null;
+  score?:       number | null;
+  order?:       number | null;
+  stepsToSolve?: string[] | null;
+  hints?:        string[] | null;
+  writingHint?:  string | null;
 }
 
 export type QuestionOutcome = 'pass' | 'fail' | 'not_sure';

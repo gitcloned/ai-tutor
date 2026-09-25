@@ -1,0 +1,73 @@
+[
+  {
+    "id": "q4",
+    "order": 1,
+    "type": "open",
+    "difficulty": "hard",
+    "score": 3,
+    "stem": "How many solutions does 2x + 2y = 10 have where x and y are BOTH positive integers?",
+    "idealAnswer": "4 — (1,4) (2,3) (3,2) (4,1)",
+    "stepsToSolve": [
+      "Just write stem and let child solve.",
+      "Show a graph. x-span: -2 to 6, y-span: -2 to 6. \n\nAsk child to solve for 2 points, x = 0, y = 0, and put them on the graph. \n\nJUST ASK CHILD TO SOLVE, YOU DONT SOLVE.",
+      "Ask child to plot points",
+      "Draw a line",
+      "Observe graph for +ve integer values of x and y and count"
+    ],
+    "hints": []
+  },
+  {
+    "id": "q2",
+    "order": 2,
+    "type": "open",
+    "difficulty": "medium",
+    "score": 2,
+    "stem": "Nisha says:\n\n\"If I double both sides of 3y = 6x + 3, I get 6y = 12x + 6. That's a different equation, so it must have different solutions.\"\n\nDo you agree? Explain.",
+    "idealAnswer": null,
+    "stepsToSolve": [
+      "Write the equation, 3y = 6x + 3",
+      "Multiply both sides by 2, 2 (3y) = 2 (6x + 3)",
+      "Observe how still for every value of x, equation 1 and 2 will hold true, as 2 is multiplied on both sides"
+    ],
+    "hints": [
+      "Write first equation, and in next step multiply by 2 - observe"
+    ],
+    "writingHint": "Keep equation on left, and annotate term to explain. Write less text, but equation steps"
+  },
+  {
+    "id": "q3",
+    "order": 3,
+    "type": "open",
+    "difficulty": "easy",
+    "score": 1,
+    "stem": "The graph of a linear equation passes through (1, 5) and (4, 5). Can you find the equation?",
+    "idealAnswer": null,
+    "stepsToSolve": [
+      "Observe the value of y in both pairs, (1, 5) and (4, 5)",
+      "Note that y = 5 in both cases"
+    ],
+    "hints": []
+  },
+  {
+    "id": "q1",
+    "order": 4,
+    "type": "open",
+    "difficulty": "medium",
+    "score": 2,
+    "stem": "a) Write the equations of two lines passing through (2, 14).\nb) How many more such lines are there, and why?",
+    "idealAnswer": null,
+    "stepsToSolve": [],
+    "hints": []
+  },
+  {
+    "id": "q5",
+    "order": 5,
+    "type": "multi-part",
+    "difficulty": "hard",
+    "score": 3,
+    "stem": "Fahrenheit and Celsius are related by F = (9/5)C + 32.\na) If C = 30, find F.\nb) If F = 95, find C.\nc) If C = 0, find F. If F = 0, find C.\nd) Is there a temperature which is numerically the SAME in both Fahrenheit and Celsius?",
+    "idealAnswer": null,
+    "stepsToSolve": [],
+    "hints": []
+  }
+]

@@ -29,7 +29,7 @@ export const read_plan: Tool = {
 
 export const get_next_step: Tool = {
   name:        'get_next_step',
-  description: 'Get the current in_progress step. Call this at the start of each turn to know exactly what to do.',
+  description: 'Get the current in_progress step. Use at session start or when unsure which plan step is current. Follow the active skill for when to call it; update_step already returns the next instruction.',
   schema:      { type: 'object', properties: {} },
   run: async (_args, ctx) => {
     const step = ctx.plan.find(s => s.status === 'in_progress')

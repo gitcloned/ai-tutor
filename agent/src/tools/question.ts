@@ -15,14 +15,14 @@ import type { QuestionOutcome } from '../types.js';
  */
 export const get_next_question: Tool = {
   name:        'get_next_question',
-  description: 'Get the next practice question. On subsequent calls, pass the outcome for the question you just presented before fetching the next one.',
+  description: 'Read the current practice question and its solution steps and hints. Omit outcome to start or reread the same question without advancing. Pass outcome only when the whole attempt is finished and you want to record its result and advance.',
   schema: {
     type: 'object',
     properties: {
       outcome: {
         type:        'string',
         enum:        ['pass', 'fail', 'not_sure'],
-        description: 'How the student did on the current question. Omit on the very first call.',
+        description: 'Final outcome for the whole current question. Omit when starting, rereading, giving help, or evaluating an intermediate solution step.',
       },
     },
     required: [],
@@ -47,12 +47,7 @@ export const get_next_question: Tool = {
       done:     false,
       index:    result.index,
       total:    result.total,
-      question: {
-        id:          result.question.id,
-        stem:        result.question.stem,
-        idealAnswer: result.question.idealAnswer,
-        type:        result.question.type,
-      },
+      question: result.question,
     };
   },
 };

@@ -9,10 +9,13 @@
 
 import type { AgentContext } from '../context.js';
 import type { Concept, JourneyNode } from '../types.js';
+import { CS } from '../types.js';
 import { lp, cms } from '../api.js';
 import { buildConceptPlan } from '../learning/stateManagement.js';
 import { buildModelPrompt } from '../learning/modelPrompt.js';
 import { whatIsNext, isTransitionState } from '../learning/what-is-next.js';
+import { hasQuestionsJson, loadQuestionsFromJson } from '../learning/plan-builder-v2.js';
+import { PracticeExercise } from '../learning/practiceExercise.js';
 import { returnToOrigin } from './redirect.js';
 
 /**
@@ -59,6 +62,14 @@ export async function transitionState(ctx: AgentContext): Promise<boolean> {
       const { plan, models } = buildConceptPlan(ctx.concept, ctx.journeyNode.state);
       ctx.plan        = plan;
       ctx.modelPrompt = buildModelPrompt(models);
+      // Load practice questions if advancing to mastering.
+      if (ctx.journeyNode.state === CS.MASTERING && !ctx.practice) {
+        const conceptId = ctx.concept.id;
+        if (hasQuestionsJson(conceptId)) {
+          const questions = loadQuestionsFromJson(conceptId);
+          if (questions.length) ctx.practice = new PracticeExercise(questions, [], ctx.session.id);
+        }
+      }
       return true;
     }
 

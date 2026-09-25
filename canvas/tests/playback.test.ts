@@ -92,3 +92,34 @@ it('cancels a deferred camera request',async()=>{
   player.add([{kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}}]);
   await new Promise(r=>setTimeout(r,0));expect(seen).toEqual([]);
 });
+
+it('question end waits for parallel speech, then holds subsequent speech and writing for two seconds',async()=>{
+  const seen:string[]=[],waits:number[]=[];let active=true,finishSpeech!:()=>void,finishPause!:()=>void;
+  const p=new Playback(async b=>{
+    seen.push(b.content);
+    if(b.content==='explaining')await new Promise<void>(r=>{finishSpeech=r;});
+    if(b.kind==='question'&&b.content==='end')active=false;
+  },()=>{},()=>{},async ms=>{waits.push(ms);await new Promise<void>(r=>{finishPause=r;});},()=>active);
+  p.add([
+    {kind:'action',content:'',attrs:{},action:{type:'parallel-start'}},
+    {kind:'speech',content:'explaining',attrs:{}},
+    {kind:'question',content:'end',attrs:{}},
+    {kind:'speech',content:'next speech',attrs:{}},
+    {kind:'write',content:'next writing',attrs:{}},
+    {kind:'action',content:'',attrs:{},action:{type:'parallel-end'}},
+  ]);
+  await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['explaining']);expect(waits).toEqual([]);
+  finishSpeech();await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['explaining','end']);expect(waits).toEqual([2000]);
+  finishPause();await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['explaining','end','next speech','next writing']);
+  p.add([{kind:'question',content:'end',attrs:{}}]);await new Promise(r=>setTimeout(r,0));expect(waits).toEqual([2000]);
+});
+it('disconnect cancels the question pause and discards the old next question',async()=>{
+  const seen:string[]=[];let pausing=false;
+  const p=new Playback(async b=>{seen.push(b.content);},()=>{},()=>{},async(_ms,signal)=>{
+    pausing=true;await new Promise<void>((_,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Cancelled','AbortError')),{once:true}));
+  },()=>true);
+  p.add([{kind:'question',content:'end',attrs:{}},{kind:'question',content:'old next',attrs:{}}]);
+  await new Promise(r=>setTimeout(r,0));expect(pausing).toBe(true);
+  p.cancel();p.add([{kind:'write',content:'new connection',attrs:{}}]);
+  await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['end','new connection']);
+});

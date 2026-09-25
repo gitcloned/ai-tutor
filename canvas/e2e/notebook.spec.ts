@@ -42,8 +42,8 @@ test('initial session selects a saved canvas; later sessions remain on the same 
     request.onsuccess=()=>{const db=request.result,query=db.transaction('records').objectStore('records').getAll();query.onsuccess=()=>{resolve(query.result.some((r:any)=>r.typeName==='page'&&r.meta.sessionIds?.includes('third')));db.close();};};
   }))).toBe(true);
   await page.reload();
+  // A saved successful address now reconnects directly from the footer.
   await page.locator('.connection').click();
-  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
   await expect(page.locator('.connection')).toContainText('Connected');
   session('second','Second lesson');
   await expect(text).toContainText('New work');
@@ -145,4 +145,26 @@ test('a full notebook deletes its oldest half and creates the new session page',
   await page.getByRole('button',{name:'Close notebook'}).click();
   await page.getByRole('button',{name:'Lesson warnings (1)',exact:true}).click();
   await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Removed 20 oldest pages');
+});
+
+for(const titleFirst of [false,true])test(`unexpected disconnect resumes same canvas (title first: ${titleFirst})`,async({page})=>{
+  let socket:WebSocketRoute;
+  await page.routeWebSocket('**/sleep-resume',ws=>{socket=ws;});
+  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.getByLabel('Tutor address').fill('ws://localhost:32004/sleep-resume');
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+  const metadata=()=>send({type:'session',sessionId:'sleep-session',conceptId:'algebra',title:'Algebra'});
+  metadata();send({type:'text_chunk',content:'Keep my work',attrs:{}});
+  const text=page.locator('.tl-shape[data-shape-type="text"]');await expect(text).toContainText('Keep my work');
+  socket!.close({code:1001,reason:'Simulated sleep'});
+  await page.getByRole('button',{name:'Reconnect to tutor',exact:true}).click();
+  await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+  await expect(page.locator('.connection')).toContainText('Connected');
+  if(titleFirst){send({type:'text_chunk',content:'📖 Algebra',attrs:{}});await page.waitForTimeout(150);}
+  metadata();send({type:'event',event:{type:'tutor-ended'}});
+  await expect(text).toContainText('Keep my work');
+  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.locator('.notebook-row')).toHaveCount(1);
 });

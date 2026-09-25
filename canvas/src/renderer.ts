@@ -149,6 +149,7 @@ export class CanvasRenderer {
       {animation:{duration:350}},
     );
   }
+  get hasActiveQuestion(){return !!this.questions.active;}
   refocus() {if(this.focused)this.focus(this.focused);}
   render(block:Block,signal:AbortSignal):Promise<void> {
     // Steps depend on previous measured text and notes, even within parallel

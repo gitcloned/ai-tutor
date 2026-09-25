@@ -21,6 +21,7 @@ export class Playback {
     private failed:(error:unknown)=>void,
     private idle:()=>void=()=>{},
     private waitBefore:(ms:number,signal:AbortSignal)=>Promise<void> = (ms, signal) => delay(ms, signal, () => this.paused),
+    private hasActiveQuestion:()=>boolean = ()=>false,
   ) {}
   add(blocks:Block[]) { this.queue.push(...blocks); void this.drain(); }
   setPaused(value:boolean) { this.paused=value; if(!value) void this.drain(); }
@@ -45,6 +46,22 @@ export class Playback {
         // A video may arrive before its introduction. Only the explicit turn
         // boundary guarantees all speech and writing for that turn have arrived.
         if(block.kind==='play'){this.turnVideos.push(block);continue;}
+        if(block.kind==='question'&&block.content.trim()==='end'){
+          const signal=this.controller.signal;
+          // Even inside parallel blocks, close is a boundary: finish the current
+          // explanation before closing, then hold all subsequent presentation.
+          await Promise.all(this.parallelTasks.splice(0));
+          if(signal.aborted)continue;
+          const wasActive=this.hasActiveQuestion();
+          await this.run(block);
+          if(signal.aborted)continue;
+          if(wasActive){
+            try{await this.waitBefore(2000,signal);}
+            catch(error){if((error as Error).name!=='AbortError')this.failed(error);}
+          }
+          if(!signal.aborted)this.previousKind='question';
+          continue;
+        }
         const action = block.action;
         if (block.kind === 'action' && action && typeof action === 'object' && 'type' in action) {
           if(action.type==='open-camera'){this.turnCamera=block;continue;}

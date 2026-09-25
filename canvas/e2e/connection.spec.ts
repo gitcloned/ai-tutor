@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
-import {SHARED_TUTOR_URL} from '../src/tutorUrl';
+import {readFileSync} from 'node:fs';
+const SHARED_TUTOR_URL=process.env.VITE_TUTOR_WS_URL??readFileSync(new URL('../.env',import.meta.url),'utf8').match(/^VITE_TUTOR_WS_URL=(.+)$/m)![1].trim();
 test.use({hasTouch:true});
 
 test('shared HTTPS address connects securely and is remembered only after opening',async({page},testInfo)=>{

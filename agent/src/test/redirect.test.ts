@@ -88,6 +88,21 @@ describe('prereq redirect — triggered by update_step when next step is teach-t
       return { probe, ctx };
     }
 
+    it('passes the observation into the destination session creation', async () => {
+      const {probe,ctx}=setup();
+      const observation='The student correctly evaluated Q2 as 18.';
+      vi.mocked(lp.get).mockResolvedValueOnce([]);
+      vi.mocked(lp.post).mockImplementation(async (path, body:any) => path==='/sessions'
+        ? {...makeSession(),...body} : {id:'node-prereq',...body});
+      vi.mocked(lp.patch).mockResolvedValue({});
+      vi.mocked(cms.get).mockResolvedValueOnce(CONCEPT_ORDERED_PAIRS);
+      const result=await update_step.run({id:probe.id,outcome:'fail',observation},ctx) as any;
+      expect(lp.post).toHaveBeenCalledWith('/sessions',expect.objectContaining({observationToStartWith:observation}));
+      expect(ctx.session.observationToStartWith).toBe(observation);
+      expect(result.action).toEqual({type:'send-ok'});
+      vi.mocked(lp.post).mockReset();
+    });
+
     it('then the current node is patched to learn-pre-req-before with preReqToLearn set', async () => {
       const { probe, ctx } = setup();
 

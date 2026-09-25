@@ -62,19 +62,28 @@ export function useLesson(editor:Editor|null) {
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
     const nameLesson=(name:string,sessionId='',conceptId='')=>{
+      // Titles are presentation, not session identity. In particular a legacy
+      // title arriving first after reconnect must never create an empty page.
+      if(!sessionId){setTitle(name);log('lesson',name);record('page:title-only');return;}
       if(!connectionPage.current){
-        const saved=sessionId?editor.getPages().find(page=>Array.isArray(page.meta.sessionIds)&&page.meta.sessionIds.includes(sessionId)):undefined;
+        const candidates=editor.getPages().filter(page=>Array.isArray(page.meta.sessionIds)&&page.meta.sessionIds.includes(sessionId));
+        const populated=(id:string)=>editor.store.allRecords().some(r=>r.typeName==='shape'&&r.parentId===id);
+        // Older builds may have associated a blank duplicate with the same ID.
+        // Prefer the page containing work, then the currently selected page.
+        candidates.sort((a,b)=>Number(populated(b.id))-Number(populated(a.id))||Number(b.id===editor.getCurrentPageId())-Number(a.id===editor.getCurrentPageId()));
+        const saved=candidates[0];
         if(saved)renderer.current!.resumeLesson(saved.id);
         else {
           const removed=renderer.current!.newLesson(name);
           if(removed)notify(`Notebook was full. Removed ${removed} oldest pages to make room for this lesson.`);
         }
         connectionPage.current=editor.getCurrentPageId();
+        record(`page:${saved?'resume':'new'}:${sessionId}:${connectionPage.current}`);
       }
       const page=editor.getPage(connectionPage.current);
       if(page){
         const ids=Array.isArray(page.meta.sessionIds)?page.meta.sessionIds.filter((id):id is string=>typeof id==='string'):[];
-        editor.updatePage({id:page.id,name,meta:{...page.meta,sessionIds:sessionId?[...new Set([...ids,sessionId])]:ids,conceptId}});
+        editor.updatePage({id:page.id,name,meta:{...page.meta,sessionIds:[...new Set([...ids,sessionId])],conceptId}});
       }
       setTitle(name);setQuestion('');waiting.current=false;setFollow(true);log('lesson',name);
     };
@@ -142,7 +151,7 @@ export function useLesson(editor:Editor|null) {
       const active=pendingReply.current||turnActive.current;
       setBusy(active);
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
-    });
+    },undefined,()=>renderer.current?.hasActiveQuestion??false);
     player.current=playback;
     const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;

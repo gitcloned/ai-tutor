@@ -122,9 +122,11 @@ async function loadPractice(state: ConceptState, conceptId: string, session: Ses
 
 export async function createSession(
   studentId: string, conceptId: string, journeyNodeId: string, state: ConceptState,
+  observationToStartWith?: string,
 ): Promise<Session> {
   const now = new Date().toISOString();
   return lp.post<Session>('/sessions', {
+    ...(observationToStartWith ? { observationToStartWith } : {}),
     studentId, conceptId, journeyNodeId,
     status: 'initialised', conceptStateAtStart: state, conceptStateAtEnd: null,
     teachingPlan: { content: '', createdAt: now, updatedAt: now },

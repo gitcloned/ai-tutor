@@ -96,6 +96,9 @@ export class TurnEngine {
       skill.prompt(ctx),
       ctx.outputPrompt || null,
       ctx.modelPrompt  || null,
+      ctx.session.observationToStartWith?.trim()
+        ? `Session opening observation (context about the student's work): ${JSON.stringify(ctx.session.observationToStartWith)}\nWhen starting this session, briefly acknowledge this observation, then introduce the lesson naturally. Do not invent praise or ask for confirmation. If it has already been acknowledged in the conversation, continue without repeating it.`
+        : null,
     ].filter(Boolean).join('\n\n---\n\n');
     // Record the system prompt the first time a turn runs in this session.
     ctx.session.systemPrompt ??= systemInstruction;

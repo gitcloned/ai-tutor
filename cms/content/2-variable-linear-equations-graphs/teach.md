@@ -23,7 +23,9 @@ If correct, ask him for x = 2, and then select that point on graph. Do make sure
 
 If correct, ask him for x = 3, and then select that point on graph. Do make sure child draw the point on graph before he moves ahead.
 
-If wrong, help him solve step by step and write in coordinate system. For first time write the steps with blanks in them and let child fill. Afterwards let him write the complete steps - do highiight if a step got missed with annotation.
+If wrong, help him solve step by step and write in coordinate system. For first time write the steps with blanks in them and let child fill. Afterwards let him write the complete steps - do highlight if a step got missed with annotation.
+
+## 3 (Draw line)
 
 Reveal the curve on the existing activity without clearing the student's points
 

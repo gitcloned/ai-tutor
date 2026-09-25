@@ -45,6 +45,7 @@ const sessionSchema = new Schema<ISession>({
   history:             { type: [messageSchema], default: [] },
   rawHistory:          { type: [rawTurnSchema], default: [] },
   systemPrompt:        { type: String },
+  observationToStartWith: { type: String },
   memory:              [{ type: String }],
   createdAt:           { type: Date, default: Date.now },
   endedAt:             { type: Date, default: null },

@@ -56,6 +56,10 @@ export const update_step: Tool = {
         enum:        ['pass', 'fail', 'done', 'not_sure'],
         description: '"pass" if correct/understood, "fail" if wrong/confused, "done" for non-interactive steps (store_memory, advance_state), "not_sure" if unclear',
       },
+      observation: {
+        type: 'string',
+        description: 'Optional observation to acknowledge when redirecting to another concept. Describe one specific thing seen in the student’s work so the next session can start naturally. Do not invent praise or success.',
+      },
       nextStep: {
         type:        'string',
         description: 'Optional: explicitly set the next step id, overriding the plan\'s pass/fail routing. Use when the student\'s response warrants a specific path not captured by pass/fail alone.',
@@ -63,7 +67,7 @@ export const update_step: Tool = {
     },
     required: ['id', 'outcome'],
   },
-  run: async ({ id, outcome, nextStep }, ctx) => {
+  run: async ({ id, outcome, nextStep, observation }, ctx) => {
     const step = ctx.plan.find(s => s.id === id);
     if (!step) return { error: `Step ${id} not found` };
 
@@ -109,20 +113,20 @@ export const update_step: Tool = {
         const resumeStep   = next!.content.resumeStep as string | undefined;
         const reason       = next!.content.reason     as string | null ?? null;
 
-        await redirectToPrereq(conceptId, conceptTitle, ctx, prereqMode, resumeStep);
+        await redirectToPrereq(conceptId, conceptTitle, ctx, prereqMode, resumeStep, typeof observation === 'string' ? observation.trim() || undefined : undefined);
         const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                        ?? ctx.plan.find(s => s.status === 'pending');
         if (firstStep) firstStep.status = 'in_progress';
 
         const msg = reason
-          ? `${reason}. Now switching to teach "${conceptTitle}" — follow nextStep to deliver the first step of the prereq plan in this same turn.`
-          : `Switching to teach "${conceptTitle}" as a prerequisite — follow nextStep to deliver the first step of the prereq plan in this same turn.`;
+          ? `${reason}. Now switching to teach "${conceptTitle}" — the next automatically triggered turn will deliver the first step of the prereq plan.`
+          : `Switching to teach "${conceptTitle}" as a prerequisite — the next automatically triggered turn will deliver the first step of the prereq plan.`;
         return {
           ok:       true,
           message:  msg,
           nextStep: firstStep ? formatStep(firstStep) : null,
           action:   { type: 'send-ok' },
-          reminder: 'Acknowledge the topic switch naturally, then immediately follow nextStep — do it all in one response.',
+          reminder: 'The next automatically triggered turn will introduce the new topic and follow nextStep.',
         };
       }
 

@@ -105,6 +105,7 @@ export interface Session {
   history:             Message[];
   rawHistory:          RawTurn[];
   systemPrompt?:       string;
+  observationToStartWith?: string;
   /** Step id to restart at when returning from a prereq redirect. */
   resumeFromStep?:     string | null;
   /** Per-question outcomes recorded during a practice exercise. */

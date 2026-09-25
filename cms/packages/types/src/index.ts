@@ -203,6 +203,7 @@ export interface ILearningJourneyNode {
 }
 
 export interface ISession {
+  observationToStartWith?: string;
   id: string;
   studentId: string;
   conceptId: string;

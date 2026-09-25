@@ -24,6 +24,7 @@ export async function redirectToPrereq(
   ctx:                AgentContext,
   mode:               'teach' | 'probe' = 'teach',
   resumeStep?:        string,
+  observation?:       string,
 ): Promise<void> {
   const originConceptId = ctx.journeyNode.conceptId;
 
@@ -78,7 +79,7 @@ export async function redirectToPrereq(
   // Create a new session for the prereq.
   // Routing back to origin is via the prereq node's cameFrom field — no cameFromSession needed.
   const prereqSession = await createSession(
-    ctx.session.studentId, prereqConceptId, prereqNode.id, prereqNodeState,
+    ctx.session.studentId, prereqConceptId, prereqNode.id, prereqNodeState, observation,
   );
 
   // Seed planHistory and teachingPlan on the prereq session

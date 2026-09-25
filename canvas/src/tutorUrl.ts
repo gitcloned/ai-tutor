@@ -1,4 +1,7 @@
-export const SHARED_TUTOR_URL='wss://certainly-behaviour-intelligent-dev.trycloudflare.com/';
+export const SHARED_TUTOR_URL=(()=>{
+  const value=import.meta.env?.VITE_TUTOR_WS_URL;
+  try{return value?normalizeTutorUrl(value,window.location.protocol):'';}catch{return '';}
+})();
 export function normalizeTutorUrl(value:string,protocol=window.location.protocol){
   const url=new URL(value.trim());
   if(url.protocol==='https:')url.protocol='wss:';

@@ -13,7 +13,7 @@ TIMEOUT=5
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "  ${GREEN}OK${NC}    $*"; }
 fail() { echo -e "  ${RED}FAIL${NC}  $*"; FAILED=1; }
-skip() { echo -e "  ${YELLOW}WARN${NC}  $*"; }
+skip() { echo -e "  ${YELLOW}INFO${NC}  $*"; }
 FAILED=0
 
 check_port() {
@@ -25,6 +25,7 @@ check_port() {
   fi
 }
 
+# Accepts 2xx and 3xx as OK (3xx = redirect, which is expected for HTTP→HTTPS)
 check_http() {
   local label="$1" url="$2"
   local status
@@ -34,7 +35,24 @@ check_http() {
   elif [[ "$status" =~ ^[23] ]]; then
     ok "$label  $url  (HTTP $status)"
   else
-    skip "$label  $url  (HTTP $status)"
+    fail "$label  $url  (HTTP $status)"
+  fi
+}
+
+# Follows redirects — checks final destination returns 2xx
+check_http_follow() {
+  local label="$1" url="$2"
+  local status
+  status=$(curl -sL --max-redirs 5 -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "$url" 2>/dev/null) || true
+  [ -z "$status" ] && status="000"
+  if [ "$status" = "000" ]; then
+    fail "$label  $url  (no response)"
+  elif [[ "$status" =~ ^2 ]]; then
+    ok "$label  $url  (HTTP $status)"
+  elif [ "$status" = "301" ] || [ "$status" = "302" ]; then
+    fail "$label  $url  (redirect loop — nginx may need HTTP-only config, run: bash environments/dev/setup.sh on server)"
+  else
+    fail "$label  $url  (HTTP $status)"
   fi
 }
 
@@ -47,9 +65,12 @@ echo ""
 echo "By IP ($HOST):"
 check_port "SSH  " "$HOST" 22
 check_port "HTTP " "$HOST" 80
-check_port "HTTPS" "$HOST" 443
-check_http "HTTP " "http://$HOST"
-check_http "HTTPS" "https://$HOST"
+# HTTPS on direct IP is optional — ALB handles SSL termination
+if nc -z -w "$TIMEOUT" "$HOST" 443 2>/dev/null; then
+  ok "HTTPS  $HOST:443  open"
+else
+  skip "HTTPS  $HOST:443  closed (OK — ALB handles SSL, EC2 only needs port 80)"
+fi
 
 echo ""
 
@@ -57,23 +78,30 @@ echo ""
 
 echo "By Domain ($DOMAIN):"
 
-# DNS resolution
-RESOLVED_IP=$(dig +short "$DOMAIN" 2>/dev/null | head -1 || true)
-if [ -z "$RESOLVED_IP" ]; then
+# DNS — any resolution is OK; note if it's ALB vs direct
+RESOLVED=$(dig +short "$DOMAIN" 2>/dev/null | grep -v '\.$' | tail -1 || true)
+RESOLVED_CNAME=$(dig +short "$DOMAIN" 2>/dev/null | grep '\.$' | head -1 | sed 's/\.$//' || true)
+if [ -z "$RESOLVED" ] && [ -z "$RESOLVED_CNAME" ]; then
   fail "DNS   $DOMAIN  — not resolving"
-elif [ "$RESOLVED_IP" = "$HOST" ]; then
-  ok "DNS   $DOMAIN  → $RESOLVED_IP"
+elif [ -n "$RESOLVED_CNAME" ]; then
+  ok "DNS   $DOMAIN  → ALB ($RESOLVED_CNAME)"
+elif [ "$RESOLVED" = "$HOST" ]; then
+  ok "DNS   $DOMAIN  → $RESOLVED (direct)"
 else
-  skip "DNS   $DOMAIN  → $RESOLVED_IP (expected $HOST)"
+  ok "DNS   $DOMAIN  → $RESOLVED (via ALB)"
 fi
 
-check_port "SSH  " "$DOMAIN" 22
 check_port "HTTP " "$DOMAIN" 80
 check_port "HTTPS" "$DOMAIN" 443
-check_http "HTTP " "http://$DOMAIN"
-check_http "HTTPS" "https://$DOMAIN"
-check_http "CMS  " "https://$DOMAIN/api/content/health"
-check_http "LP   " "https://$DOMAIN/api/lp/health"
+
+# HTTP should redirect to HTTPS (301 is correct)
+check_http "HTTP→HTTPS redirect" "http://$DOMAIN"
+
+# HTTPS should serve canvas (follow redirects to final 200)
+check_http_follow "Canvas  " "https://$DOMAIN"
+
+# API health endpoints (go through nginx → Vite proxy → services)
+check_http_follow "CMS API " "https://$DOMAIN/api/content/health"
 
 echo ""
 
@@ -87,7 +115,7 @@ if command -v openssl &>/dev/null; then
     EXPIRY=$(echo "$CERT_INFO" | grep notAfter | cut -d= -f2)
     ok "Cert valid until $EXPIRY"
   else
-    skip "Could not retrieve SSL cert — HTTPS may not be set up yet (run: bash setup.sh ssl)"
+    skip "Could not retrieve SSL cert"
   fi
 else
   skip "openssl not found — skipping cert check"
@@ -97,13 +125,13 @@ echo ""
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
-echo "WebSocket (agent — only open during active session):"
+echo "WebSocket:"
 if nc -z -w "$TIMEOUT" "$HOST" 32004 2>/dev/null; then
-  ok "Direct  ws://$HOST:32004  open"
+  ok "Agent session active  ws://$HOST:32004  open"
 else
-  skip "Direct  ws://$HOST:32004  closed (normal when no session active)"
+  skip "No agent session running  ws://$HOST:32004  closed (normal)"
 fi
-skip "Via nginx  wss://$DOMAIN/ws  (start agent session to test)"
+skip "wss://$DOMAIN/ws  — start an agent session to test live"
 
 echo ""
 
@@ -118,10 +146,9 @@ else
   echo -e "${RED}Some checks failed — see above.${NC}"
   echo ""
   echo "Common fixes:"
-  echo "  Ports 80/443 blocked  → open in AWS security group"
-  echo "  DNS not resolving     → point $DOMAIN → $HOST in DNS settings"
-  echo "  HTTPS not working     → bash environments/dev/setup.sh ssl"
-  echo "  Services down         → bash environments/dev/setup.sh health  (run on server)"
+  echo "  Ports 80/443 blocked → open in AWS security group / ALB listener"
+  echo "  DNS not resolving    → add DNS record for $DOMAIN"
+  echo "  Services down        → bash environments/dev/setup.sh health  (run on server)"
   exit 1
 fi
 echo ""

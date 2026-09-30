@@ -4,6 +4,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0', port: 32000, strictPort: true,
+    allowedHosts: ['.leadschool.in', 'localhost'],
     proxy: {
       '/api/models': {target:'http://127.0.0.1:32003',rewrite:path=>path.replace('/api/models','/interactive-models')},
       '/api/content': {target:'http://127.0.0.1:32001',rewrite:path=>path.replace('/api/content','')},

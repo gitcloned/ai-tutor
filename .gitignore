@@ -7,3 +7,11 @@ ka-session.json
 ka-session.json
 .gstack/
 agent/tmp/
+
+# DB dumps
+environments/*/dumps/
+
+# SSH keys — never commit
+environments/dev/ashish-prodigy-dev-server
+environments/*/id_*
+environments/*/*.pem

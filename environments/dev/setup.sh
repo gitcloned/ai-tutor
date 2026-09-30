@@ -2,12 +2,16 @@
 # setup.sh — bootstrap and health-check Prodigy on Ubuntu
 #
 # Usage:
-#   bash setup.sh          full install + build + start
-#   bash setup.sh health   check if everything is properly set up
+#   bash setup.sh            full install + build + start
+#   bash setup.sh health     check if everything is properly set up
+#   bash setup.sh ssl        get Let's Encrypt cert and enable HTTPS (run after install)
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+DOMAIN="dev-prodigy.leadschool.in"
+SSL_EMAIL="admin@leadschool.in"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
 log()   { echo -e "${GREEN}[setup]${NC} $*"; }
@@ -19,10 +23,9 @@ die()   { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 export NVM_DIR="$HOME/.nvm"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-# Also try common system paths
 export PATH="$HOME/.local/bin:$PATH"
 
-# ── Read agent/.env into env (for MONGO_URL etc.) ────────────────────────────
+# ── Read agent/.env into env ─────────────────────────────────────────────────
 load_dotenv() {
   local env_file="$REPO_DIR/agent/.env"
   [ -f "$env_file" ] || return 0
@@ -33,6 +36,53 @@ load_dotenv() {
     local val="${line#*=}"
     [ -n "$key" ] && export "$key"="$val"
   done < "$env_file"
+}
+
+# ── Write nginx config ────────────────────────────────────────────────────────
+write_nginx_config() {
+  sudo tee /etc/nginx/sites-available/prodigy > /dev/null <<NGINXEOF
+# Prodigy — managed by setup.sh
+# HTTP: certbot ACME + redirect to HTTPS once cert exists
+
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    # Let's Encrypt ACME challenge (needed for certbot)
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Agent WebSocket (ws://)
+    location /ws {
+        proxy_pass         http://localhost:32004;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade \$http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host \$host;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Canvas
+    location / {
+        proxy_pass         http://localhost:32000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade \$http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+}
+NGINXEOF
+
+  sudo ln -sf /etc/nginx/sites-available/prodigy /etc/nginx/sites-enabled/prodigy
+  sudo rm -f /etc/nginx/sites-enabled/default
+  sudo nginx -t
+  sudo systemctl reload nginx
+  log "nginx config written and reloaded"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,11 +108,32 @@ health() {
   else
     fail "Node.js not found — run: bash setup.sh"
   fi
-  command -v pnpm    &>/dev/null && ok "pnpm $(pnpm -v)"                                          || fail "pnpm not found — run: bash setup.sh"
-  command -v pm2     &>/dev/null && ok "pm2 $(pm2 -v 2>/dev/null)"                               || fail "pm2 not found — run: bash setup.sh"
-  command -v python3 &>/dev/null && ok "Python $(python3 --version 2>&1 | awk '{print $2}')"     || fail "python3 not found"
-  command -v nginx   &>/dev/null && ok "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" \
-                                 || skip "nginx not installed (needed for HTTPS/reverse proxy)"
+  command -v pnpm    &>/dev/null && ok "pnpm $(pnpm -v)"                                              || fail "pnpm not found — run: bash setup.sh"
+  command -v pm2     &>/dev/null && ok "pm2 $(pm2 -v 2>/dev/null)"                                   || fail "pm2 not found — run: bash setup.sh"
+  command -v python3 &>/dev/null && ok "Python $(python3 --version 2>&1 | awk '{print $2}')"         || fail "python3 not found"
+  command -v nginx   &>/dev/null && ok "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" || fail "nginx not installed — run: bash setup.sh"
+  command -v certbot &>/dev/null && ok "certbot $(certbot --version 2>&1 | awk '{print $2}')"        || skip "certbot not installed — run: bash setup.sh ssl"
+
+  echo ""
+
+  # --- nginx ---
+  echo "nginx:"
+  if sudo nginx -t 2>/dev/null; then
+    ok "config valid"
+  else
+    fail "config invalid — sudo nginx -t for details"
+  fi
+  if [ -f /etc/nginx/sites-enabled/prodigy ]; then
+    ok "prodigy site enabled"
+  else
+    fail "prodigy site not enabled — run: bash setup.sh"
+  fi
+  if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+    EXPIRY=$(sudo openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" 2>/dev/null | cut -d= -f2)
+    ok "SSL cert valid until $EXPIRY"
+  else
+    skip "SSL cert not found — run: bash setup.sh ssl"
+  fi
 
   echo ""
 
@@ -80,8 +151,8 @@ health() {
 
   # --- Builds ---
   echo "Builds:"
-  [ -f "$REPO_DIR/agent/dist/agent.js" ]                              && ok "agent dist"       || fail "agent dist missing — cd agent && pnpm build"
-  [ -f "$REPO_DIR/cms/packages/backend/dist/server.js" ]             && ok "cms-backend dist" || fail "cms-backend dist missing — cd cms && pnpm build"
+  [ -f "$REPO_DIR/agent/dist/agent.js" ]                               && ok "agent dist"       || fail "agent dist missing — cd agent && pnpm build"
+  [ -f "$REPO_DIR/cms/packages/backend/dist/server.js" ]              && ok "cms-backend dist" || fail "cms-backend dist missing — cd cms && pnpm build"
   [ -f "$REPO_DIR/cms/packages/learning-progression/dist/server.js" ] && ok "lp-server dist"  || fail "lp-server dist missing — cd cms && pnpm build"
   [ -d "$REPO_DIR/canvas/dist" ] && ok "canvas dist" || skip "canvas dist not built (OK — vite dev is used)"
 
@@ -121,8 +192,8 @@ health() {
 
   echo ""
 
-  # --- HTTP endpoints ---
-  echo "Endpoints:"
+  # --- Endpoints ---
+  echo "Endpoints (local):"
   check_http() {
     local label="$1" url="$2"
     curl -sf --max-time 3 "$url" &>/dev/null \
@@ -134,6 +205,16 @@ health() {
   check_http "Canvas " "http://localhost:32000"
 
   echo ""
+  echo "Endpoints (public):"
+  if curl -sf --max-time 5 "https://$DOMAIN" &>/dev/null; then
+    ok "https://$DOMAIN"
+  elif curl -sf --max-time 5 "http://$DOMAIN" &>/dev/null; then
+    skip "http://$DOMAIN (SSL not set up — run: bash setup.sh ssl)"
+  else
+    fail "$DOMAIN not reachable (DNS / firewall)"
+  fi
+
+  echo ""
 
   if [ "$HEALTH_FAIL" -eq 0 ]; then
     echo -e "${GREEN}All checks passed.${NC}"
@@ -141,6 +222,36 @@ health() {
     echo -e "${RED}Some checks failed — see above.${NC}"
     exit 1
   fi
+  echo ""
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SSL — get Let's Encrypt cert
+# ─────────────────────────────────────────────────────────────────────────────
+
+run_ssl() {
+  command -v certbot &>/dev/null || {
+    log "Installing certbot..."
+    sudo apt-get update -qq
+    sudo apt-get install -y certbot python3-certbot-nginx
+  }
+
+  log "Requesting Let's Encrypt cert for $DOMAIN..."
+  sudo certbot --nginx \
+    -d "$DOMAIN" \
+    --non-interactive \
+    --agree-tos \
+    --email "$SSL_EMAIL" \
+    --redirect
+
+  sudo systemctl reload nginx
+
+  echo ""
+  log "SSL enabled!"
+  info "  Canvas   https://$DOMAIN"
+  info "  Agent WS wss://$DOMAIN/ws"
+  echo ""
+  info "Cert auto-renews via systemd timer. Check with: sudo certbot renew --dry-run"
   echo ""
 }
 
@@ -162,6 +273,7 @@ install() {
   command -v python3 &>/dev/null || { log "Installing Python 3..."; sudo apt-get install -y python3 python3-pip; }
   log "Python $(python3 --version 2>&1 | awk '{print $2}') — OK"
 
+  # nginx + certbot
   if ! command -v nginx &>/dev/null; then
     log "Installing nginx..."
     sudo apt-get install -y nginx
@@ -170,17 +282,27 @@ install() {
     log "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') — OK"
   fi
 
+  if ! command -v certbot &>/dev/null; then
+    log "Installing certbot..."
+    sudo apt-get install -y certbot python3-certbot-nginx
+  else
+    log "certbot $(certbot --version 2>&1 | awk '{print $2}') — OK"
+  fi
+
+  # Write nginx config (HTTP only — run 'bash setup.sh ssl' to add HTTPS)
+  log "Configuring nginx..."
+  write_nginx_config
+
+  # MongoDB
   if ! command -v mongod &>/dev/null; then
     log "Installing MongoDB 7.x..."
-    # Detect Ubuntu version
     UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || grep -oP '(?<=UBUNTU_CODENAME=)\w+' /etc/os-release || echo "jammy")
-    # Map unsupported codenames to nearest supported MongoDB release
     case "$UBUNTU_CODENAME" in
-      noble|mantic)   MONGO_CODENAME="jammy"  ;;  # 24.x → use 22.04 repo
+      noble|mantic)   MONGO_CODENAME="jammy"  ;;
       jammy|focal)    MONGO_CODENAME="$UBUNTU_CODENAME" ;;
-      *)              MONGO_CODENAME="jammy"  ;;  # fallback
+      *)              MONGO_CODENAME="jammy"  ;;
     esac
-    sudo apt-get install -y gnupg curl
+    sudo apt-get install -y gnupg
     curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
       | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
     echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
@@ -193,11 +315,7 @@ https://repo.mongodb.org/apt/ubuntu ${MONGO_CODENAME}/mongodb-org/7.0 multiverse
     log "MongoDB 7 installed and started"
   else
     log "mongod — OK"
-    # Make sure it's running
-    if ! pgrep -x mongod &>/dev/null; then
-      sudo systemctl start mongod
-      log "mongod started"
-    fi
+    pgrep -x mongod &>/dev/null || sudo systemctl start mongod
   fi
 
   echo ""
@@ -208,14 +326,11 @@ https://repo.mongodb.org/apt/ubuntu ${MONGO_CODENAME}/mongodb-org/7.0 multiverse
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
     # shellcheck disable=SC1091
     source "$NVM_DIR/nvm.sh"
-    nvm install 20
-    nvm use 20
-    nvm alias default 20
+    nvm install 20 && nvm use 20 && nvm alias default 20
   else
     log "Node.js $(node -v) — OK"
   fi
 
-  # ── pnpm / pm2 ───────────────────────────────────────────────────────────────
   command -v pnpm &>/dev/null || { log "Installing pnpm..."; npm install -g pnpm; }
   command -v pm2  &>/dev/null || { log "Installing pm2...";  npm install -g pm2;  }
   log "pnpm $(pnpm -v) — OK"
@@ -246,12 +361,11 @@ GEMINI_API_KEY=
 # LP_URL=http://localhost:32002
 # CMS_URL=http://localhost:32001
 ENVEOF
-    warn "Created agent/.env — fill in GEMINI_API_KEY and MONGO_URL before starting."
+    warn "Created agent/.env — fill in GEMINI_API_KEY before starting."
   else
     log "agent/.env exists — skipping"
   fi
 
-  # Load .env so MONGO_URL is available when writing ecosystem config
   load_dotenv
 
   echo ""
@@ -280,12 +394,12 @@ ENVEOF
 
   echo ""
 
-  # ── PM2 ecosystem — pass MONGO_URL + DB_NAME from .env ──────────────────────
+  # ── PM2 ecosystem ────────────────────────────────────────────────────────────
   ECOSYSTEM="$REPO_DIR/ecosystem.config.cjs"
   MONGO_URL_VAL="${MONGO_URL:-mongodb://localhost:27017}"
   DB_NAME_VAL="${DB_NAME:-prodigy}"
 
-  log "Writing ecosystem.config.cjs (MONGO_URL: $MONGO_URL_VAL)..."
+  log "Writing ecosystem.config.cjs..."
   cat > "$ECOSYSTEM" <<ECOEOF
 // ecosystem.config.cjs — managed by setup.sh (re-run setup.sh to regenerate)
 module.exports = {
@@ -317,13 +431,15 @@ module.exports = {
       script: '$REPO_DIR/canvas/node_modules/.bin/vite',
       cwd: '$REPO_DIR/canvas',
       interpreter: 'none',
-      env: { NODE_ENV: 'development' },
+      env: {
+        NODE_ENV: 'development',
+        VITE_TUTOR_WS_URL: 'wss://$DOMAIN/ws',
+      },
     },
   ],
 };
 ECOEOF
 
-  # ── Start pm2 ────────────────────────────────────────────────────────────────
   log "Starting services with pm2..."
   cd "$REPO_DIR"
   pm2 stop ecosystem.config.cjs 2>/dev/null || true
@@ -334,9 +450,14 @@ ECOEOF
   log "Setup complete!"
   echo ""
   info "Services running:"
-  info "  Canvas UI   http://localhost:32000"
-  info "  LP API      http://localhost:32002"
-  info "  CMS API     http://localhost:32001"
+  info "  Canvas     http://$DOMAIN  (or http://localhost:32000)"
+  info "  CMS API    http://localhost:32001"
+  info "  LP API     http://localhost:32002"
+  echo ""
+  info "Next step — enable HTTPS:"
+  info "  bash environments/dev/setup.sh ssl"
+  echo ""
+  info "After SSL, connect agent at:  wss://$DOMAIN/ws"
   echo ""
   info "Start an agent session:"
   info "  cd agent"
@@ -345,9 +466,6 @@ ECOEOF
   info "Enable auto-start on reboot:"
   info "  pm2 startup   (run the printed command, then: pm2 save)"
   echo ""
-  info "Check everything is working:"
-  info "  bash setup.sh health"
-  echo ""
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -355,7 +473,8 @@ ECOEOF
 # ─────────────────────────────────────────────────────────────────────────────
 
 case "${1:-install}" in
-  health)     health  ;;
-  install|"") install ;;
-  *) die "Unknown command: $1  Usage: bash setup.sh [install|health]" ;;
+  health)     health   ;;
+  ssl)        run_ssl  ;;
+  install|"") install  ;;
+  *) die "Unknown command: $1  Usage: bash setup.sh [install|health|ssl]" ;;
 esac

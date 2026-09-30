@@ -15,11 +15,32 @@ info()  { echo -e "${CYAN}[info]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 die()   { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
+# ── Load nvm so node/pnpm/pm2 are on PATH ────────────────────────────────────
+export NVM_DIR="$HOME/.nvm"
+# shellcheck disable=SC1091
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+# Also try common system paths
+export PATH="$HOME/.local/bin:$PATH"
+
+# ── Read agent/.env into env (for MONGO_URL etc.) ────────────────────────────
+load_dotenv() {
+  local env_file="$REPO_DIR/agent/.env"
+  [ -f "$env_file" ] || return 0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]]           && continue
+    local key="${line%%=*}"
+    local val="${line#*=}"
+    [ -n "$key" ] && export "$key"="$val"
+  done < "$env_file"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # HEALTH CHECK
 # ─────────────────────────────────────────────────────────────────────────────
 
 health() {
+  load_dotenv
   HEALTH_FAIL=0
   ok()   { echo -e "  ${GREEN}OK${NC}    $*"; }
   fail() { echo -e "  ${RED}FAIL${NC}  $*"; HEALTH_FAIL=1; }
@@ -31,43 +52,38 @@ health() {
 
   # --- Tools ---
   echo "Tools:"
-
   if command -v node &>/dev/null; then
     NODE_MAJOR=$(node -e "console.log(parseInt(process.version.slice(1)))")
-    [ "$NODE_MAJOR" -ge 18 ] \
-      && ok "Node.js $(node -v)" \
-      || fail "Node.js $(node -v) — need >= 18"
+    [ "$NODE_MAJOR" -ge 18 ] && ok "Node.js $(node -v)" || fail "Node.js $(node -v) — need >= 18"
   else
     fail "Node.js not found — run: bash setup.sh"
   fi
-
-  command -v pnpm  &>/dev/null && ok "pnpm $(pnpm -v)"   || fail "pnpm not found"
-  command -v pm2   &>/dev/null && ok "pm2 $(pm2 -v 2>/dev/null)" || fail "pm2 not found"
-  command -v python3 &>/dev/null && ok "Python $(python3 --version 2>&1 | awk '{print $2}')" || fail "python3 not found"
-  command -v nginx &>/dev/null  \
-    && ok  "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" \
-    || skip "nginx not installed (needed for HTTPS / reverse proxy)"
+  command -v pnpm    &>/dev/null && ok "pnpm $(pnpm -v)"                                          || fail "pnpm not found — run: bash setup.sh"
+  command -v pm2     &>/dev/null && ok "pm2 $(pm2 -v 2>/dev/null)"                               || fail "pm2 not found — run: bash setup.sh"
+  command -v python3 &>/dev/null && ok "Python $(python3 --version 2>&1 | awk '{print $2}')"     || fail "python3 not found"
+  command -v nginx   &>/dev/null && ok "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" \
+                                 || skip "nginx not installed (needed for HTTPS/reverse proxy)"
 
   echo ""
 
   # --- MongoDB ---
   echo "MongoDB:"
   if pgrep -x mongod &>/dev/null 2>&1; then
-    ok "mongod running"
-  elif command -v mongod &>/dev/null; then
-    fail "mongod installed but not running — sudo systemctl start mongod"
+    ok "mongod running locally"
+  elif [ -n "${MONGO_URL:-}" ]; then
+    ok "MONGO_URL set → ${MONGO_URL}"
   else
-    skip "mongod not found locally — set MONGO_URL in agent/.env if using remote"
+    skip "mongod not running and MONGO_URL not set — backends will fail to connect"
   fi
 
   echo ""
 
   # --- Builds ---
   echo "Builds:"
-  [ -f "$REPO_DIR/agent/dist/agent.js" ]                                   && ok "agent dist"         || fail "agent dist missing — cd agent && pnpm build"
-  [ -f "$REPO_DIR/cms/packages/backend/dist/server.js" ]                   && ok "cms-backend dist"   || fail "cms-backend dist missing — cd cms && pnpm build"
-  [ -f "$REPO_DIR/cms/packages/learning-progression/dist/server.js" ]      && ok "lp-server dist"     || fail "lp-server dist missing — cd cms && pnpm build"
-  [ -d "$REPO_DIR/canvas/dist" ]                                            && ok "canvas dist"        || skip "canvas dist not built (OK — vite dev server is used)"
+  [ -f "$REPO_DIR/agent/dist/agent.js" ]                              && ok "agent dist"       || fail "agent dist missing — cd agent && pnpm build"
+  [ -f "$REPO_DIR/cms/packages/backend/dist/server.js" ]             && ok "cms-backend dist" || fail "cms-backend dist missing — cd cms && pnpm build"
+  [ -f "$REPO_DIR/cms/packages/learning-progression/dist/server.js" ] && ok "lp-server dist"  || fail "lp-server dist missing — cd cms && pnpm build"
+  [ -d "$REPO_DIR/canvas/dist" ] && ok "canvas dist" || skip "canvas dist not built (OK — vite dev is used)"
 
   echo ""
 
@@ -76,9 +92,7 @@ health() {
   ENV_FILE="$REPO_DIR/agent/.env"
   if [ -f "$ENV_FILE" ]; then
     ok "agent/.env exists"
-    grep -q "^GEMINI_API_KEY=.\+" "$ENV_FILE" \
-      && ok "GEMINI_API_KEY set" \
-      || fail "GEMINI_API_KEY missing or empty in agent/.env"
+    grep -q "^GEMINI_API_KEY=.\+" "$ENV_FILE" && ok "GEMINI_API_KEY set" || fail "GEMINI_API_KEY missing or empty in agent/.env"
   else
     fail "agent/.env not found — run: bash setup.sh"
   fi
@@ -93,7 +107,7 @@ health() {
       if pm2 show "$name" 2>/dev/null | grep -q "online"; then
         ok "$name online"
       elif pm2 show "$name" 2>/dev/null | grep -qE "stopped|errored"; then
-        fail "$name stopped/errored — pm2 restart $name && pm2 logs $name --lines 20"
+        fail "$name stopped/errored — pm2 restart $name  (logs: pm2 logs $name --lines 30)"
       else
         fail "$name not in pm2 — run: bash setup.sh"
       fi
@@ -115,9 +129,9 @@ health() {
       && ok "$label  $url" \
       || fail "$label  $url — not responding"
   }
-  check_http "CMS API  " "http://localhost:32001/health"
-  check_http "LP API   " "http://localhost:32002/health"
-  check_http "Canvas   " "http://localhost:32000"
+  check_http "CMS API" "http://localhost:32001/health"
+  check_http "LP API " "http://localhost:32002/health"
+  check_http "Canvas " "http://localhost:32000"
 
   echo ""
 
@@ -144,18 +158,10 @@ install() {
   log "Updating apt..."
   sudo apt-get update -qq
 
-  # Python 3
-  if ! command -v python3 &>/dev/null; then
-    log "Installing Python 3..."
-    sudo apt-get install -y python3 python3-pip
-  else
-    log "Python $(python3 --version 2>&1 | awk '{print $2}') — OK"
-  fi
+  command -v curl    &>/dev/null || sudo apt-get install -y curl
+  command -v python3 &>/dev/null || { log "Installing Python 3..."; sudo apt-get install -y python3 python3-pip; }
+  log "Python $(python3 --version 2>&1 | awk '{print $2}') — OK"
 
-  # curl (needed for nvm)
-  command -v curl &>/dev/null || sudo apt-get install -y curl
-
-  # nginx
   if ! command -v nginx &>/dev/null; then
     log "Installing nginx..."
     sudo apt-get install -y nginx
@@ -164,23 +170,17 @@ install() {
     log "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') — OK"
   fi
 
-  # MongoDB (warn — user may use remote Atlas or existing instance)
   if ! command -v mongod &>/dev/null; then
-    warn "MongoDB not found. Install it manually if running locally:"
+    warn "MongoDB not installed locally. Install manually if needed:"
     warn "  https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-ubuntu/"
-    warn "Or set MONGO_URL in agent/.env to point to a remote instance."
+    warn "Or set MONGO_URL in agent/.env to use a remote instance."
   else
     log "mongod — OK"
   fi
 
   echo ""
 
-  # ── Node.js >= 18 via nvm ────────────────────────────────────────────────────
-  # Load nvm if already installed
-  export NVM_DIR="$HOME/.nvm"
-  # shellcheck disable=SC1091
-  [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-
+  # ── Node.js via nvm ──────────────────────────────────────────────────────────
   if ! command -v node &>/dev/null || [ "$(node -e "console.log(parseInt(process.version.slice(1)))")" -lt 18 ]; then
     log "Installing Node.js 20 via nvm..."
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -193,21 +193,11 @@ install() {
     log "Node.js $(node -v) — OK"
   fi
 
-  # ── pnpm ────────────────────────────────────────────────────────────────────
-  if ! command -v pnpm &>/dev/null; then
-    log "Installing pnpm..."
-    npm install -g pnpm
-  else
-    log "pnpm $(pnpm -v) — OK"
-  fi
-
-  # ── pm2 ─────────────────────────────────────────────────────────────────────
-  if ! command -v pm2 &>/dev/null; then
-    log "Installing pm2..."
-    npm install -g pm2
-  else
-    log "pm2 $(pm2 -v 2>/dev/null) — OK"
-  fi
+  # ── pnpm / pm2 ───────────────────────────────────────────────────────────────
+  command -v pnpm &>/dev/null || { log "Installing pnpm..."; npm install -g pnpm; }
+  command -v pm2  &>/dev/null || { log "Installing pm2...";  npm install -g pm2;  }
+  log "pnpm $(pnpm -v) — OK"
+  log "pm2 $(pm2 -v 2>/dev/null) — OK"
 
   echo ""
 
@@ -234,10 +224,13 @@ GEMINI_API_KEY=
 # LP_URL=http://localhost:32002
 # CMS_URL=http://localhost:32001
 ENVEOF
-    warn "Created agent/.env — fill in GEMINI_API_KEY before running the agent."
+    warn "Created agent/.env — fill in GEMINI_API_KEY and MONGO_URL before starting."
   else
     log "agent/.env exists — skipping"
   fi
+
+  # Load .env so MONGO_URL is available when writing ecosystem config
+  load_dotenv
 
   echo ""
 
@@ -265,28 +258,38 @@ ENVEOF
 
   echo ""
 
-  # ── PM2 ecosystem ────────────────────────────────────────────────────────────
+  # ── PM2 ecosystem — pass MONGO_URL + DB_NAME from .env ──────────────────────
   ECOSYSTEM="$REPO_DIR/ecosystem.config.cjs"
-  log "Writing ecosystem.config.cjs..."
+  MONGO_URL_VAL="${MONGO_URL:-mongodb://localhost:27017}"
+  DB_NAME_VAL="${DB_NAME:-prodigy}"
+
+  log "Writing ecosystem.config.cjs (MONGO_URL: $MONGO_URL_VAL)..."
   cat > "$ECOSYSTEM" <<ECOEOF
-// ecosystem.config.cjs — managed by setup.sh
+// ecosystem.config.cjs — managed by setup.sh (re-run setup.sh to regenerate)
 module.exports = {
   apps: [
-    // CMS content API — port 32001
     {
       name: 'cms-backend',
       script: 'dist/server.js',
       cwd: '$REPO_DIR/cms/packages/backend',
-      env: { PORT: 32001, NODE_ENV: 'production' },
+      env: {
+        PORT: 32001,
+        NODE_ENV: 'production',
+        MONGO_URL: '$MONGO_URL_VAL',
+        DB_NAME:   '$DB_NAME_VAL',
+      },
     },
-    // Learning Progression API — port 32002
     {
       name: 'lp-server',
       script: 'dist/server.js',
       cwd: '$REPO_DIR/cms/packages/learning-progression',
-      env: { PORT: 32002, NODE_ENV: 'production' },
+      env: {
+        PORT: 32002,
+        NODE_ENV: 'production',
+        MONGO_URL: '$MONGO_URL_VAL',
+        DB_NAME:   '$DB_NAME_VAL',
+      },
     },
-    // Canvas (Vite dev — proxies /api to :32001 and :32003) — port 32000
     {
       name: 'canvas',
       script: '$REPO_DIR/canvas/node_modules/.bin/vite',
@@ -330,7 +333,7 @@ ECOEOF
 # ─────────────────────────────────────────────────────────────────────────────
 
 case "${1:-install}" in
-  health)        health  ;;
-  install|"")    install ;;
+  health)     health  ;;
+  install|"") install ;;
   *) die "Unknown command: $1  Usage: bash setup.sh [install|health]" ;;
 esac

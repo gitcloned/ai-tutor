@@ -4,7 +4,7 @@
 # Usage:
 #   bash setup.sh            full install + build + start
 #   bash setup.sh health     check if everything is properly set up
-#   bash setup.sh ssl        get Let's Encrypt cert and enable HTTPS (run after install)
+#   bash setup.sh ssl        configure HTTPS (auto-detects ALB vs direct — run after install)
 
 set -euo pipefail
 
@@ -128,11 +128,14 @@ health() {
   else
     fail "prodigy site not enabled — run: bash setup.sh"
   fi
-  if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+  # SSL — check via ALB (cert lives on ALB, not on this server)
+  if curl -sf --max-time 3 "https://$DOMAIN" &>/dev/null; then
+    ok "HTTPS reachable via ALB → https://$DOMAIN"
+  elif [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
     EXPIRY=$(sudo openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" 2>/dev/null | cut -d= -f2)
-    ok "SSL cert valid until $EXPIRY"
+    ok "SSL cert (local) valid until $EXPIRY"
   else
-    skip "SSL cert not found — run: bash setup.sh ssl"
+    skip "HTTPS not reachable yet — run: bash setup.sh ssl  for AWS steps"
   fi
 
   echo ""
@@ -226,33 +229,78 @@ health() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SSL — get Let's Encrypt cert
+# SSL — ALB-aware HTTPS setup
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Returns true if domain resolves to an ALB (CNAME) rather than a direct IP
+is_alb() {
+  local resolved
+  resolved=$(dig +short "$DOMAIN" 2>/dev/null | tail -1 || true)
+  # ALB endpoints are CNAMEs ending in .elb.amazonaws.com or similar
+  [[ "$resolved" == *.amazonaws.com* ]] || [[ "$resolved" == *.elb.* ]]
+}
+
 run_ssl() {
-  command -v certbot &>/dev/null || {
-    log "Installing certbot..."
-    sudo apt-get update -qq
-    sudo apt-get install -y certbot python3-certbot-nginx
-  }
-
-  log "Requesting Let's Encrypt cert for $DOMAIN..."
-  sudo certbot --nginx \
-    -d "$DOMAIN" \
-    --non-interactive \
-    --agree-tos \
-    --email "$SSL_EMAIL" \
-    --redirect
-
-  sudo systemctl reload nginx
-
   echo ""
-  log "SSL enabled!"
-  info "  Canvas   https://$DOMAIN"
-  info "  Agent WS wss://$DOMAIN/ws"
-  echo ""
-  info "Cert auto-renews via systemd timer. Check with: sudo certbot renew --dry-run"
-  echo ""
+  log "Detecting SSL setup for $DOMAIN..."
+
+  if is_alb; then
+    echo ""
+    echo -e "${CYAN}=== ALB Detected — SSL is terminated at the load balancer ===${NC}"
+    echo ""
+    echo "Your domain resolves to an AWS ALB. SSL is handled there — no certbot needed."
+    echo "nginx on this server stays on HTTP port 80; ALB does HTTPS → HTTP."
+    echo ""
+    echo "Steps to complete in AWS Console:"
+    echo ""
+    echo "  1. EC2 → Target Groups → Create target group"
+    echo "     - Type:        Instances (or IP)"
+    echo "     - Protocol:    HTTP  Port: 80"
+    echo "     - Health check path: /"
+    echo "     - Register:    this EC2 ($(hostname -I | awk '{print $1}'))"
+    echo ""
+    echo "  2. EC2 → Load Balancers → alb-vpc01-test-leadschool-apps"
+    echo "     → Listeners → HTTPS :443 → View/edit rules"
+    echo "     → Add rule:"
+    echo "       IF   Host header = $DOMAIN"
+    echo "       THEN Forward to  <target group from step 1>"
+    echo ""
+    echo "  3. EC2 security group for this instance:"
+    echo "     - Allow inbound TCP 80 from ALB security group (not 0.0.0.0/0)"
+    echo "     - Port 443 does NOT need to be open on this instance"
+    echo ""
+    echo "  4. For WebSocket (wss://$DOMAIN/ws):"
+    echo "     - ALB supports WebSocket natively — no extra config needed"
+    echo "     - Ensure ALB idle timeout >= 3600s (for long agent sessions)"
+    echo "       Load Balancer → Attributes → Idle timeout"
+    echo ""
+    echo "Once done, test with:"
+    echo "  bash environments/dev/check-external.sh"
+    echo ""
+  else
+    # Direct IP — use certbot
+    log "Direct IP detected — using Let's Encrypt (certbot)..."
+    command -v certbot &>/dev/null || {
+      log "Installing certbot..."
+      sudo apt-get update -qq
+      sudo apt-get install -y certbot python3-certbot-nginx
+    }
+    log "Requesting Let's Encrypt cert for $DOMAIN..."
+    sudo certbot --nginx \
+      -d "$DOMAIN" \
+      --non-interactive \
+      --agree-tos \
+      --email "$SSL_EMAIL" \
+      --redirect
+    sudo systemctl reload nginx
+    echo ""
+    log "SSL enabled!"
+    info "  Canvas   https://$DOMAIN"
+    info "  Agent WS wss://$DOMAIN/ws"
+    echo ""
+    info "Cert auto-renews via systemd timer. Check: sudo certbot renew --dry-run"
+    echo ""
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -16,35 +16,17 @@ fail() { echo -e "  ${RED}FAIL${NC}  $*"; FAILED=1; }
 skip() { echo -e "  ${YELLOW}WARN${NC}  $*"; }
 FAILED=0
 
-echo ""
-echo -e "${CYAN}=== External Connectivity Check ===${NC}"
-echo ""
-
-# ── TCP port reachability (by IP) ─────────────────────────────────────────────
-
-echo "Ports ($HOST):"
-
 check_port() {
-  local label="$1" port="$2"
-  if nc -z -w "$TIMEOUT" "$HOST" "$port" 2>/dev/null; then
-    ok "$label  :$port  open"
+  local label="$1" host="$2" port="$3"
+  if nc -z -w "$TIMEOUT" "$host" "$port" 2>/dev/null; then
+    ok "$label  $host:$port  open"
   else
-    fail "$label  :$port  not reachable — check AWS security group / ufw"
+    fail "$label  $host:$port  not reachable"
   fi
 }
 
-check_port "SSH    " 22
-check_port "HTTP   " 80
-check_port "HTTPS  " 443
-
-echo ""
-
-# ── HTTP/HTTPS via domain ─────────────────────────────────────────────────────
-
-echo "Domain ($DOMAIN):"
-
 check_http() {
-  local label="$1" url="$2" expected_min="$3"
+  local label="$1" url="$2"
   local status
   status=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "$url" 2>/dev/null || echo "000")
   if [ "$status" = "000" ]; then
@@ -56,29 +38,51 @@ check_http() {
   fi
 }
 
-check_http "Canvas  " "https://$DOMAIN"
-check_http "CMS API " "https://$DOMAIN/api/content/health"
-check_http "HTTP→HTTPS redirect" "http://$DOMAIN" ""
+echo ""
+echo -e "${CYAN}=== External Connectivity Check ===${NC}"
+echo ""
+
+# ── By IP ─────────────────────────────────────────────────────────────────────
+
+echo "By IP ($HOST):"
+check_port "SSH  " "$HOST" 22
+check_port "HTTP " "$HOST" 80
+check_port "HTTPS" "$HOST" 443
+check_http "HTTP " "http://$HOST"
+check_http "HTTPS" "https://$HOST"
 
 echo ""
 
-# ── WebSocket agent port (only open during active session) ────────────────────
+# ── By Domain ─────────────────────────────────────────────────────────────────
 
-echo "WebSocket:"
-if nc -z -w "$TIMEOUT" "$HOST" 32004 2>/dev/null; then
-  ok "Agent WS  wss://$DOMAIN/ws  (port 32004 open — session running)"
+echo "By Domain ($DOMAIN):"
+
+# DNS resolution
+RESOLVED_IP=$(dig +short "$DOMAIN" 2>/dev/null | head -1 || true)
+if [ -z "$RESOLVED_IP" ]; then
+  fail "DNS   $DOMAIN  — not resolving"
+elif [ "$RESOLVED_IP" = "$HOST" ]; then
+  ok "DNS   $DOMAIN  → $RESOLVED_IP"
 else
-  skip "Agent WS  wss://$DOMAIN/ws  (port 32004 closed — normal when no session active)"
-  skip "Agent connects through nginx at wss://$DOMAIN/ws — no direct port needed"
+  skip "DNS   $DOMAIN  → $RESOLVED_IP (expected $HOST)"
 fi
 
+check_port "SSH  " "$DOMAIN" 22
+check_port "HTTP " "$DOMAIN" 80
+check_port "HTTPS" "$DOMAIN" 443
+check_http "HTTP " "http://$DOMAIN"
+check_http "HTTPS" "https://$DOMAIN"
+check_http "CMS  " "https://$DOMAIN/api/content/health"
+check_http "LP   " "https://$DOMAIN/api/lp/health"
+
 echo ""
 
-# ── SSL cert check ────────────────────────────────────────────────────────────
+# ── SSL cert ──────────────────────────────────────────────────────────────────
 
 echo "SSL:"
 if command -v openssl &>/dev/null; then
-  CERT_INFO=$(echo | openssl s_client -servername "$DOMAIN" -connect "$DOMAIN:443" 2>/dev/null | openssl x509 -noout -dates 2>/dev/null || true)
+  CERT_INFO=$(echo | timeout "$TIMEOUT" openssl s_client -servername "$DOMAIN" -connect "$DOMAIN:443" 2>/dev/null \
+    | openssl x509 -noout -dates 2>/dev/null || true)
   if [ -n "$CERT_INFO" ]; then
     EXPIRY=$(echo "$CERT_INFO" | grep notAfter | cut -d= -f2)
     ok "Cert valid until $EXPIRY"
@@ -88,6 +92,18 @@ if command -v openssl &>/dev/null; then
 else
   skip "openssl not found — skipping cert check"
 fi
+
+echo ""
+
+# ── WebSocket ─────────────────────────────────────────────────────────────────
+
+echo "WebSocket (agent — only open during active session):"
+if nc -z -w "$TIMEOUT" "$HOST" 32004 2>/dev/null; then
+  ok "Direct  ws://$HOST:32004  open"
+else
+  skip "Direct  ws://$HOST:32004  closed (normal when no session active)"
+fi
+skip "Via nginx  wss://$DOMAIN/ws  (start agent session to test)"
 
 echo ""
 
@@ -103,8 +119,9 @@ else
   echo ""
   echo "Common fixes:"
   echo "  Ports 80/443 blocked  → open in AWS security group"
+  echo "  DNS not resolving     → point $DOMAIN → $HOST in DNS settings"
   echo "  HTTPS not working     → bash environments/dev/setup.sh ssl"
-  echo "  Services down         → bash environments/dev/setup.sh health"
+  echo "  Services down         → bash environments/dev/setup.sh health  (run on server)"
   exit 1
 fi
 echo ""

@@ -34,7 +34,8 @@ A plan step and a question's `stepsToSolve` are different: the plan step can con
 2. Present the stem and let the student attempt it independently. Do not reveal the answer or all solution steps upfront.
 3. If the student requests help or gives an incorrect or partial answer, stay on this question. Use the conversation to identify their progress and guide the next unfinished supplied step, as described below. An answer to a substep is not completion of the whole question.
 4. Only when the whole question has been resolved or you decide to stop the attempt, call `get_next_question({ outcome: "pass" })` (or `"fail"` / `"not_sure"`). This records the result and advances to the next question. Do not send an outcome merely because the student says "I'm not sure" or completes one substep.
-5. Repeat until the tool returns `{ done: true }`. Summarise performance, then call `update_step(id, "pass")` if majority correct, else `"fail"`.
+5. After final feedback, release any graph/model used for the question with `/action: remove` (same model and `/id`) before opening the next question.
+6. Repeat until the tool returns `{ done: true }`. Summarise performance, then call `update_step(id, "pass")` if majority correct, else `"fail"`.
 
 ### Following the supplied method
 

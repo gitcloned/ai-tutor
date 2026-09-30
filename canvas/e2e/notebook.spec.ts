@@ -110,12 +110,9 @@ test('connection hides welcome, audio types captions, deleted notebook page can 
   socket!.send(JSON.stringify({type:'text_chunk',content:'Volume = length × width × height',attrs:{}}));
   await expect(page.locator('.tl-shape[data-shape-type="text"]')).toHaveCount(1);
   await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Delete Notebook test',exact:true})).toBeDisabled();
-  await page.getByRole('button',{name:'Close notebook'}).click();
-  await page.locator('.connection').click();
-  await page.getByRole('button',{name:'Disconnect and keep my notebook'}).click();
-  await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Delete Notebook test',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Delete Notebook test',exact:true}).click();
+  await expect(page.locator('.connection')).not.toContainText('Connected');
   await expect(page.locator('.page-list')).not.toContainText('Notebook test');
   await expect(page.locator('.tl-shape[data-shape-type="text"]')).toHaveCount(0);
   await page.getByRole('button',{name:'Close notebook'}).click();
@@ -131,20 +128,23 @@ test('a full notebook deletes its oldest half and creates the new session page',
   await page.goto('/');
   await page.getByRole('button',{name:'Start learning'}).click();
   await page.getByLabel('Tutor address').fill('ws://localhost:32004/many-pages');
-  for(let i=0;i<41;i++){
+  for(let i=0;i<51;i++){
     await page.getByRole('button',{name:i?'Reconnect':'Connect to tutor',exact:true}).click();
     await expect(page.locator('.connection')).toContainText('Connected');
     socket!.send(JSON.stringify({type:'session',sessionId:`many-${i}`,conceptId:'topic',title:`Lesson ${i}`}));
     await expect(page.locator('.lesson-breadcrumb')).toContainText(`Lesson ${i}`);
-    if(i<40)await page.locator('.connection').click();
+    if(i<50)await page.locator('.connection').click();
   }
   await page.getByRole('button',{name:'Lesson notebook',exact:true}).click();
-  await expect(page.locator('.notebook-row')).toHaveCount(21);
+  await expect(page.locator('.notebook-row')).toHaveCount(26);
   await expect(page.locator('.notebook-open').filter({hasText:/^.*Lesson 0$/})).toHaveCount(0);
-  await expect(page.locator('.notebook-open').filter({hasText:'Lesson 40'})).toHaveCount(1);
+  await expect(page.locator('.notebook-open').filter({hasText:'Lesson 50'})).toHaveCount(1);
+  await page.getByRole('button',{name:'Delete Lesson 25',exact:true}).click();
+  await expect(page.locator('.notebook-row')).toHaveCount(25);
+  await expect(page.locator('.connection')).toContainText('Connected');
   await page.getByRole('button',{name:'Close notebook'}).click();
   await page.getByRole('button',{name:'Lesson warnings (1)',exact:true}).click();
-  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Removed 20 oldest pages');
+  await expect(page.getByRole('region',{name:'Lesson warnings'})).toContainText('Removed 25 oldest pages');
 });
 
 for(const titleFirst of [false,true])test(`unexpected disconnect resumes same canvas (title first: ${titleFirst})`,async({page})=>{

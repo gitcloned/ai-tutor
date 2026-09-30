@@ -211,6 +211,12 @@ export function useLesson(editor:Editor|null) {
     return true;
   }
   function disconnect(){clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();setConnected(false);setPhase('offline');}
+  function beforeDeletePage(id:ReturnType<Editor['getCurrentPageId']>){
+    if(socket.current&&(connectionPage.current===id||(!connectionPage.current&&editor?.getCurrentPageId()===id))){
+      disconnect();connectionPage.current=null;
+      notify('Tutor disconnected because you deleted the active lesson page. Undo can restore the page.');
+    }
+  }
   function send(value:string|StudentInput,videoDone=false) {
     if(socket.current?.readyState!==WebSocket.OPEN){notify('Connect to your tutor before sending a reply.','connect');return false;}
     if(pendingReply.current||(busyRef.current&&!videoDone)){notify('Your work was sent. Wait for your tutor to respond.');return false;}
@@ -252,5 +258,5 @@ export function useLesson(editor:Editor|null) {
     const media=safeMedia(url);if(!media||media.kind==='link')return;
     rewatching.current=true;paused.current=true;player.current?.setPaused(true);setVideo(media);setBusy(true);
   }
-  return {connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
+  return {beforeDeletePage,connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
 }

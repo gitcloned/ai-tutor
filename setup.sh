@@ -171,11 +171,33 @@ install() {
   fi
 
   if ! command -v mongod &>/dev/null; then
-    warn "MongoDB not installed locally. Install manually if needed:"
-    warn "  https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-ubuntu/"
-    warn "Or set MONGO_URL in agent/.env to use a remote instance."
+    log "Installing MongoDB 7.x..."
+    # Detect Ubuntu version
+    UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || grep -oP '(?<=UBUNTU_CODENAME=)\w+' /etc/os-release || echo "jammy")
+    # Map unsupported codenames to nearest supported MongoDB release
+    case "$UBUNTU_CODENAME" in
+      noble|mantic)   MONGO_CODENAME="jammy"  ;;  # 24.x → use 22.04 repo
+      jammy|focal)    MONGO_CODENAME="$UBUNTU_CODENAME" ;;
+      *)              MONGO_CODENAME="jammy"  ;;  # fallback
+    esac
+    sudo apt-get install -y gnupg curl
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+      | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
+https://repo.mongodb.org/apt/ubuntu ${MONGO_CODENAME}/mongodb-org/7.0 multiverse" \
+      | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+    sudo apt-get update -qq
+    sudo apt-get install -y mongodb-org
+    sudo systemctl enable mongod
+    sudo systemctl start mongod
+    log "MongoDB 7 installed and started"
   else
     log "mongod — OK"
+    # Make sure it's running
+    if ! pgrep -x mongod &>/dev/null; then
+      sudo systemctl start mongod
+      log "mongod started"
+    fi
   fi
 
   echo ""

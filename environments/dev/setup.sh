@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 DOMAIN="dev-prodigy.leadschool.in"
 SSL_EMAIL="admin@leadschool.in"

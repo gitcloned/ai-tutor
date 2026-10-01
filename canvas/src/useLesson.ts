@@ -113,7 +113,14 @@ export function useLesson(editor:Editor|null) {
         waiting.current=false;setQuestion('');setSimulated(false);setPhase('speaking');
         const sentence=block.attrs.sentence;
         if(sentence){setCaption('');if(!block.attrs.localReplay)log('tutor',sentence);}
-        await audio.current.play(block.content,signal,sentence?(elapsed,duration)=>setCaption(spokenPrefix(sentence,elapsed,duration)):undefined);return;
+        let visible='';
+        const progress=sentence?(elapsed:number,duration:number)=>{
+          const prefix=spokenPrefix(sentence,elapsed,duration);
+          if(prefix.length>=visible.length){visible=prefix;setCaption(prefix);}
+        }:undefined;
+        if(block.audioStream)await audio.current.playStream(block.audioStream,signal,(sentence?.length??0)/14,progress);
+        else await audio.current.play(block.content,signal,progress);
+        return;
       }
       if(block.kind==='error') {turnActive.current=false;pendingReply.current=false;setSubmission('idle');notify(block.content);return;}
       if(block.kind==='play'){
@@ -191,6 +198,8 @@ export function useLesson(editor:Editor|null) {
         if(['text_chunk','audio_chunk','model','model3d','ask','annotate','svg','play','error'].includes(event.type)||(event.type==='event'&&(event as WireEvent&{event?:{type:string}}).event?.type==='tutor-ended'))receivedReply();
         const blocks=adapter.current.accept(event);
         if(event.type==='event'&&event.event?.type==='tutor-started'){narration.current=[];narrationBytes.current=0;setCanRepeat(false);}
+        if(event.type==='audio_chunk'&&event.attrs?.streamId)narrationBytes.current+=(event.content?.length??0);
+        if(narrationBytes.current>16_000_000)narration.current=[];
         for(const block of blocks)if(block.kind==='audio'||block.kind==='speech'){
           narrationBytes.current+=block.content.length;
           if(narrationBytes.current<=16_000_000)narration.current.push(block);
@@ -207,10 +216,10 @@ export function useLesson(editor:Editor|null) {
     ws.onerror=()=>{if(socket.current!==ws)return;if(!opened)failed('We could not reach this tutor. Check your Wi-Fi and that the tunnel is running, or choose another address.');else notify('We could not reach your tutor. Check your connection and try again.','connect');};
     ws.onclose=event=>{if(socket.current!==ws)return;
       const details={time:new Date().toISOString(),code:event.code,reason:event.reason,wasClean:event.wasClean,connectedMs:Date.now()-connectedAt,lastMessageAgoMs:Date.now()-lastReceivedAt,online:navigator.onLine};
-      console.warn('Tutor WebSocket closed',details);record(`socket-close:${JSON.stringify(details)}`);if(!opened){failed('The tutor connection closed before it was ready. Try another address or check that the server is running.');return;}clearConnectTimer();rewatching.current=false;clearSubmission();preserveVideoOnAbort.current=true;player.current?.cancel();preserveVideoOnAbort.current=false;setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
+      console.warn('Tutor WebSocket closed',details);record(`socket-close:${JSON.stringify(details)}`);if(!opened){failed('The tutor connection closed before it was ready. Try another address or check that the server is running.');return;}clearConnectTimer();rewatching.current=false;clearSubmission();preserveVideoOnAbort.current=true;player.current?.cancel();preserveVideoOnAbort.current=false;adapter.current.reset();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
     return true;
   }
-  function disconnect(){clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();setConnected(false);setPhase('offline');}
+  function disconnect(){clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();adapter.current.reset();setConnected(false);setPhase('offline');}
   function beforeDeletePage(id:ReturnType<Editor['getCurrentPageId']>){
     if(socket.current&&(connectionPage.current===id||(!connectionPage.current&&editor?.getCurrentPageId()===id))){
       disconnect();connectionPage.current=null;

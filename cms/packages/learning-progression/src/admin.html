@@ -209,6 +209,16 @@
     .tool-bubble.result { background: #f0fdf4; border-left: 3px solid var(--green); }
     .tool-name { font-size: 11px; font-weight: 700; margin-bottom: 4px; opacity: .7; }
 
+    /* ── Metric badge ── */
+    .metric-badge {
+      align-self: flex-start;
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+      background: #fff7ed; color: var(--orange);
+      border: 1px solid #fed7aa;
+    }
+
     details > summary { list-style: none; }
     details > summary::marker { display: none; }
 
@@ -551,6 +561,12 @@
 
   // ── Raw JSON turn renderer (collapse/expand) ──────────────────────────────
   function renderRawTurn(turn) {
+    if (turn.role === 'metric') {
+      const badge = el('div', 'metric-badge');
+      badge.textContent = `⏱ ttfr ${turn.content?.value ?? '?'} ms`;
+      return badge;
+    }
+
     const details = document.createElement('details');
     details.className = 'raw-turn';
 
@@ -642,6 +658,11 @@
       const blocks = el('div', 'agent-blocks');
       blocks.appendChild(parseAgentDSL(String(turn.content)));
       msgEl.appendChild(blocks);
+
+    } else if (role === 'metric') {
+      const badge = el('div', 'metric-badge');
+      badge.textContent = `⏱ ttfr ${typeof turn.content === 'object' ? turn.content?.value : '?'} ms`;
+      msgEl.appendChild(badge);
 
     } else if (role === 'tool_call') {
       const b = el('div', 'tool-bubble call');

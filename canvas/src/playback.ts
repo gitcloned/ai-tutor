@@ -1,3 +1,4 @@
+import { pcmSamples, type PcmStream } from './audio-stream';
 import type { Block } from './protocol';
 /** Presentation waits for completion, without changing the backend's event order. */
 export class Playback {
@@ -155,6 +156,48 @@ export class AudioPlayer {
       signal.addEventListener('abort',stop,{once:true});
       source.onended=()=>{clearInterval(timer);signal.removeEventListener('abort',stop);source.disconnect();if(!signal.aborted)progress?.(buffer.duration,buffer.duration);resolve();}; source.start();
     });
+  }
+  async playStream(stream:PcmStream, signal:AbortSignal, estimatedDuration:number, progress?:(elapsed:number,duration:number)=>void) {
+    await this.unlock();
+    if(signal.aborted)throw new DOMException('Cancelled','AbortError');
+    const context=this.context!;
+    const sources=new Set<AudioBufferSourceNode>();
+    const spans:{start:number;duration:number}[]=[];
+    let index=0, nextTime=0, total=0, carry=new Uint8Array(0);
+    let lastArrival=Date.now(), lastLength=stream.byteLength;
+    const stop=()=>{for(const source of sources){source.onended=null;source.stop();source.disconnect();}sources.clear();};
+    signal.addEventListener('abort',stop,{once:true});
+    try {
+      while(true){
+        if(signal.aborted)throw new DOMException('Cancelled','AbortError');
+        // Small startup/rebuffer lead; once running, buffers meet sample-exactly.
+        while(index<stream.chunks.length){
+          const chunk=stream.chunks[index++];
+          const bytes=new Uint8Array(carry.length+chunk.length);bytes.set(carry);bytes.set(chunk,carry.length);
+          const length=bytes.length-(bytes.length%2);
+          carry=bytes.slice(length);
+          if(!length)continue;
+          const samples=pcmSamples(bytes.subarray(0,length));
+          const buffer=context.createBuffer(1,samples.length,stream.sampleRate);
+          buffer.copyToChannel(samples,0);
+          const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);
+          const start=Math.max(nextTime,context.currentTime+ (nextTime>context.currentTime?0:0.1));
+          sources.add(source);source.onended=()=>{sources.delete(source);source.disconnect();};
+          source.start(start);spans.push({start,duration:buffer.duration});
+          nextTime=start+buffer.duration;total+=buffer.duration;
+        }
+        const elapsed=spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.duration,context.currentTime-span.start)),0);
+        progress?.(elapsed,stream.done?total:Math.max(total,estimatedDuration,elapsed/0.95));
+        if(stream.done&&!sources.size){
+          if(stream.error)throw new Error(stream.error);
+          if(carry.length)throw new Error('Incomplete PCM audio sample.');
+          progress?.(total,total);return;
+        }
+        if(lastLength!==stream.byteLength||context.state==='suspended'){lastArrival=Date.now();lastLength=stream.byteLength;}
+        if(!stream.done&&Date.now()-lastArrival>30000)throw new Error('Tutor audio stopped arriving. Please reconnect.');
+        await new Promise(r=>setTimeout(r,20));
+      }
+    } finally {signal.removeEventListener('abort',stop);stop();}
   }
   close() { void this.context?.close(); this.context=null; }
 }

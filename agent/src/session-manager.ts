@@ -95,9 +95,24 @@ export class SessionManager {
     const outputParser = new OutputParser(medium);
     const inputParser  = new InputParser(medium);
 
+    const OUTPUT_TYPES = new Set(['audio', 'audio_chunk', 'text_chunk', 'svg', 'model', 'model3d', 'play', 'ask', 'question', 'annotate']);
+    let turnStart: number | null = null;
+    let ttfrEmitted = false;
+
     const pipe = async (event: TurnEvent): Promise<void> => {
+      if (event.type === 'event' && event.event.type === 'tutor-started') {
+        turnStart = Date.now();
+        ttfrEmitted = false;
+      }
+
       const enriched: TurnEvent = { ...event, sessionId: agent.ctx.session.id, nodeId: agent.ctx.journeyNode.id };
       for await (const result of outputParser.parse(enriched)) {
+        if (turnStart && !ttfrEmitted && OUTPUT_TYPES.has(result.type)) {
+          ttfrEmitted = true;
+          const metric: TurnEvent = { type: 'metric', name: 'ttfr', value: Date.now() - turnStart, unit: 'ms', sessionId: agent.ctx.session.id, nodeId: agent.ctx.journeyNode.id };
+          agent.ctx.session.rawHistory.push({ role: 'metric', name: 'ttfr', content: { value: metric.value, unit: metric.unit }, timestamp: new Date().toISOString() });
+          transport.handle(metric);
+        }
         transport.handle(result);
       }
     };

@@ -30,7 +30,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 /**
- * Creates an Inworld TTS provider that streams MP3 audio chunks as they arrive.
+ * Creates an Inworld TTS provider that streams raw PCM16 audio chunks as they arrive.
  *
  * Reads INWORLD_API_KEY and INWORLD_VOICE_ID from the environment.
  * The API key must be in `workspace_id:secret` format (as shown in the Inworld dashboard).
@@ -57,7 +57,7 @@ export function createInworldTTS(): TTSProvider {
       body: JSON.stringify({
         text,
         voice_id:      voiceId,
-        audio_config:  { audio_encoding: 'MP3', speaking_rate: 1 },
+        audio_config:  { audio_encoding: 'PCM', sample_rate_hertz: 24000, speaking_rate: 1 },
         delivery_mode: 'BALANCED',
         model_id:      'inworld-tts-2',
         language:      'AUTO',
@@ -70,47 +70,32 @@ export function createInworldTTS(): TTSProvider {
     const decoder = new TextDecoder();
     let   pending = '';
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      pending += decoder.decode(value, { stream: true });
-
-      const lines = pending.split('\n');
-      pending = lines.pop() ?? '';
-
-      for (const raw of lines) {
-        const line = raw.trim();
-        if (!line || line === 'data: [DONE]') continue;
-
-        const json = line.startsWith('data: ') ? line.slice(6) : line;
-        let parsed: unknown;
-        try { parsed = JSON.parse(json); } catch { continue; }
-
-        const chunk =
-          (parsed as any)?.result?.audioContent ??
-          (parsed as any)?.result?.audio_chunk  ??
-          (parsed as any)?.audioContent         ??
-          (parsed as any)?.audio_chunk          ??
-          (parsed as any)?.data;
-
-        if (typeof chunk === 'string' && chunk.length > 0) {
-          yield { data: chunk, mimeType: 'audio/mpeg' };
+    const parseChunk = (raw: string) => {
+      const line = raw.trim();
+      if (!line || line === 'data: [DONE]') return;
+      const json = line.startsWith('data: ') ? line.slice(6) : line;
+      const parsed = JSON.parse(json);
+      if (parsed?.error) throw new Error(`Inworld TTS: ${parsed.error.message ?? 'stream failed'}`);
+      const data = parsed?.result?.audioContent ?? parsed?.result?.audio_chunk ?? parsed?.audioContent ?? parsed?.audio_chunk ?? parsed?.data;
+      if (typeof data === 'string' && data.length) return {data, mimeType: 'audio/pcm', sampleRate: 24000};
+    };
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+        const lines = pending.split('\n');
+        pending = lines.pop() ?? '';
+        for (const line of lines) {
+          const chunk = parseChunk(line);
+          if (chunk) yield chunk;
         }
       }
-    }
-
-    // Flush remaining buffer
-    const last = pending.trim();
-    if (last && last !== 'data: [DONE]') {
-      const json = last.startsWith('data: ') ? last.slice(6) : last;
-      try {
-        const parsed = JSON.parse(json) as any;
-        const chunk = parsed?.result?.audioContent ?? parsed?.result?.audio_chunk ?? parsed?.audioContent ?? parsed?.audio_chunk ?? parsed?.data;
-        if (typeof chunk === 'string' && chunk.length > 0) {
-          yield { data: chunk, mimeType: 'audio/mpeg' };
-        }
-      } catch {}
+      const last = parseChunk(pending + decoder.decode());
+      if (last) yield last;
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
     }
   };
 }

@@ -40,7 +40,8 @@ type TurnEventPayload =
   | { type: 'play';        content: string; attrs: Record<string, string> }
   | { type: 'ask';         content: string; attrs: Record<string, string> }
   | { type: 'question';    content: string; attrs: Record<string, string> }
-  | { type: 'annotate';    content: string; attrs: Record<string, string> };
+  | { type: 'annotate';    content: string; attrs: Record<string, string> }
+  | { type: 'metric';      name: string; value: number; unit: string };
 
 /** Every turn event is enriched with the current session and node context. */
 export type TurnEvent = TurnEventPayload & { sessionId?: string; nodeId?: string };
@@ -53,6 +54,7 @@ export type OutputEvent = Extract<TurnEvent, { attrs: Record<string, string> }>
   | { type: 'text_chunk'; content: string; attrs: Record<string, string> };
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
 // Suppress Gemini SDK warning triggered internally when streaming a function-call response.
 // The SDK accesses .text on the aggregated response to update chat history, which fires a
@@ -104,7 +106,7 @@ export class TurnEngine {
     ctx.session.systemPrompt ??= systemInstruction;
 
     const chat = ai.chats.create({
-      model: 'gemini-3.8-flash',
+      model: GEMINI_MODEL,
       history: chatHistory as any,
       config: {
         systemInstruction,

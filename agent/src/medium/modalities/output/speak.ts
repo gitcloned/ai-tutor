@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { TurnEvent }    from '../../../engine.js';
 import { getTTSProvider }     from '../../../services/tts/index.js';
 import type { TTSProvider }   from '../../../services/tts/base.js';
@@ -50,13 +51,32 @@ export class Speak extends BaseOutputModality {
   }
 
   private async *synthesise(text: string, attrs: Record<string, string>): AsyncGenerator<TurnEvent> {
+    // Only PCM is safe to play incrementally. Keep complete-file semantics for
+    // other providers (including the text-only development provider).
     const chunks: Buffer[] = [];
-    let mimeType = 'audio/mpeg';
-    for await (const chunk of this.tts!(text)) {
-      chunks.push(Buffer.from(chunk.data, 'base64'));
-      mimeType = chunk.mimeType;
+    const streamId = randomUUID();
+    let mimeType = 'audio/mpeg', sampleRate = 24000, streaming = false;
+    try {
+      for await (const chunk of this.tts!(text)) {
+        mimeType = chunk.mimeType;
+        if (mimeType === 'audio/pcm') {
+          sampleRate = chunk.sampleRate ?? 24000;
+          yield { type: 'audio_chunk', content: chunk.data, attrs: {
+            ...attrs, mimeType, sampleRate: String(sampleRate), streamId,
+            ...(!streaming ? { sentence: text } : {}),
+          } };
+          streaming = true;
+        } else chunks.push(Buffer.from(chunk.data, 'base64'));
+      }
+    } catch (error) {
+      if (streaming) yield { type: 'audio_chunk', content: '', attrs: {
+        mimeType, streamId, sampleRate: String(sampleRate), streamEnd: 'true', streamError: 'Speech was interrupted. Please try again.',
+      } };
+      throw error;
     }
-    if (chunks.length === 0) return;
-    yield { type: 'audio_chunk', content: Buffer.concat(chunks).toString('base64'), attrs: { mimeType, sentence: text, ...attrs } };
+    if (streaming) yield { type: 'audio_chunk', content: '', attrs: {
+      mimeType, streamId, sampleRate: String(sampleRate), streamEnd: 'true',
+    } };
+    else if (chunks.length) yield { type: 'audio_chunk', content: Buffer.concat(chunks).toString('base64'), attrs: { mimeType, sentence: text, ...attrs } };
   }
 }

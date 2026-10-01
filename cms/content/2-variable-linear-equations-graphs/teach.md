@@ -25,17 +25,17 @@ If correct, ask him for x = 3, and then select that point on graph. Do make sure
 
 If wrong, help him solve step by step and write in coordinate system. For first time write the steps with blanks in them and let child fill. Afterwards let him write the complete steps - do highlight if a step got missed with annotation.
 
-## 3 (Draw line)
+## 3 (Reveal the line and ask Exit questions)
 
-Reveal the curve on the existing activity without clearing the student's points
+Follow these 3 things in sequence only:
 
-## 3 (Exit questions)
+ 1. Reveal the curve on the existing activity without clearing the student's points
 
-Remove the graph
+ 2. Remove the graph
 
-Ask questions in quick succession
+ 3. Ask these two questions in quick succession
 
-1) Ask this MCQ question - Which of these is a linear equation in x and y?
+  a) Ask this MCQ question - Which of these is a linear equation in x and y?
 2x + 3y = 4
 2x^2 + 3y = 4
 x = y/x + 3
@@ -44,7 +44,7 @@ Correct answer: 2x + 3y = 4.
 
 For a wrong choice, annotate the term that should not be a part of linear equation and explain.
 
-2) Solve the coordinate pair for the equation, 4y + 4x = 0
+  b) Solve the coordinate pair for the equation, 4y + 4x = 0
 
  - a) (0, ?)
  - b) (?, -1)

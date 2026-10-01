@@ -515,14 +515,19 @@
     document.querySelector('.audio-pill')?.remove();
   }
 
-  function playAudioChunk(base64, sentence) {
+  function playAudioChunk(base64, sentence, attrs = {}) {
     const gen = ++audioGeneration;
     showSpeakingPill(sentence);
     audioQueue = audioQueue.then(async () => {
       try {
         await audioCtx.resume();
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        const buffer = await audioCtx.decodeAudioData(bytes.buffer);
+        let buffer;
+        if (attrs.mimeType === 'audio/pcm') {
+          buffer = audioCtx.createBuffer(1, bytes.length / 2, Number(attrs.sampleRate));
+          const samples = buffer.getChannelData(0), view = new DataView(bytes.buffer);
+          for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
+        } else buffer = await audioCtx.decodeAudioData(bytes.buffer);
         const src = audioCtx.createBufferSource();
         src.buffer = buffer;
         src.connect(audioCtx.destination);
@@ -711,6 +716,7 @@
 
       // ── Audio ────────────────────────────────────────────────────────────
       case 'audio_chunk':
+        if (event.attrs?.streamEnd) break;
         if (event.attrs?.mimeType === 'text/plain') {
           // Visual TTS (canvas.mjs dev mode): stream spoken text with 🎤
           const sentence = atob(event.content);
@@ -724,7 +730,7 @@
           const chars = [...sentence + ' '].map(ch => ({ type: '_stream', node, ch }));
           eventQueue.unshift(...chars);
         } else {
-          playAudioChunk(event.content, event.attrs?.sentence);
+          playAudioChunk(event.content, event.attrs?.sentence, event.attrs);
         }
         break;
 

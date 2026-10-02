@@ -48,6 +48,15 @@ export default function App() {
   useEffect(()=>{if(lesson.connected){setRecentTutors(successfulTutors());setSheet(current=>current==='connect'?null:current);}},[lesson.connected,lesson.successfulUrl]);
   function tryConnect(address:string){setUrl(address);lesson.connect(address);}
   function connectTutor(){if(lesson.connected||lesson.phase==='connecting'){setSheet('connect');return;}const last=successfulTutors()[0];if(last)tryConnect(last);else setSheet('connect');}
+  const journeyConnection=useRef(false);
+  useEffect(()=>{
+    if(!editor||journeyConnection.current||!location.pathname.startsWith('/sessions/'))return;
+    journeyConnection.current=true;
+    try{
+      const pending=JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'null');
+      if(pending?.wsUrl)tryConnect(pending.wsUrl);
+    }catch{setSheet('connect');}
+  },[editor]);
   const [hasContent,setHasContent]=useState(false);
   const captionText=useRef<HTMLParagraphElement>(null);
   useEffect(()=>{const text=captionText.current;if(text)text.scrollTop=text.scrollHeight;},[lesson.caption]);
@@ -104,7 +113,7 @@ export default function App() {
       <VideoCardContext.Provider value={{enabled:!lesson.tutorBusy&&!preparing&&!lesson.video,open:lesson.rewatch}}>
       <McqContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
       <GraphActivityContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
-        <Tldraw options={{maxPages:50}} hideUi shapeUtils={modelShapeUtils} persistenceKey="prodigy-canvas-v1" onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
+        <Tldraw options={{maxPages:50}} hideUi shapeUtils={modelShapeUtils} persistenceKey={'prodigy-canvas-student-'+JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'{}').studentId} onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
       </GraphActivityContext.Provider>
       </McqContext.Provider>
       </VideoCardContext.Provider>
@@ -115,7 +124,7 @@ export default function App() {
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}
 
     <footer className="tutor-space" aria-label="Tutor and responses">
-    <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(window.history.length>1)window.history.back();else setNotebook(true);}}><ArrowLeft size={18}/></button>
+    <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(location.pathname.startsWith('/sessions/')){lesson.disconnect();window.location.assign('/home');}else if(window.history.length>1)window.history.back();else window.location.assign('/home');}}><ArrowLeft size={18}/></button>
     <div className="lesson-tools">
       <button className="notebook-button lesson-breadcrumb" aria-label="Lesson notebook" title="Lesson notebook" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</button>
       <div className="lesson-tools-actions"><button className={`connection ${lesson.connected?'online':''}`} onClick={connectTutor} title="Tutor connection"><span/>{lesson.connected?'Connected':lesson.phase==='connecting'?'Connecting…':'Connect tutor'}</button>

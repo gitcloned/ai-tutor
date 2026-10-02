@@ -138,8 +138,21 @@ export async function delay(ms:number,signal:AbortSignal,paused:()=>boolean=()=>
     const now=performance.now(); if(!paused()) elapsed+=now-last; last=now;
   }
 }
+const STARTUP_AUDIO_SECONDS = 0.3;
+type StreamDiagnostic = {
+  status: 'buffering'|'playing'|'completed'|'cancelled'|'error';
+  startupWaitMs: number; initialBufferedMs: number;
+  underruns: number; gapMs: number; maxGapMs: number;
+};
 export class AudioPlayer {
   private context:AudioContext|null=null;
+  private streams:StreamDiagnostic[]=[];
+  snapshot() {
+    return {state:this.state,startupTargetMs:STARTUP_AUDIO_SECONDS*1000,
+      baseLatencyMs:(this.context?.baseLatency??0)*1000,
+      outputLatencyMs:(this.context?.outputLatency??0)*1000,
+      streams:this.streams.map(stream=>({...stream}))};
+  }
   get state(){return this.context?.state??'not-created';}
   unlock() { this.context??=new AudioContext(); return this.context.resume(); }
   pause(value:boolean) { if(this.context) void (value?this.context.suspend():this.context.resume()); }
@@ -161,6 +174,10 @@ export class AudioPlayer {
     await this.unlock();
     if(signal.aborted)throw new DOMException('Cancelled','AbortError');
     const context=this.context!;
+    const waitingSince=Date.now();
+    const diagnostic:StreamDiagnostic={status:'buffering',startupWaitMs:0,initialBufferedMs:0,underruns:0,gapMs:0,maxGapMs:0};
+    this.streams.push(diagnostic);if(this.streams.length>20)this.streams.shift();
+    let started=false;
     const sources=new Set<AudioBufferSourceNode>();
     const spans:{start:number;duration:number}[]=[];
     let index=0, nextTime=0, total=0, carry=new Uint8Array(0);
@@ -170,8 +187,18 @@ export class AudioPlayer {
     try {
       while(true){
         if(signal.aborted)throw new DOMException('Cancelled','AbortError');
-        // Small startup/rebuffer lead; once running, buffers meet sample-exactly.
-        while(index<stream.chunks.length){
+        // Accumulate actual samples, not merely a delay after the first packet.
+        // A completed short sentence can start immediately. Never reapply this
+        // threshold between chunks once a sentence is playing.
+        const bufferedSeconds=Math.floor(stream.byteLength/2)/stream.sampleRate;
+        if(!started&&(bufferedSeconds>=STARTUP_AUDIO_SECONDS||stream.done)){
+          started=true;
+          diagnostic.status='playing';
+          diagnostic.startupWaitMs=Date.now()-waitingSince;
+          diagnostic.initialBufferedMs=bufferedSeconds*1000;
+        }
+        // Keep a small scheduling lead; subsequent buffers join sample-exactly.
+        while(started&&index<stream.chunks.length){
           const chunk=stream.chunks[index++];
           const bytes=new Uint8Array(carry.length+chunk.length);bytes.set(carry);bytes.set(chunk,carry.length);
           const length=bytes.length-(bytes.length%2);
@@ -181,7 +208,14 @@ export class AudioPlayer {
           const buffer=context.createBuffer(1,samples.length,stream.sampleRate);
           buffer.copyToChannel(samples,0);
           const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);
-          const start=Math.max(nextTime,context.currentTime+ (nextTime>context.currentTime?0:0.1));
+          const now=context.currentTime;
+          const start=Math.max(nextTime,now+(nextTime>now?0:0.1));
+          if(nextTime&&nextTime<=now){
+            const gapMs=(start-nextTime)*1000;
+            diagnostic.underruns++;
+            diagnostic.gapMs+=gapMs;
+            diagnostic.maxGapMs=Math.max(diagnostic.maxGapMs,gapMs);
+          }
           sources.add(source);source.onended=()=>{sources.delete(source);source.disconnect();};
           source.start(start);spans.push({start,duration:buffer.duration});
           nextTime=start+buffer.duration;total+=buffer.duration;
@@ -191,12 +225,16 @@ export class AudioPlayer {
         if(stream.done&&!sources.size){
           if(stream.error)throw new Error(stream.error);
           if(carry.length)throw new Error('Incomplete PCM audio sample.');
+          diagnostic.status='completed';
           progress?.(total,total);return;
         }
         if(lastLength!==stream.byteLength||context.state==='suspended'){lastArrival=Date.now();lastLength=stream.byteLength;}
         if(!stream.done&&Date.now()-lastArrival>30000)throw new Error('Tutor audio stopped arriving. Please reconnect.');
         await new Promise(r=>setTimeout(r,20));
       }
+    } catch(error) {
+      diagnostic.status=signal.aborted?'cancelled':'error';
+      throw error;
     } finally {signal.removeEventListener('abort',stop);stop();}
   }
   close() { void this.context?.close(); this.context=null; }

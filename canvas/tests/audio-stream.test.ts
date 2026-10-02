@@ -66,7 +66,7 @@ it('cancels scheduled audio and preserves split sample bytes across chunks',asyn
   const controller=new AbortController();const play=audio.playStream(block.audioStream!,controller.signal,1);
   const rejected=expect(play).rejects.toMatchObject({name:'AbortError'});
   await tick();expect(samples).toEqual([]);
-  adapter.accept(chunk(btoa('\x80')));await tick();expect(samples).toEqual([[-1]]);
+  adapter.accept(chunk(btoa('\x80')));adapter.accept(chunk('',{streamEnd:'true'}));await tick();expect(samples).toEqual([[-1]]);
   controller.abort();await tick();await rejected;
 });
 
@@ -74,4 +74,48 @@ it('does not leave playback hanging when a turn ends without the sentence end ma
   const adapter=new BlockAdapter();const [block]=adapter.accept(chunk());
   adapter.accept({type:'event',event:{type:'tutor-ended'}});
   expect(block.audioStream).toMatchObject({done:true,error:expect.any(String)});
+});
+
+it('buffers 300 ms of actual audio before starting, without waiting for EOF',async()=>{
+  const {starts}=mockAudio();const adapter=new BlockAdapter(),audio=new AudioPlayer();
+  const [block]=adapter.accept(chunk(btoa('\0'.repeat(4800)))); // 100 ms
+  const controller=new AbortController();
+  const play=audio.playStream(block.audioStream!,controller.signal,1);
+  const cancelled=expect(play).rejects.toMatchObject({name:'AbortError'});
+  await vi.advanceTimersByTimeAsync(200);expect(starts).toEqual([]);
+  adapter.accept(chunk(btoa('\0'.repeat(9600)))); // now 300 ms
+  await tick();expect(starts).toHaveLength(2);
+  expect(starts[1]-starts[0]).toBeCloseTo(0.1);
+  expect(block.audioStream?.done).toBe(false);
+  controller.abort();await tick();await cancelled;
+});
+
+it('plays a completed short sentence without waiting for the buffer threshold',async()=>{
+  const {starts}=mockAudio();const adapter=new BlockAdapter(),audio=new AudioPlayer();
+  const [block]=adapter.accept(chunk(btoa('\0'.repeat(4800))));
+  adapter.accept(chunk('',{streamEnd:'true'}));
+  const play=audio.playStream(block.audioStream!,new AbortController().signal,1);
+  await tick();expect(starts).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(300);await play;
+});
+
+it('cancels while waiting for the initial buffer without scheduling any audio',async()=>{
+  const {starts}=mockAudio();const adapter=new BlockAdapter(),audio=new AudioPlayer();
+  const [block]=adapter.accept(chunk());const controller=new AbortController();
+  const play=audio.playStream(block.audioStream!,controller.signal,1);
+  const cancelled=expect(play).rejects.toMatchObject({name:'AbortError'});
+  await tick();controller.abort();await tick();await cancelled;expect(starts).toEqual([]);
+});
+
+it('records a late chunk as a playback gap without speeding up the samples',async()=>{
+  const {starts}=mockAudio();const adapter=new BlockAdapter(),audio=new AudioPlayer();
+  const [block]=adapter.accept(chunk(btoa('\0'.repeat(14400))));
+  const play=audio.playStream(block.audioStream!,new AbortController().signal,1);
+  await vi.advanceTimersByTimeAsync(800);
+  adapter.accept(chunk(btoa('\0'.repeat(4800))));adapter.accept(chunk('',{streamEnd:'true'}));
+  await vi.advanceTimersByTimeAsync(400);await play;
+  const [metrics]=audio.snapshot().streams;
+  expect(metrics).toMatchObject({status:'completed',initialBufferedMs:300,underruns:1});
+  expect(metrics.gapMs).toBeGreaterThan(400);
+  expect(starts[1]-starts[0]).toBeGreaterThan(0.7);
 });

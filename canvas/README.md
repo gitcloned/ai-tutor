@@ -25,7 +25,7 @@ npm run dev
 
 Open http://127.0.0.1:32000, choose **Start learning**, and connect to `ws://localhost:32004`. The replay begins on connection. `--scenario algebra`, `heart`, and `text` work too. The replay tool restarts its scenarios on any text reply; it does not assess student answers.
 
-Canvas binds to `0.0.0.0:32000`, making it reachable from other devices on your network. It fails if port **32000** is occupied rather than silently switching ports. The default tutor socket uses the site's hostname on port **32004**, with `ws://` for HTTP and `wss://` for HTTPS. Saved addresses are reused only when their hostname and protocol match the current site. You can edit the tutor address before connecting. Preview also binds to `0.0.0.0`, on port **32005**.
+Canvas binds to `0.0.0.0:32000`, making it reachable from other devices on your network. It fails if port **32000** is occupied rather than silently switching ports. The default tutor socket uses the site's hostname on port **32004**, with `ws://` for HTTP and `wss://` for HTTPS. Saved addresses are reused only when their hostname and protocol match the current site. You can edit the tutor address before connecting. Preview also binds to `0.0.0.0`, on port **32007**.
 
 ## Firebase Hosting
 
@@ -188,6 +188,43 @@ Repeat `model: function-graph` with `/action: plot` to reveal the same activity 
 
 Inworld receives complete sentences and returns mono PCM16 little-endian audio at 24 kHz. The server forwards each chunk immediately as `audio_chunk` with `mimeType: audio/pcm`, `sampleRate`, and a generated `streamId`. Only the first chunk carries `sentence`; an empty final chunk carries `streamEnd: true` (and `streamError` if synthesis failed). These are transport attributes, not new LLM instructions.
 
-The canvas feeds chunks into one sentence buffer independently of its presentation queue. Web Audio schedules samples consecutively with a 100 ms startup/rebuffer lead. Speech remains serial even inside parallel groups; visuals can still run alongside it. The next sentence waits for the end marker and the last scheduled sample. Pause suspends the audio clock; disconnect/cancel stops scheduled sources. Missing end markers and stalled streams produce warnings rather than waiting forever. Captions use an estimated duration until the sentence finishes downloading. Local replay retains complete sentence buffers under the existing turn size limit. Older complete MP3/WAV events and test TTS remain supported.
+The canvas feeds chunks into one sentence buffer independently of its presentation queue. Playback first accumulates 300 ms of actual audio (or starts sooner when the complete sentence is available). Web Audio then schedules samples consecutively with a 100 ms scheduling/rebuffer lead. Speech remains serial even inside parallel groups; visuals can still run alongside it. The next sentence waits for the end marker and the last scheduled sample. Pause suspends the audio clock; disconnect/cancel stops scheduled sources. Missing end markers and stalled streams produce warnings rather than waiting forever. `window.canvasPlaybackDiagnostics().audioStreaming` records startup buffering and late-chunk gap counts/durations for the last 20 sentences, without text or audio payloads. Captions use an estimated duration until the sentence finishes downloading. Local replay retains complete sentence buffers under the existing turn size limit. Older complete MP3/WAV events and test TTS remain supported.
 
 Deploy the canvas and restart the rebuilt agent together: an older canvas cannot decode the new raw PCM events. PCM trades higher bandwidth (about 64 KB/s including base64) for earlier playback and consistent Web Audio support, including Safari. See [Inworld's streaming format reference](https://docs.inworld.ai/tts/synthesize-speech-streaming).
+
+## Student, parent, and teacher journey
+
+Open `/login` for student access-code entry and adult Google sign-in. `/` redirects there when signed out, or to the role-based `/home` after sign-in. Classes use `/classes/:id`, child learning spaces `/students/:id`, and tutor sessions `/sessions/:sessionId`. `/home?preview=1` is a labelled, device-local preview that makes no ERP or tutor requests. Use student code **K7M9R2**, class code **B3MN8P**, or **Try adult setup** to choose parent/teacher/both. Preview data persists in `prodigy-journey-preview-v1` in localStorage; remove that key to reset sample data.
+
+The journey covers student login/switching, optional remembered login, class joining, lesson search/start, adult roles, classroom creation, student creation/enrollment, parent profiles, code reset, and copying/printing access slips. `/home?join=B3MN8P` carries a class invitation through student sign-in. Parents and class teachers can view or reset a student’s code. Older hash-only profiles need one reset before the code can be displayed. Class codes and student codes are distinct.
+
+Configure these Vite build variables for the live services:
+
+```dotenv
+VITE_ERP_API_URL=http://localhost:32005
+VITE_AGENT_API_URL=http://localhost:32004
+VITE_FIREBASE_API_KEY=your-public-firebase-web-api-key
+VITE_FIREBASE_AUTH_DOMAIN=prodigy-tutor.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=prodigy-tutor
+VITE_FIREBASE_APP_ID=your-firebase-web-app-id
+```
+
+For local tablet testing, omit the API URLs to use the current hostname and ports. For Firebase Hosting, set public HTTPS URLs and rebuild. Enable Google sign-in and authorize the frontend domain in Firebase Authentication. ERP and agent must allow the frontend origin through CORS. Firebase Hosting configuration already supports `/home` and `/canvas` through its SPA rewrite.
+
+`src/journey/api.ts` implements the agreed ERP REST contract. Lesson creation goes directly to the agent's `POST /sessions`, which must return `{sessionId, resumed, concept, wsUrl}`. A successful response opens `/sessions/:sessionId`, verifies access through the agent, and automatically connects with `wsUrl`; the back button returns to `/home`. No backend is simulated in live mode. Google sign-in requires Firebase configuration and an enabled Google provider. ERP issues opaque login tokens stored as hashes with a seven-day expiry. Subsequent requests use bearer tokens; supplied identity headers are not trusted. Student requests are scoped to that student. The agent verifies student access with ERP before issuing a session socket ticket. ERP defaults to port 32005; agent defaults to 32004. Set `PUBLIC_AGENT_URL` on the agent when its public socket address differs from the HTTP request host. Configure `USE_TTS_PROVIDER=inworld` and the Inworld credentials for spoken audio; without a provider, speak blocks are silent.
+
+Teachers can paste up to 50 names (one per line) or import CSV names from the first column. Each created code and enrollment result is retained if a later row fails. Teacher progress reports, institutes, phone verification, and parent linking remain outside this version.
+
+Integration checks (run from `canvas`):
+
+```sh
+CANVAS_URL=http://127.0.0.1:32000 npm exec -- playwright test e2e/journey.spec.ts
+CANVAS_URL=http://127.0.0.1:32000 npm exec -- playwright test e2e/journey.spec.ts --config=playwright.webkit.config.ts
+CANVAS_URL=http://127.0.0.1:32000 JOURNEY_LIVE=1 npm exec -- playwright test e2e/journey-live.spec.ts --timeout=150000
+```
+
+The live test needs MongoDB, ERP, CMS, LP and the agent running. It seeds a dedicated signed-in adult, exercises real class/student/code endpoints and starts a real LLM session. It deletes its ERP fixtures afterward; tutor test history remains in LP. It does not exercise the interactive Google sign-in popup. Live model output is nondeterministic: a missing `question:` before MCQ attributes can produce no visible choices and is intentionally treated as a failure.
+
+Student notebooks use a per-student browser persistence key. Existing shared notebooks are not automatically assigned to any student. Student codes remain bcrypt-hashed for login and additionally AES-256-GCM encrypted in MongoDB for authorized viewing. Set ERP `CODE_ENCRYPTION_KEY` to a stable 32-byte base64 secret in production. Local development generates `cms/packages/erp/.local/code-key` (ignored by Git); retain this key to read existing encrypted codes. Losing it requires code resets. Firebase tokens are verified against `FIREBASE_PROJECT_ID` (default `prodigy-tutor`).
+
+Restart the compiled agent on 32004 after changing its session routes. ERP remains on 32005, canvas on 32000. `JOURNEY_ERP_ONLY=1` runs live ERP integration checks without starting a tutor session. These checks seed a dedicated adult token; they do not verify an interactive Google login.

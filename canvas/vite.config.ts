@@ -10,6 +10,6 @@ export default defineConfig({
       '/api/content': {target:'http://127.0.0.1:32001',rewrite:path=>path.replace('/api/content','')},
     },
   },
-  preview: {host:'0.0.0.0',port:32005,strictPort:true},
+  preview: {host:'0.0.0.0',port:32007,strictPort:true},
   test: {environment:'jsdom',include:['tests/**/*.test.ts']},
 });

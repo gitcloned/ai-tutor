@@ -160,7 +160,7 @@ export function useLesson(editor:Editor|null) {
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
     },undefined,()=>renderer.current?.hasActiveQuestion??false);
     player.current=playback;
-    const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
+    const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,audioStreaming:audio.current.snapshot(),turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;
     return ()=>{clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);

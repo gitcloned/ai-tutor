@@ -37,6 +37,7 @@ const sessionSchema = new Schema<ISession>({
   studentId:           { type: String, required: true },
   conceptId:           { type: String, required: true },
   journeyNodeId:       { type: String, required: true },
+  originTopicId:       { type: String, default: null },
   status:              { type: String, enum: ['initialised', 'started', 'completed'], default: 'initialised' },
   conceptStateAtStart: { type: String, enum: ['not_assessed', 'assessing', 'learning', 'mastering', 'getting_exam_ready', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], required: true },
   conceptStateAtEnd:   { type: String, enum: ['not_assessed', 'assessing', 'learning', 'mastering', 'getting_exam_ready', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], default: null },

@@ -273,10 +273,11 @@ app.post('/classrooms/join', wrap(async (req, res) => {
   if (!student) return res.status(404).json({ error: 'Student not found' });
 
   // Find matching classroom by checking classCode against all active classrooms
-  const classrooms = await Classroom.find({ status: 'active' }).lean();
+  // Only teacher classrooms have an invitation code; personal classes do not
+  const classrooms = await Classroom.find({ status: 'active', kind: { $ne: 'personal' } }).lean();
   let matched: (typeof classrooms)[number] | null = null;
   for (const c of classrooms) {
-    if (await verifyCode(classCode, c.hashedClassCode)) {
+    if (c.hashedClassCode && await verifyCode(classCode, c.hashedClassCode)) {
       matched = c;
       break;
     }

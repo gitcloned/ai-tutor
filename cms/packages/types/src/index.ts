@@ -187,14 +187,24 @@ export interface IConcept {
 export interface ILearningJourney {
   id: string;
   studentId: string;
+  subjectId: string;  // stable Subject.id — required; unique(studentId, subjectId) enforced by index
   objective: string;
   createdAt: Date;
+}
+
+export interface ILearningJourneyTopic {
+  id: string;
+  journeyId: string;
+  topicId: string;
+  sourceClassIds: string[]; // classroomId values; topic hidden when empty
+  assignedAt: Date;
 }
 
 export interface ILearningJourneyNode {
   id: string;
   journeyId: string;
   conceptId: string;
+  topicId?: string | null;       // the actual CMS topic this concept belongs to
   order: number;
   state: ConceptState;
   masteryLevel?: MasteryLevel | null;
@@ -215,6 +225,7 @@ export interface ISession {
   studentId: string;
   conceptId: string;
   journeyNodeId: string;
+  originTopicId?: string | null;  // selected topic that started this session (kept on prereq hops)
   status: SessionStatus;
   conceptStateAtStart: ConceptState;
   conceptStateAtEnd?: ConceptState | null;

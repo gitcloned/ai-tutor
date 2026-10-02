@@ -6,6 +6,7 @@ const learningJourneyNodeSchema = new Schema<ILearningJourneyNode>({
   id:           { type: String, required: true, unique: true },
   journeyId:    { type: String, required: true },
   conceptId:    { type: String, required: true },
+  topicId:      { type: String, default: null },
   order:        { type: Number, required: true },
   state:          { type: String, enum: Object.values(CS), default: CS.NOT_ASSESSED },
   masteryLevel:   { type: String, enum: ['lots', 'mots', 'hots'], default: null },

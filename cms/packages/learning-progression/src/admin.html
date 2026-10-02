@@ -3,867 +3,855 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prodigy LP Admin</title>
+  <title>Prodigy Admin</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:       #f5f6fa;
-      --surface:  #ffffff;
-      --border:   #e2e5ef;
-      --accent:   #4f6ef7;
-      --text:     #1a1d2e;
-      --muted:    #6b7280;
-      --green:    #16a34a;
-      --red:      #dc2626;
-      --yellow:   #d97706;
-      --cyan:     #0891b2;
-      --purple:   #7c3aed;
-      --orange:   #ea580c;
+      --bg:          #f5f2eb;
+      --surface:     #ffffff;
+      --border:      #ddd8cf;
+      --border-lt:   #ebe7de;
+      --accent:      #2c4a2e;
+      --accent-h:    #1e3620;
+      --accent-lt:   #e8f0e9;
+      --text:        #1c1f1c;
+      --muted:       #6b7568;
+      --green:       #2a7a3b; --green-bg:  #dcf0e0;
+      --yellow:      #92580a; --yellow-bg: #fef3c7;
+      --cyan:        #0e7490; --cyan-bg:   #e0f2fe;
+      --red:         #b91c1c; --red-bg:    #fee2e2;
+      --purple:      #6d28d9; --purple-bg: #ede9fe;
+      --orange:      #c2410c; --orange-bg: #ffedd5;
     }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.45; }
 
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 24px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      position: sticky; top: 0; z-index: 10;
-    }
-    header h1 { font-size: 15px; font-weight: 700; color: var(--accent); }
+    /* ── Header ── */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 48px; position: sticky; top: 0; z-index: 100; }
+    .logo { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -.02em; flex-shrink: 0; cursor: pointer; }
+    .logo span { opacity: .45; }
+    #breadcrumb { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; flex: 1; }
+    .crumb { color: var(--accent); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+    .crumb:hover { text-decoration: underline; }
+    .sep { color: var(--border); flex-shrink: 0; }
+    #hdr-search { margin-left: auto; }
 
-    #breadcrumb { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
-    #breadcrumb .crumb { color: var(--accent); cursor: pointer; }
-    #breadcrumb .crumb:hover { text-decoration: underline; }
-    #breadcrumb .sep { color: var(--border); }
+    /* ── Main ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 20px 24px; }
 
-    main { max-width: 1100px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    /* ── Inputs ── */
+    input, select, button { font-family: inherit; font-size: 13px; }
+    input[type=search], input[type=text] { height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); outline: none; min-width: 200px; }
+    input[type=search]:focus, input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-lt); }
+    select { height: 32px; padding: 0 28px 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236b7568' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--text); appearance: none; outline: none; cursor: pointer; }
+    select:focus { border-color: var(--accent); }
+    button { height: 32px; padding: 0 14px; border: 1px solid var(--border); border-radius: 6px; font-weight: 500; cursor: pointer; background: var(--surface); color: var(--text); white-space: nowrap; }
+    button:hover { background: var(--bg); }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.primary:hover { background: var(--accent-h); }
+    button.ghost { background: transparent; border: none; padding: 0 4px; color: var(--accent); height: auto; font-weight: 500; }
+    button.ghost:hover { text-decoration: underline; background: none; }
+    button.sort-btn { background: none; border: none; padding: 0; font-size: 11px; font-weight: 600; color: var(--muted); height: auto; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
+    button.sort-btn.active { color: var(--accent); }
+    button.sort-btn:hover { color: var(--text); background: none; }
 
-    .loading { color: var(--muted); font-style: italic; }
-    .error   { color: var(--red); }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .card-header {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .card-header.clickable { cursor: pointer; user-select: none; }
-    .card-header.clickable:hover { background: var(--bg); }
-    .toggle-icon { margin-left: auto; font-size: 10px; color: var(--muted); }
-
+    /* ── Table ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 9px 16px; text-align: left; border-bottom: 1px solid var(--border); }
-    th { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: var(--bg); }
+    th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--border-lt); vertical-align: middle; }
+    th { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: var(--bg); white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
-    tr.clickable { cursor: pointer; }
-    tr.clickable:hover td { background: #f0f3ff; }
+    tr.row { cursor: pointer; }
+    tr.row:hover td { background: var(--accent-lt); }
 
-    .badge {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .badge-green  { background: #dcfce7; color: var(--green); }
-    .badge-yellow { background: #fef3c7; color: var(--yellow); }
-    .badge-cyan   { background: #e0f2fe; color: var(--cyan); }
-    .badge-muted  { background: #f3f4f6; color: var(--muted); }
-    .badge-red    { background: #fee2e2; color: var(--red); }
-    .badge-purple { background: #ede9fe; color: var(--purple); }
-    .badge-orange { background: #ffedd5; color: var(--orange); }
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .g  { background: var(--green-bg);  color: var(--green); }
+    .y  { background: var(--yellow-bg); color: var(--yellow); }
+    .c  { background: var(--cyan-bg);   color: var(--cyan); }
+    .mu { background: #f0ede6;          color: var(--muted); }
+    .r  { background: var(--red-bg);    color: var(--red); }
+    .o  { background: var(--orange-bg); color: var(--orange); }
+    .a  { background: var(--accent-lt); color: var(--accent); }
 
-    /* ── Meta grid ── */
-    .meta-grid {
+    /* ── Tabs ── */
+    .tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); gap: 0; }
+    .tab { padding: 10px 18px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; border-radius: 0; height: auto; }
+    .tab:hover { color: var(--text); background: none; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+    /* ── Student header ── */
+    .stu-hdr { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px 0; margin: -20px -24px 0; }
+    .stu-name { font-size: 20px; font-weight: 700; }
+    .stu-meta { display: flex; gap: 10px; align-items: center; margin: 5px 0 12px; flex-wrap: wrap; }
+    .pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 500; background: var(--accent-lt); color: var(--accent); }
+
+    /* ── Subject tabs ── */
+    .subj-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 14px 0 0; }
+    .subj-tab { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--muted); height: auto; }
+    .subj-tab:hover { border-color: var(--accent); color: var(--accent); background: none; }
+    .subj-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Concept grid ── */
+    .concept-hdr, .concept-row {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      grid-template-columns: 1fr 130px 150px 110px;
       gap: 12px;
-      padding: 14px 16px;
+      align-items: center;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border-lt);
     }
-    .meta-item label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+    .concept-hdr { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--bg); padding: 6px 14px; }
+    .concept-row:last-child { border-bottom: none; }
+    .concept-row:hover { background: var(--accent-lt); }
+    .con-title { font-size: 13px; color: var(--text); }
+    .con-date { font-size: 12px; color: var(--muted); }
+    .con-sessions { font-size: 12px; }
+    .ses-link { color: var(--accent); cursor: pointer; font-weight: 500; }
+    .ses-link:hover { text-decoration: underline; }
 
-    /* ── Plan steps ── */
-    .step {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 9px 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .step:last-child { border-bottom: none; }
-    .step-num { font-size: 11px; color: var(--muted); min-width: 22px; padding-top: 2px; }
-    .step-content { flex: 1; }
-    .step-type { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
-    .step-text { font-size: 13px; line-height: 1.5; }
-    .step-status { margin-left: auto; flex-shrink: 0; }
+    /* ── Topic group ── */
+    .topic-group { margin-bottom: 14px; }
+    .topic-hdr { display: flex; align-items: baseline; gap: 8px; padding: 8px 14px; border-bottom: 2px solid var(--border); background: var(--surface); border-radius: 8px 8px 0 0; }
+    .topic-name { font-size: 13px; font-weight: 700; }
+    .topic-ctx { font-size: 11px; color: var(--muted); }
+    .topic-prog { margin-left: auto; font-size: 11px; color: var(--muted); }
 
-    /* ── System prompt ── */
-    .prompt-box {
-      padding: 14px 16px;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 12px;
-      line-height: 1.7;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: var(--text);
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    .prompt-section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
-    .prompt-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
-    .prompt-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+    /* ── Session context bar ── */
+    .ctx-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; margin: -20px -24px 0; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+    .ctx-item label { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
+    .ctx-item span { font-size: 12px; }
 
     /* ── Chat ── */
-    #chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
-
+    .chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
     .msg { display: flex; flex-direction: column; gap: 4px; max-width: 85%; }
     .msg.student { align-self: flex-end; }
     .msg.agent, .msg.tool_call, .msg.tool_result { align-self: flex-start; }
-
     .msg-meta { font-size: 11px; color: var(--muted); }
     .msg.student .msg-meta { text-align: right; }
-
-    .student-bubble {
-      background: var(--accent);
-      color: #fff;
-      border-radius: 12px 12px 3px 12px;
-      padding: 9px 13px;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    /* Agent DSL blocks */
+    .student-bubble { background: var(--accent); color: #fff; border-radius: 12px 12px 3px 12px; padding: 9px 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
     .agent-blocks { display: flex; flex-direction: column; gap: 5px; }
-
-    .block {
-      border-radius: 7px;
-      padding: 8px 12px;
-      font-size: 13px;
-      line-height: 1.55;
-      border: 1px solid var(--border);
-    }
-    .block-label {
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .05em; margin-bottom: 4px; opacity: .55;
-    }
-    .block-speak    { background: #f8f9ff; border-left: 3px solid var(--accent); }
-    .block-write    { background: #f0fdfc; border-left: 3px solid var(--cyan); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; }
+    .block { border-radius: 7px; padding: 8px 12px; font-size: 13px; line-height: 1.55; border: 1px solid var(--border); }
+    .block-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; opacity: .5; }
+    .block-speak    { background: #f8faf8; border-left: 3px solid var(--accent); }
+    .block-write    { background: #f0fdfc; border-left: 3px solid var(--cyan); font-family: monospace; font-size: 12px; white-space: pre-wrap; }
     .block-ask      { background: #f0fdf4; border-left: 3px solid var(--green); }
     .block-annotate { background: #fffbeb; border-left: 3px solid var(--yellow); font-size: 12px; }
     .block-draw     { background: #fefce8; border-left: 3px solid var(--yellow); }
     .block-draw svg { max-width: 100%; height: auto; display: block; background: #fff; border-radius: 4px; margin-top: 4px; border: 1px solid var(--border); }
     .block-play     { background: #fff7ed; border-left: 3px solid var(--orange); }
     .block-model3d  { background: #faf5ff; border-left: 3px solid var(--purple); }
-    .block-attrs    { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: 'SF Mono', 'Fira Code', monospace; }
-
-    .question-marker {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 11px; font-weight: 600; color: var(--green);
-      margin: 4px 0 2px;
-    }
-    .question-marker::before, .question-marker::after {
-      content: ''; flex: 1; height: 1px; background: #bbf7d0;
-    }
-
-    .block-parallel {
-      border: 1px dashed var(--border);
-      border-radius: 8px;
-      padding: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      background: var(--bg);
-    }
-    .parallel-label { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 2px; }
-
-    /* Tool call / result bubbles */
-    .tool-bubble {
-      border-radius: 7px;
-      padding: 8px 12px;
-      font-size: 12px;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      border: 1px solid var(--border);
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
+    .block-attrs    { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: monospace; }
+    .q-marker { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--green); margin: 4px 0 2px; }
+    .q-marker::before, .q-marker::after { content: ''; flex: 1; height: 1px; background: var(--green-bg); }
+    .parallel-wrap { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 5px; background: var(--bg); }
+    .parallel-lbl { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 2px; }
+    .tool-bubble { border-radius: 7px; padding: 8px 12px; font-size: 12px; font-family: monospace; border: 1px solid var(--border); white-space: pre-wrap; word-break: break-all; }
     .tool-bubble.call   { background: #faf5ff; border-left: 3px solid var(--purple); }
     .tool-bubble.result { background: #f0fdf4; border-left: 3px solid var(--green); }
     .tool-name { font-size: 11px; font-weight: 700; margin-bottom: 4px; opacity: .7; }
-
-    /* ── Metric badge ── */
-    .metric-badge {
-      align-self: flex-start;
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 9px; border-radius: 20px;
-      font-size: 11px; font-weight: 600;
-      background: #fff7ed; color: var(--orange);
-      border: 1px solid #fed7aa;
-    }
-
-    details > summary { list-style: none; }
-    details > summary::marker { display: none; }
-
-    /* ── Student media (images + audio) ── */
+    .metric-badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--orange-bg); color: var(--orange); border: 1px solid #fed7aa; }
     .student-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; justify-content: flex-end; }
-    .img-thumb {
-      width: 72px; height: 72px; object-fit: cover;
-      border-radius: 6px; border: 1px solid rgba(255,255,255,.35);
-      cursor: pointer; transition: opacity .15s;
-    }
-    .img-thumb:hover { opacity: .8; }
-    .student-audio {
-      margin-top: 6px;
-      width: 100%;
-    }
+    .img-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(255,255,255,.35); cursor: pointer; }
+    .student-audio { margin-top: 6px; width: 100%; }
     .student-audio audio { width: 100%; height: 32px; border-radius: 6px; }
 
-    /* ── Image modal ── */
-    #img-modal {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,.72); z-index: 1000;
-      align-items: center; justify-content: center;
-    }
-    #img-modal.open { display: flex; }
-    #img-modal img {
-      max-width: 90vw; max-height: 90vh;
-      border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.6);
-    }
+    /* ── Plan step ── */
+    .plan-step { display: flex; align-items: flex-start; gap: 12px; padding: 9px 16px; border-bottom: 1px solid var(--border-lt); }
+    .plan-step:last-child { border-bottom: none; }
+    .step-num { font-size: 11px; color: var(--muted); min-width: 24px; padding-top: 2px; }
+    .step-body { flex: 1; }
+    .step-type { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .step-text { font-size: 13px; line-height: 1.5; }
 
-    /* ── Raw JSON view ── */
-    .raw-turn {
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
-      font-size: 12px;
-    }
-    .raw-turn summary {
-      cursor: pointer; padding: 6px 10px;
-      background: var(--surface); font-weight: 600;
-      font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
-      list-style: none; display: flex; align-items: center; gap: 8px;
-      user-select: none;
-    }
-    .raw-turn summary::-webkit-details-marker { display: none; }
+    /* ── Prompt ── */
+    .prompt-box { padding: 14px 16px; font-family: monospace; font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+    .prompt-sec { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+    .prompt-sec:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    .prompt-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+
+    /* ── Raw turn ── */
+    .raw-turn { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 12px; }
+    .raw-turn summary { cursor: pointer; padding: 6px 10px; background: var(--surface); font-weight: 600; font-family: monospace; font-size: 11px; list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; }
     .raw-turn summary::before { content: '▶'; font-size: 9px; color: var(--muted); transition: transform .15s; }
     .raw-turn[open] summary::before { transform: rotate(90deg); }
-    .raw-turn pre {
-      margin: 0; padding: 10px 12px;
-      background: #fafafa; overflow-x: auto;
-      font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
-      line-height: 1.5; border-top: 1px solid var(--border);
-      white-space: pre-wrap; word-break: break-word;
-    }
-    .raw-media { padding: 8px 12px; border-top: 1px solid var(--border); background: #fafafa; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .raw-turn pre { margin: 0; padding: 10px 12px; background: #fafaf8; overflow-x: auto; font-family: monospace; font-size: 11px; line-height: 1.5; border-top: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; }
+    .raw-media { padding: 8px 12px; border-top: 1px solid var(--border); background: #fafaf8; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .raw-media img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); }
     .raw-media audio { height: 28px; flex: 1; min-width: 180px; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; gap: 6px; padding: 12px; justify-content: center; border-top: 1px solid var(--border-lt); }
+    .pg-btn { width: 30px; height: 30px; padding: 0; font-size: 12px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+    .pg-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Modal ── */
+    #img-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 1000; align-items: center; justify-content: center; }
+    #img-modal.open { display: flex; }
+    #img-modal img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+    /* ── Utils ── */
+    .loading { color: var(--muted); font-style: italic; padding: 32px; text-align: center; }
+    .empty   { color: var(--muted); padding: 24px; text-align: center; font-style: italic; }
+    .err     { color: var(--red); padding: 12px; }
+    .mt12    { margin-top: 12px; }
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--accent-lt); color: var(--accent); border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .filter-chip button { background: none; border: none; padding: 0 2px; color: var(--accent); cursor: pointer; height: auto; font-size: 14px; line-height: 1; font-weight: 400; }
+    details > summary { list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
   </style>
 </head>
 <body>
-
-<div id="img-modal" onclick="this.classList.remove('open')">
-  <img id="img-modal-src" src="" alt="Student upload">
-</div>
+<div id="img-modal" onclick="this.classList.remove('open')"><img id="img-modal-src" src="" alt=""></div>
 
 <header>
-  <h1>Prodigy LP Admin</h1>
+  <div class="logo" onclick="navigate(null)">Prodigy <span>Admin</span></div>
   <nav id="breadcrumb"></nav>
+  <div id="hdr-search" style="display:none">
+    <input type="search" id="q-input" placeholder="Search by name or ID…">
+  </div>
 </header>
 
-<main id="main">
-  <p class="loading">Loading…</p>
-</main>
+<main id="main"><p class="loading">Loading…</p></main>
 
 <script>
-  // ── Router ────────────────────────────────────────────────────────────────
-  function route() {
-    const p = new URLSearchParams(location.search);
-    const sessionId = p.get('session');
-    const studentId = p.get('student');
-    if (sessionId)      renderSession(sessionId);
-    else if (studentId) renderStudent(studentId);
-    else                renderStudents();
-  }
+// ── Constants ─────────────────────────────────────────────────────────────────
+const ERP = 'http://localhost:32005';
+const CMS = 'http://localhost:32001';
+const PG  = 30;
 
-  function navigate(params) {
-    history.pushState({}, '', params ? '?' + new URLSearchParams(params) : location.pathname);
-    route();
-  }
+// ── Cache ─────────────────────────────────────────────────────────────────────
+const C = { students: null, conceptMap: null, subjectMap: null };
 
-  window.addEventListener('popstate', route);
-
-  // ── API ───────────────────────────────────────────────────────────────────
-  async function api(path) {
-    const r = await fetch(path);
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    return r.json();
-  }
-
-  // ── DOM helpers ───────────────────────────────────────────────────────────
-  function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
-  function setMain(html) { document.getElementById('main').innerHTML = html; }
-  function shortDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(); }
-
-  function stateBadge(state) {
-    if (!state) return '<span class="badge badge-muted">—</span>';
-    const cls = { mastered:'green', exam_ready:'green', learning:'cyan', clarity:'cyan', not_assessed:'muted', 'learn-pre-req-before':'yellow' }[state] ?? 'muted';
-    return `<span class="badge badge-${cls}">${state}</span>`;
-  }
-  function statusBadge(status) {
-    const cls = { completed:'green', started:'cyan', initialised:'muted' }[status] ?? 'muted';
-    return `<span class="badge badge-${cls}">${status}</span>`;
-  }
-  function stepStatusBadge(s) {
-    const cls = { done:'green', in_progress:'cyan', pending:'muted', failed:'red' }[s] ?? 'muted';
-    return `<span class="badge badge-${cls} step-status">${s}</span>`;
-  }
-
-  function setBreadcrumb(crumbs, title) {
-    document.getElementById('breadcrumb').innerHTML = crumbs.map((c, i) =>
-      i < crumbs.length - 1
-        ? `<span class="crumb" onclick="navigate(${JSON.stringify(c.params)})">${c.label}</span><span class="sep">/</span>`
-        : `<span>${c.label}</span>`
-    ).join('');
-    document.title = title ?? (crumbs.map(c => c.label).reverse().join(' | ') + ' | LP Admin');
-  }
-
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  // ── Students list ─────────────────────────────────────────────────────────
-  async function renderStudents() {
-    setBreadcrumb([{ label: 'Students' }], 'Students | LP Admin');
-    setMain('<p class="loading">Loading students…</p>');
-    try {
-      const students = await api('/students');
-      if (!students.length) { setMain('<p class="loading">No students found.</p>'); return; }
-      setMain(`<div class="card">
-        <div class="card-header">Students (${students.length})</div>
-        <table>
-          <thead><tr><th>Student ID</th><th>Journeys</th><th>Sessions</th><th>Memories</th></tr></thead>
-          <tbody>${students.map(s => `
-            <tr class="clickable" onclick="navigate({student:'${s.studentId}'})">
-              <td style="color:var(--accent);font-weight:600">${s.studentId}</td>
-              <td>${s.journeyCount}</td><td>${s.sessionCount}</td><td>${s.memoryCount}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`);
-    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
-  }
-
-  // ── Student detail ────────────────────────────────────────────────────────
-  async function renderStudent(studentId) {
-    setBreadcrumb([{ label: 'Students', params: null }, { label: studentId }], `${studentId} | LP Admin`);
-    setMain('<p class="loading">Loading…</p>');
-    try {
-      const [journeys, sessions, memories] = await Promise.all([
-        api(`/students/${studentId}/journeys`),
-        api(`/students/${studentId}/sessions`),
-        api(`/students/${studentId}/memories`),
-      ]);
-      const nodes = (await Promise.all(journeys.map(j => api(`/journeys/${j.id}/nodes`).catch(() => [])))).flat();
-
-      let html = '';
-
-      for (const journey of journeys) {
-        const jnodes = nodes.filter(n => n.journeyId === journey.id);
-        html += `<div class="card">
-          <div class="card-header">Journey <span style="font-weight:400;font-size:11px">${journey.id}</span></div>
-          <table>
-            <thead><tr><th>Concept</th><th>State</th><th>Go To</th><th>Pre-req</th><th>Last Activity</th></tr></thead>
-            <tbody>${jnodes.map(n => `
-              <tr>
-                <td style="font-weight:600">${n.conceptId}</td>
-                <td>${stateBadge(n.state)}</td>
-                <td style="color:var(--muted)">${n.goTo ?? '—'}</td>
-                <td style="color:var(--yellow)">${n.preReqToLearn ?? '—'}</td>
-                <td style="color:var(--muted)">${shortDate(n.lastActivity)}</td>
-              </tr>`).join('')}
-            ${!jnodes.length ? '<tr><td colspan="5" style="color:var(--muted)">No nodes</td></tr>' : ''}
-            </tbody>
-          </table>
-        </div>`;
-      }
-
-      html += `<div class="card">
-        <div class="card-header">Sessions (${sessions.length})</div>
-        <table>
-          <thead><tr><th>Concept</th><th>Status</th><th>State</th><th>Turns</th><th>Started</th><th></th></tr></thead>
-          <tbody>${sessions.map(s => `
-            <tr class="clickable" onclick="navigate({session:'${s.id}'})">
-              <td style="font-weight:500">${s.conceptId}</td>
-              <td>${statusBadge(s.status)}</td>
-              <td>${stateBadge(s.conceptStateAtStart)} → ${stateBadge(s.conceptStateAtEnd)}</td>
-              <td style="color:var(--muted)">${(s.history ?? []).length}</td>
-              <td style="color:var(--muted)">${shortDate(s.createdAt)}</td>
-              <td style="color:var(--accent)">View →</td>
-            </tr>`).join('')}
-          ${!sessions.length ? '<tr><td colspan="6" style="color:var(--muted)">No sessions</td></tr>' : ''}
-          </tbody>
-        </table>
-      </div>`;
-
-      if (memories.length) {
-        html += `<div class="card">
-          <div class="card-header">Memories (${memories.length})</div>
-          <table>
-            <thead><tr><th>Type</th><th>Content</th></tr></thead>
-            <tbody>${memories.map(m => `
-              <tr><td><span class="badge badge-cyan">${m.type}</span></td><td style="color:var(--muted)">${m.content}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`;
-      }
-
-      setMain(html);
-    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
-  }
-
-  // ── Session detail ────────────────────────────────────────────────────────
-  async function renderSession(sessionId) {
-    setMain('<p class="loading">Loading session…</p>');
-    try {
-      const s = await api(`/sessions/${sessionId}`);
-      const shortId = '...' + sessionId.slice(-3);
-      setBreadcrumb([
-        { label: 'Students', params: null },
-        { label: s.studentId, params: { student: s.studentId } },
-        { label: s.conceptId.length > 44 ? s.conceptId.slice(0, 44) + '…' : s.conceptId },
-      ], `${shortId} | ${s.conceptId} | ${s.studentId}`);
-
-      // Meta
-      let html = `<div class="card">
-        <div class="meta-grid">
-          <div class="meta-item"><label>Student</label><span style="color:var(--accent);font-weight:600">${s.studentId}</span></div>
-          <div class="meta-item"><label>Concept</label><span>${s.conceptId}</span></div>
-          <div class="meta-item"><label>Status</label>${statusBadge(s.status)}</div>
-          <div class="meta-item"><label>State</label>${stateBadge(s.conceptStateAtStart)} → ${stateBadge(s.conceptStateAtEnd)}</div>
-          <div class="meta-item"><label>Started</label><span style="color:var(--muted)">${shortDate(s.createdAt)}</span></div>
-          ${s.endedAt ? `<div class="meta-item"><label>Ended</label><span style="color:var(--muted)">${shortDate(s.endedAt)}</span></div>` : ''}
-        </div>
-      </div>`;
-
-      // System prompt (collapsible)
-      if (s.systemPrompt) {
-        const sections = s.systemPrompt.split(/\n---\n/);
-        const labels = ['Base Prompt', 'Skill Prompt', 'Canvas Output Format'];
-        const sectionsHtml = sections.map((sec, i) =>
-          `<div class="prompt-section">
-            <div class="prompt-label">${labels[i] ?? `Section ${i+1}`}</div>
-            ${escHtml(sec.trim())}
-          </div>`
-        ).join('');
-        html += `<div class="card">
-          <div class="card-header clickable" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.querySelector('.toggle-icon').textContent=this.nextElementSibling.hidden?'▶':'▼'">
-            System Prompt <span class="toggle-icon">▶</span>
-          </div>
-          <div class="prompt-box" hidden>${sectionsHtml}</div>
-        </div>`;
-      }
-
-      // Teaching plan (collapsible)
-      const planHistory = s.planHistory ?? [];
-      if (planHistory.length) {
-        const latest = planHistory[planHistory.length - 1];
-        const steps  = latest.plan ?? [];
-        const stepsHtml = steps.map(step => {
-          const c = step.content ?? {};
-          const text = c.question ?? c.explanation ?? c.instruction ?? c.reason ?? (c.conceptTitle ? `Teach: ${c.conceptTitle}` : '');
-          return `<div class="step">
-            <span class="step-num">${step.id}</span>
-            <div class="step-content">
-              <div class="step-type">${step.type}${step.ifCorrect != null ? ` → ✓${step.ifCorrect} ✗${step.ifWrong}` : ''}</div>
-              ${text ? `<div class="step-text">${escHtml(text)}</div>` : ''}
-            </div>
-            ${stepStatusBadge(step.status)}
-          </div>`;
-        }).join('');
-        html += `<div class="card">
-          <div class="card-header clickable" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.querySelector('.toggle-icon').textContent=this.nextElementSibling.hidden?'▶':'▼'">
-            Teaching Plan — ${latest.conceptTitle ?? latest.conceptId} (${steps.length} steps)
-            <span class="toggle-icon">▶</span>
-          </div>
-          <div hidden>${stepsHtml}</div>
-        </div>`;
-      }
-
-      const hasRaw = (s.rawHistory ?? []).length > 0;
-      const chatTurns = s.history ?? [];
-      const rawTurns  = s.rawHistory ?? [];
-
-      html += `<div class="card">
-        <div class="card-header" style="justify-content:space-between;padding:0">
-          <div style="display:flex;gap:0">
-            <button id="tab-chat" onclick="switchTab('chat')"
-              style="padding:10px 18px;border:none;border-right:1px solid var(--border);background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer;border-radius:0">
-              Chat (${chatTurns.length} turns)
-            </button>
-            ${hasRaw ? `<button id="tab-raw" onclick="switchTab('raw')"
-              style="padding:10px 18px;border:none;background:var(--bg);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;border-radius:0">
-              Full with tool calls (${rawTurns.length} turns)
-            </button>` : ''}
-          </div>
-        </div>
-        <div id="chat"></div>
-      </div>`;
-
-      setMain(html);
-
-      const chat = document.getElementById('chat');
-      let activeTab = 'chat';
-
-      function buildChat() {
-        chat.innerHTML = '';
-        if (activeTab === 'raw') {
-          const wrap = el('div', '');
-          wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:12px';
-          for (const turn of rawTurns) wrap.appendChild(renderRawTurn(turn));
-          chat.appendChild(wrap);
-        } else {
-          for (const turn of chatTurns) renderTurn(chat, turn);
-        }
-      }
-
-      window.switchTab = (tab) => {
-        activeTab = tab;
-        ['chat', 'raw'].forEach(t => {
-          const btn = document.getElementById('tab-' + t);
-          if (!btn) return;
-          btn.style.background = t === tab ? 'var(--accent)' : 'var(--bg)';
-          btn.style.color      = t === tab ? '#fff'          : 'var(--muted)';
-        });
-        buildChat();
-      };
-
-      buildChat();
-    } catch (e) { setMain(`<p class="error">Error: ${e.message}</p>`); }
-  }
-
-  // ── Raw JSON turn renderer (collapse/expand) ──────────────────────────────
-  function renderRawTurn(turn) {
-    if (turn.role === 'metric') {
-      const badge = el('div', 'metric-badge');
-      badge.textContent = `⏱ ttfr ${turn.content?.value ?? '?'} ms`;
-      return badge;
-    }
-
-    const details = document.createElement('details');
-    details.className = 'raw-turn';
-
-    const summary = document.createElement('summary');
-    const roleLabel = { student: '👤 student', agent: '🤖 agent', tool_call: '🔧 ' + (turn.name ?? 'tool_call'), tool_result: '↩ ' + (turn.name ?? 'tool_result') };
-    summary.textContent = (roleLabel[turn.role] ?? turn.role) + (turn.timestamp ? '  ' + shortDate(turn.timestamp) : '');
-    details.appendChild(summary);
-
-    const pre = document.createElement('pre');
-    // Omit large base64 fields from display
-    const display = JSON.parse(JSON.stringify(turn));
-    pre.textContent = JSON.stringify(display, null, 2);
-    details.appendChild(pre);
-
-    // Render media (images + audio) if present in content
-    const content = typeof turn.content === 'string' ? turn.content : '';
-    const imageFiles = [...content.matchAll(/\[image:([^\]]+)\]/g)].map(m => m[1]);
-    const audioFiles = [...content.matchAll(/\[audio:([^\]]+)\]/g)].map(m => m[1]);
-
-    if (imageFiles.length || audioFiles.length) {
-      const mediaRow = el('div', 'raw-media');
-      for (const name of imageFiles) {
-        const img = document.createElement('img');
-        img.src = `/image-uploads/${name}`;
-        img.alt = 'student upload';
-        img.addEventListener('click', () => {
-          document.getElementById('img-modal-src').src = img.src;
-          document.getElementById('img-modal').classList.add('open');
-        });
-        mediaRow.appendChild(img);
-      }
-      for (const name of audioFiles) {
-        const aud = document.createElement('audio');
-        aud.controls = true;
-        aud.src = `/audio-uploads/${name}`;
-        mediaRow.appendChild(aud);
-      }
-      details.appendChild(mediaRow);
-    }
-
-    return details;
-  }
-
-  // ── Turn renderer ─────────────────────────────────────────────────────────
-  function renderTurn(container, turn) {
-    const role = turn.role;
-    const msgEl = el('div', `msg ${role}`);
-
-    const meta = el('div', 'msg-meta');
-    meta.textContent = role + (turn.timestamp ? '  ' + shortDate(turn.timestamp) : '');
-    msgEl.appendChild(meta);
-
-    if (role === 'student') {
-      const raw = String(turn.content);
-      const imageRe = /\[image:([^\]]+)\]/g;
-      const audioRe = /\[audio:([^\]]+)\]/g;
-      const textOnly = raw.replace(imageRe, '').replace(audioRe, '').trim();
-      const imageFiles = [...raw.matchAll(imageRe)].map(m => m[1]);
-      const audioFiles = [...raw.matchAll(audioRe)].map(m => m[1]);
-
-      const b = el('div', 'student-bubble');
-      if (textOnly) b.textContent = textOnly;
-      if (imageFiles.length) {
-        const row = el('div', 'student-images');
-        for (const name of imageFiles) {
-          const img = document.createElement('img');
-          img.className = 'img-thumb';
-          img.src = `/image-uploads/${name}`;
-          img.alt = 'student upload';
-          img.addEventListener('click', () => {
-            document.getElementById('img-modal-src').src = img.src;
-            document.getElementById('img-modal').classList.add('open');
-          });
-          row.appendChild(img);
-        }
-        b.appendChild(row);
-      }
-      for (const name of audioFiles) {
-        const wrap = el('div', 'student-audio');
-        const aud = document.createElement('audio');
-        aud.controls = true;
-        aud.src = `/audio-uploads/${name}`;
-        wrap.appendChild(aud);
-        b.appendChild(wrap);
-      }
-      msgEl.appendChild(b);
-
-    } else if (role === 'agent') {
-      const blocks = el('div', 'agent-blocks');
-      blocks.appendChild(parseAgentDSL(String(turn.content)));
-      msgEl.appendChild(blocks);
-
-    } else if (role === 'metric') {
-      const badge = el('div', 'metric-badge');
-      badge.textContent = `⏱ ttfr ${typeof turn.content === 'object' ? turn.content?.value : '?'} ms`;
-      msgEl.appendChild(badge);
-
-    } else if (role === 'tool_call') {
-      const b = el('div', 'tool-bubble call');
-      const nm = el('div', 'tool-name');
-      nm.textContent = '🔧 ' + (turn.name ?? 'tool_call');
-      b.appendChild(nm);
-      b.appendChild(renderToolContent(turn.content));
-      msgEl.appendChild(b);
-
-    } else if (role === 'tool_result') {
-      const b = el('div', 'tool-bubble result');
-      const nm = el('div', 'tool-name');
-      nm.textContent = '↩ ' + (turn.name ?? 'tool_result');
-      b.appendChild(nm);
-      b.appendChild(renderToolContent(turn.content));
-      msgEl.appendChild(b);
-    }
-
-    container.appendChild(msgEl);
-  }
-
-  // ── Tool content renderer ─────────────────────────────────────────────────
-  function renderToolContent(raw) {
-    const frag = document.createDocumentFragment();
-    if (typeof raw === 'string') {
-      frag.appendChild(document.createTextNode(raw));
-      return frag;
-    }
-
-    const obj = (typeof raw === 'object' && raw !== null) ? raw : {};
-
-    // Surface step content (get_next_step / update_step results)
-    const step = obj.step ?? obj.nextStep ?? null;
-    if (step) {
-      const c = step.content ?? {};
-      if (c.name || c.instruction || c.question) {
-        if (c.name) {
-          const nameEl = el('div');
-          nameEl.style.cssText = 'font-weight:700;margin-bottom:4px';
-          nameEl.textContent = `Step ${step.id}: ${c.name}`;
-          frag.appendChild(nameEl);
-        }
-        const text = c.instruction ?? c.question ?? c.explanation ?? '';
-        if (text) {
-          const textEl = el('div');
-          textEl.style.cssText = 'white-space:pre-wrap;font-family:inherit;font-size:12px';
-          textEl.textContent = text;
-          frag.appendChild(textEl);
-        }
-        // Show remaining fields collapsed
-        const rest = Object.fromEntries(Object.entries(obj).filter(([k]) => k !== 'step' && k !== 'nextStep'));
-        if (Object.keys(rest).length) {
-          const extra = el('div');
-          extra.style.cssText = 'color:var(--muted);font-size:11px;margin-top:4px';
-          extra.textContent = JSON.stringify(rest);
-          frag.appendChild(extra);
-        }
-        return frag;
-      }
-    }
-
-    // Surface plan array (read_plan result)
-    if (obj.plan && typeof obj.plan === 'string') {
-      const pre = el('div');
-      pre.style.cssText = 'white-space:pre-wrap';
-      pre.textContent = obj.plan;
-      frag.appendChild(pre);
-      return frag;
-    }
-
-    // Surface simple scalar results (message, ok, error, done)
-    const keys = ['message', 'error', 'ok', 'done', 'state', 'action'];
-    const summary = keys.filter(k => obj[k] !== undefined).map(k => `${k}: ${JSON.stringify(obj[k])}`).join('  ');
-    if (summary) {
-      const sumEl = el('div');
-      sumEl.style.cssText = 'margin-bottom:4px';
-      sumEl.textContent = summary;
-      frag.appendChild(sumEl);
-    }
-
-    // Remaining keys as collapsed JSON
-    const shown = new Set(['message', 'error', 'ok', 'done', 'state', 'action', 'step', 'nextStep', 'plan']);
-    const remainder = Object.fromEntries(Object.entries(obj).filter(([k]) => !shown.has(k)));
-    if (Object.keys(remainder).length) {
-      const pre = el('div');
-      pre.style.cssText = 'white-space:pre-wrap;color:var(--muted);font-size:11px;margin-top:4px';
-      pre.textContent = JSON.stringify(remainder, null, 2);
-      frag.appendChild(pre);
-    }
-
-    if (!summary && !Object.keys(remainder).length) {
-      frag.appendChild(document.createTextNode(JSON.stringify(obj, null, 2)));
-    }
-
-    return frag;
-  }
-
-  // ── Agent DSL parser ──────────────────────────────────────────────────────
-  function parseAgentDSL(raw) {
-    const frag = document.createDocumentFragment();
-
-    const BLOCK_KEYS   = new Set(['speak','write','ask','annotate','draw','play','model3d']);
-    const BLOCK_RE     = /^(speak|write|ask|annotate|draw|play|model3d):\s*/;
-    const PARALLEL_RE  = /^parallel:(start|end)\s*$/;
-    const QUESTION_RE  = /^question:\s*(.+)$/;
-    const ATTR_RE      = /^\/([a-z_]+):\s*(.*)/;
-
-    let current      = null;   // { key, lines, attrs }
-    let parallelEl   = null;
-
-    function container() { return parallelEl ?? frag; }
-
-    function flush() {
-      if (!current) return;
-      const content = current.lines.join('\n').trim();
-      if (!content && !Object.keys(current.attrs).length) { current = null; return; }
-
-      const block = el('div', `block block-${current.key}`);
-      const lbl   = el('div', 'block-label');
-      lbl.textContent = current.key;
-      block.appendChild(lbl);
-
-      if (current.key === 'draw') {
-        const wrap = document.createElement('div');
-        wrap.innerHTML = content;
-        block.appendChild(wrap);
-      } else if (content) {
-        block.appendChild(document.createTextNode(content));
-      }
-
-      // Render slash attrs (mark, target, position, etc.)
-      const attrEntries = Object.entries(current.attrs);
-      if (attrEntries.length) {
-        const attrEl = el('div', 'block-attrs');
-        attrEl.textContent = attrEntries.map(([k, v]) => `/${k}: ${v}`).join('  ');
-        block.appendChild(attrEl);
-      }
-
-      container().appendChild(block);
-      current = null;
-    }
-
-    for (const line of raw.split('\n')) {
-      // slash attribute — belongs to current block
-      const am = line.match(ATTR_RE);
-      if (am && current) {
-        current.attrs[am[1]] = am[2].trim();
-        continue;
-      }
-
-      // parallel:start / parallel:end
-      const pm = line.match(PARALLEL_RE);
-      if (pm) {
-        flush();
-        if (pm[1] === 'start') {
-          parallelEl = el('div', 'block-parallel');
-          const lbl = el('div', 'parallel-label');
-          lbl.textContent = '⬡ parallel';
-          parallelEl.appendChild(lbl);
-          frag.appendChild(parallelEl);
-        } else {
-          parallelEl = null;
-        }
-        continue;
-      }
-
-      // question: Q01  or  question: end
-      const qm = line.match(QUESTION_RE);
-      if (qm) {
-        flush();
-        const qid = qm[1].trim();
-        const marker = el('div', 'question-marker');
-        marker.textContent = qid === 'end' ? `Q${qid.replace(/^end$/i, '?')} ended` : `📝 ${qid} started`;
-        if (qid.toLowerCase() === 'end') {
-          marker.textContent = 'question ended';
-          marker.style.color = 'var(--muted)';
-          marker.style.cssText += ';font-weight:400';
-        } else {
-          marker.textContent = `📝 ${qid} started`;
-        }
-        frag.appendChild(marker);
-        continue;
-      }
-
-      // block key line
-      const bm = line.match(BLOCK_RE);
-      if (bm) {
-        flush();
-        const key  = bm[1];
-        const rest = line.slice(bm[0].length);
-        current = { key, lines: rest ? [rest] : [], attrs: {} };
-      } else if (current) {
-        current.lines.push(line);
-      }
-    }
-    flush();
-    return frag;
-  }
-
-  // ── Boot ──────────────────────────────────────────────────────────────────
+// ── Router ────────────────────────────────────────────────────────────────────
+function route() {
+  const p = new URLSearchParams(location.search);
+  const session = p.get('session'), student = p.get('student');
+  if (session)      renderSession(session);
+  else if (student) renderStudent(student, p);
+  else              renderStudents(p);
+}
+function navigate(params, replace) {
+  const url = params ? '?' + new URLSearchParams(params) : location.pathname;
+  replace ? history.replaceState({}, '', url) : history.pushState({}, '', url);
   route();
+}
+window.addEventListener('popstate', route);
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(base, path) {
+  const r = await fetch(base + path);
+  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+  return r.json();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function setMain(h) { document.getElementById('main').innerHTML = h; }
+function shortDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function relDate(iso) {
+  if (!iso) return 'Not started';
+  const d = new Date(iso), diff = Date.now() - d, m = Math.floor(diff/6e4);
+  if (m < 2) return 'Just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m/60);
+  if (h < 24) return h + 'h ago';
+  const dy = Math.floor(h/24);
+  if (dy === 1) return 'Yesterday';
+  if (dy < 7) return dy + ' days ago';
+  return d.toLocaleDateString(undefined,{day:'numeric',month:'short'});
+}
+function setBreadcrumb(crumbs) {
+  document.getElementById('breadcrumb').innerHTML = crumbs.map((c,i) =>
+    i < crumbs.length-1
+      ? `<span class="crumb" onclick="navigate(${JSON.stringify(c.params)})">${esc(c.label)}</span><span class="sep">/</span>`
+      : `<span>${esc(c.label)}</span>`
+  ).join('');
+  document.title = [...crumbs].reverse().map(c=>c.label).join(' · ') + ' — Prodigy Admin';
+}
+
+const STATE_LBL = { mastered:'Mastered', exam_ready:'Exam ready', learning:'Learning', clarity:'Assessing', not_assessed:'Not assessed', 'learn-pre-req-before':'Prereq detour' };
+const STATE_CLS = { mastered:'g', exam_ready:'g', learning:'c', clarity:'y', not_assessed:'mu', 'learn-pre-req-before':'o' };
+function stateBadge(s) { const l=STATE_LBL[s]??s??'Not assessed', c=STATE_CLS[s]??'mu'; return `<span class="badge ${c}">${l||'Not assessed'}</span>`; }
+
+const STA_LBL = { completed:'Completed', started:'In progress', initialised:'Pending' };
+const STA_CLS = { completed:'g', started:'c', initialised:'mu' };
+function statusBadge(s) { return `<span class="badge ${STA_CLS[s]??'mu'}">${STA_LBL[s]??s}</span>`; }
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+// ── Data loaders ──────────────────────────────────────────────────────────────
+async function loadStudents() {
+  if (C.students) return C.students;
+  const [erp, lp] = await Promise.all([
+    api(ERP, '/students/all').catch(() => []),
+    api('', '/students').catch(() => []),
+  ]);
+  const lpMap = new Map(lp.map(s => [s.studentId, s]));
+  C.students = erp.map(s => ({
+    ...s,
+    journeyCount:   lpMap.get(s.studentId)?.journeyCount   ?? 0,
+    sessionCount:   lpMap.get(s.studentId)?.sessionCount   ?? 0,
+    lastActivityAt: lpMap.get(s.studentId)?.lastActivityAt ?? null,
+  }));
+  return C.students;
+}
+
+async function loadCms() {
+  if (C.conceptMap) return;
+  const [hier, subs] = await Promise.all([
+    api(CMS, '/admin/hierarchy').catch(() => []),
+    api(CMS, '/subjects').catch(() => []),
+  ]);
+  const subjName = new Map(subs.map(s => [s.id, s.name ?? s.title ?? s.id]));
+  C.conceptMap = new Map();
+  C.subjectMap = new Map();
+  for (const strand of hier) {
+    const sid = strand.subjectId ?? strand.subject ?? null;
+    const sn  = subjName.get(sid) ?? sid ?? 'Unknown';
+    if (sid && !C.subjectMap.has(sid)) C.subjectMap.set(sid, { name: sn, strands: [] });
+    if (sid) C.subjectMap.get(sid).strands.push(strand);
+    for (const unit of strand.units ?? []) {
+      for (const topic of unit.topics ?? []) {
+        for (const concept of topic.concepts ?? []) {
+          C.conceptMap.set(concept.id, {
+            title:      concept.title ?? 'Title unavailable',
+            topicId:    topic.id,    topicTitle:  topic.title ?? 'Title unavailable',
+            strandTitle:strand.title ?? '',       unitTitle: unit.title ?? '',
+            subjectId:  sid,         subjectName: sn,
+          });
+        }
+      }
+    }
+  }
+}
+
+// ── Student list ──────────────────────────────────────────────────────────────
+async function renderStudents(p) {
+  document.getElementById('hdr-search').style.display = 'flex';
+  const q    = p.get('q')     ?? '';
+  const grad = p.get('grade') ?? '';
+  const cls  = p.get('class') ?? '';
+  const sort = p.get('sort')  ?? 'activity';
+  const page = parseInt(p.get('page') ?? '1', 10);
+
+  const qi = document.getElementById('q-input');
+  if (qi) qi.value = q;
+  setBreadcrumb([{ label: 'Students' }]);
+  setMain('<p class="loading">Loading students…</p>');
+
+  try {
+    const all = await loadStudents();
+
+    // collect filter options
+    const grades   = [...new Set(all.map(s=>s.grade).filter(Boolean))].sort((a,b)=>a-b);
+    const classMap = new Map(all.flatMap(s=>s.classes??[]).map(c=>[c.id,c]));
+    const allCls   = [...classMap.values()];
+
+    // filter
+    let list = all.filter(s => {
+      if (q) { const lq=q.toLowerCase(); if (s.studentId!==q && !(s.name??'').toLowerCase().includes(lq)) return false; }
+      if (grad && String(s.grade)!==grad) return false;
+      if (cls && !(s.classes??[]).some(c=>c.id===cls)) return false;
+      return true;
+    });
+
+    // sort
+    if (sort==='name') list.sort((a,b)=>(a.name??'').localeCompare(b.name??''));
+    else list.sort((a,b)=>{
+      if (!a.lastActivityAt && !b.lastActivityAt) return (a.name??'').localeCompare(b.name??'');
+      if (!a.lastActivityAt) return 1; if (!b.lastActivityAt) return -1;
+      return new Date(b.lastActivityAt)-new Date(a.lastActivityAt);
+    });
+
+    const total = list.length, pages = Math.max(1,Math.ceil(total/PG));
+    const slice = list.slice((page-1)*PG, page*PG);
+
+    const mp = ov => { const n=new URLSearchParams(p); Object.entries(ov).forEach(([k,v])=>v?n.set(k,v):n.delete(k)); return Object.fromEntries(n); };
+    const sortBtn = (val,lbl) => `<button class="sort-btn${sort===val?' active':''}" onclick="navigate(${JSON.stringify(mp({sort:val,page:1}))})">${lbl}${sort===val?' ↓':''}</button>`;
+    const classChips = (cls=[]) => {
+      if (!cls.length) return '<span style="color:var(--muted)">No classes yet</span>';
+      return cls.slice(0,2).map(c=>`<span class="pill">${esc(c.name)}</span>`).join(' ')
+        + (cls.length>2?` <span style="color:var(--muted);font-size:11px">+${cls.length-2} more</span>`:'');
+    };
+
+    setMain(`
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <select id="grade-sel">
+          <option value="">All grades</option>
+          ${grades.map(g=>`<option value="${g}"${String(g)===grad?' selected':''}>${g}</option>`).join('')}
+        </select>
+        <select id="class-sel">
+          <option value="">All classes</option>
+          ${allCls.map(c=>`<option value="${c.id}"${c.id===cls?' selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>
+        ${q||grad||cls?`<button onclick="navigate({})" style="color:var(--red);border-color:var(--red)">Clear filters</button>`:''}
+        <span style="margin-left:auto;font-size:12px;color:var(--muted)">${total} student${total===1?'':'s'} &nbsp;·&nbsp; Sort: ${sortBtn('activity','Last active')} &nbsp; ${sortBtn('name','Name')}</span>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Grade</th><th>Classes</th><th>Sessions</th><th>Last active</th><th></th></tr></thead>
+          <tbody>
+            ${slice.map(s=>`
+              <tr class="row" onclick="navigate({student:'${s.studentId}'})">
+                <td style="font-weight:600">${esc(s.name??s.studentId)}</td>
+                <td style="color:var(--muted)">${s.grade?'Grade '+s.grade:'—'}</td>
+                <td>${classChips(s.classes??[])}</td>
+                <td style="color:var(--muted)">${s.sessionCount}</td>
+                <td style="color:var(--muted)">${relDate(s.lastActivityAt)}</td>
+                <td style="color:var(--accent);font-weight:500">View →</td>
+              </tr>`).join('')}
+            ${!slice.length?'<tr><td colspan="6" class="empty">No students match these filters</td></tr>':''}
+          </tbody>
+        </table>
+        ${pages>1?`<div class="pagination">
+          ${page>1?`<button class="pg-btn" onclick="navigate(${JSON.stringify(mp({page:page-1}))})">‹</button>`:''}
+          ${Array.from({length:pages},(_,i)=>i+1).map(pg=>`<button class="pg-btn${pg===page?' active':''}" onclick="navigate(${JSON.stringify(mp({page:pg}))})">${pg}</button>`).join('')}
+          ${page<pages?`<button class="pg-btn" onclick="navigate(${JSON.stringify(mp({page:page+1}))})">›</button>`:''}
+        </div>`:''}
+      </div>`);
+
+    document.getElementById('grade-sel').onchange = function() { navigate(mp({grade:this.value,page:1})); };
+    document.getElementById('class-sel').onchange = function() { navigate(mp({'class':this.value,page:1})); };
+    const qi2 = document.getElementById('q-input');
+    if (qi2) qi2.oninput = debounce(()=>navigate(mp({q:qi2.value,page:1})),300);
+
+  } catch(e) { setMain(`<p class="err">Error: ${esc(e.message)}</p>`); }
+}
+
+// ── Student detail ────────────────────────────────────────────────────────────
+async function renderStudent(studentId, p) {
+  document.getElementById('hdr-search').style.display = 'none';
+  const tab  = p.get('tab')     ?? 'learning';
+  const subj = p.get('subject') ?? '';
+  const conc = p.get('concept') ?? '';
+  setBreadcrumb([{label:'Students',params:null},{label:'…'}]);
+  setMain('<p class="loading">Loading…</p>');
+
+  try {
+    const [students] = await Promise.all([loadStudents(), loadCms()]);
+    const stu = students.find(s=>s.studentId===studentId) ?? { studentId, name: studentId, grade: null, classes: [] };
+
+    const [journeys, sessions, memories] = await Promise.all([
+      api('',`/students/${studentId}/journeys`).catch(()=>[]),
+      api('',`/students/${studentId}/sessions`).catch(()=>[]),
+      api('',`/students/${studentId}/memories`).catch(()=>[]),
+    ]);
+    const nodeArrays = await Promise.all(journeys.map(j=>api('',`/journeys/${j.id}/nodes`).catch(()=>[])));
+    const allNodes   = nodeArrays.flat();
+    const nodeMap    = new Map(allNodes.map(n=>[n.conceptId,n]));
+
+    // sessions per concept
+    const sesByConc = new Map();
+    for (const s of sessions) {
+      if (!sesByConc.has(s.conceptId)) sesByConc.set(s.conceptId,[]);
+      sesByConc.get(s.conceptId).push(s);
+    }
+
+    const sname = stu.name ?? studentId;
+    setBreadcrumb([{label:'Students',params:null},{label:sname}]);
+    document.title = sname + ' — Prodigy Admin';
+
+    const mp = ov => ({ student: studentId, ...ov });
+
+    // subjects from journeys
+    const subjIds = new Set(journeys.map(j=>j.subjectId).filter(Boolean));
+    for (const n of allNodes) { const cm=C.conceptMap?.get(n.conceptId); if(cm?.subjectId) subjIds.add(cm.subjectId); }
+    const subjList = [...subjIds].map(id=>({id,name:C.subjectMap?.get(id)?.name??id})).sort((a,b)=>a.name.localeCompare(b.name));
+    const activeSubj = subj || subjList[0]?.id || '';
+
+    const classHtml = stu.classes?.length
+      ? stu.classes.map(c=>`<span class="pill">${esc(c.name)}</span>`).join(' ')
+      : '<span style="color:var(--muted)">No classes yet</span>';
+
+    setMain(`
+      <div class="stu-hdr">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px">
+          <div>
+            <div class="stu-name">${esc(sname)}</div>
+            <div class="stu-meta">
+              ${stu.grade?`<span style="color:var(--muted)">Grade ${stu.grade}</span>`:''}
+              ${classHtml}
+            </div>
+          </div>
+          <div style="display:flex;gap:20px;flex-shrink:0;text-align:center;padding-top:4px">
+            <div><div style="font-size:18px;font-weight:700">${sessions.length}</div><div style="font-size:11px;color:var(--muted)">Sessions</div></div>
+            <div><div style="font-size:18px;font-weight:700">${allNodes.length}</div><div style="font-size:11px;color:var(--muted)">Concepts</div></div>
+          </div>
+        </div>
+        <div class="tab-bar" style="border-bottom:none;margin:0 -24px;padding:0 24px">
+          <button class="tab${tab==='learning'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'learning'}))})">Learning</button>
+          <button class="tab${tab==='sessions'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'sessions'}))})">Sessions (${sessions.length})</button>
+          <button class="tab${tab==='memories'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'memories'}))})">Memories (${memories.length})</button>
+        </div>
+      </div>
+      <div id="tab-content" style="padding-top:16px"></div>`);
+
+    const tc = document.getElementById('tab-content');
+    if (tab==='learning') renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMap, sesByConc, mp);
+    else if (tab==='sessions') renderSessionsTab(tc, studentId, conc, sessions, mp);
+    else renderMemoriesTab(tc, memories);
+
+  } catch(e) { setMain(`<p class="err">Error: ${esc(e.message)}</p>`); }
+}
+
+// ── Learning tab ──────────────────────────────────────────────────────────────
+function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMap, sesByConc, mp) {
+  if (!subjList.length) {
+    tc.innerHTML = '<p class="empty">No learning started yet.</p>'; return;
+  }
+
+  let html = '<div class="subj-tabs">';
+  for (const s of subjList) {
+    html += `<button class="subj-tab${s.id===activeSubj?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'learning',subject:s.id}))})">${esc(s.name)}</button>`;
+  }
+  html += '</div><div style="margin-top:16px" id="subj-content"></div>';
+  tc.innerHTML = html;
+
+  const sc = document.getElementById('subj-content');
+  const strands = C.subjectMap?.get(activeSubj)?.strands ?? [];
+
+  if (!strands.length) { sc.innerHTML = '<p class="empty">No curriculum found for this subject.</p>'; return; }
+
+  const allTopics = strands.flatMap(strand => (strand.units??[]).flatMap(unit => (unit.topics??[]).map(topic=>({topic,strand,unit}))));
+  const currentConceptIds = new Set(allTopics.flatMap(({topic})=>(topic.concepts??[]).map(c=>c.id)));
+
+  let thtml = '';
+  for (const {topic, strand, unit} of allTopics) {
+    const concepts = topic.concepts ?? [];
+    if (!concepts.length) continue;
+    const mastered = concepts.filter(c=>{ const n=nodeMap.get(c.id); return n?.state==='mastered'||n?.state==='exam_ready'; }).length;
+    thtml += `
+      <div class="topic-group card">
+        <div class="topic-hdr">
+          <span class="topic-name">${esc(topic.title??'Untitled topic')}</span>
+          <span class="topic-ctx">${esc(strand.title??'')}${unit.title?' › '+unit.title:''}</span>
+          <span class="topic-prog">${mastered}/${concepts.length} mastered</span>
+        </div>
+        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Last activity</span><span>Sessions</span></div>`;
+    for (const c of concepts) {
+      const node    = nodeMap.get(c.id);
+      const sessCnt = (sesByConc.get(c.id)??[]).length;
+      const sessHtml = sessCnt>0
+        ? `<span class="ses-link" onclick="navigate(${JSON.stringify({student:studentId,tab:'sessions',concept:c.id})})">View ${sessCnt}</span>`
+        : `<span style="color:var(--muted)">No sessions</span>`;
+      let detour = '';
+      if (node?.preReqToLearn) {
+        const pt = C.conceptMap?.get(node.preReqToLearn)?.title ?? node.preReqToLearn;
+        detour = `<div style="font-size:11px;color:var(--orange);margin-top:2px">Learning <strong>${esc(pt)}</strong> first</div>`;
+      }
+      thtml += `
+        <div class="concept-row">
+          <div class="con-title">${esc(c.title??'Title unavailable')}${detour}</div>
+          <div>${stateBadge(node?.state??null)}</div>
+          <div class="con-date">${relDate(node?.lastActivity??null)}</div>
+          <div class="con-sessions">${sessHtml}</div>
+        </div>`;
+    }
+    thtml += '</div>';
+  }
+
+  // Previous learning
+  const prev = allNodes.filter(n=>!currentConceptIds.has(n.conceptId));
+  if (prev.length) {
+    thtml += `<details><summary style="cursor:pointer;padding:8px 0;font-size:12px;font-weight:600;color:var(--muted)">▶ Previous learning (${prev.length})</summary>
+      <div class="card mt12">
+        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Last activity</span><span>Sessions</span></div>`;
+    for (const n of prev) {
+      const cm = C.conceptMap?.get(n.conceptId);
+      const sessCnt = (sesByConc.get(n.conceptId)??[]).length;
+      thtml += `<div class="concept-row">
+        <div class="con-title">${esc(cm?.title??n.conceptId)}</div>
+        <div>${stateBadge(n.state)}</div>
+        <div class="con-date">${relDate(n.lastActivity)}</div>
+        <div class="con-sessions">${sessCnt>0?`<span class="ses-link" onclick="navigate(${JSON.stringify({student:studentId,tab:'sessions',concept:n.conceptId})})">View ${sessCnt}</span>`:'<span style="color:var(--muted)">No sessions</span>'}</div>
+      </div>`;
+    }
+    thtml += '</div></details>';
+  }
+
+  sc.innerHTML = thtml || '<p class="empty">No topics with concepts found.</p>';
+}
+
+// ── Sessions tab ──────────────────────────────────────────────────────────────
+function renderSessionsTab(tc, studentId, concFilter, sessions, mp) {
+  const sorted = [...sessions].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const filtered = concFilter ? sorted.filter(s=>s.conceptId===concFilter) : sorted;
+  const ct = C.conceptMap?.get(concFilter);
+  let html = '';
+  if (concFilter) {
+    html = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted)">Concept:</span>
+      <span class="filter-chip">${esc(ct?.title??concFilter)}<button onclick="navigate(${JSON.stringify(mp({tab:'sessions'}))})">×</button></span>
+    </div>`;
+  }
+  if (!filtered.length) { tc.innerHTML = html + '<p class="empty">No sessions yet.</p>'; return; }
+  html += `<div class="card"><table>
+    <thead><tr><th>Started</th><th>Concept</th><th>Phase</th><th>Status</th><th>Turns</th><th></th></tr></thead>
+    <tbody>
+      ${filtered.map(s=>{
+        const cm=C.conceptMap?.get(s.conceptId);
+        return `<tr class="row" onclick="navigate({session:'${s.id}'})">
+          <td style="color:var(--muted);white-space:nowrap">${shortDate(s.createdAt)}</td>
+          <td><div style="font-weight:500">${esc(cm?.title??s.conceptId)}</div>${cm?.subjectName?`<div style="font-size:11px;color:var(--muted)">${esc(cm.subjectName)}</div>`:''}</td>
+          <td>${stateBadge(s.conceptStateAtStart)}</td>
+          <td>${statusBadge(s.status)}</td>
+          <td style="color:var(--muted)">${(s.history??[]).length}</td>
+          <td style="color:var(--accent);font-weight:500">View →</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+  tc.innerHTML = html;
+}
+
+// ── Memories tab ──────────────────────────────────────────────────────────────
+function renderMemoriesTab(tc, memories) {
+  if (!memories.length) { tc.innerHTML = '<p class="empty">No memories recorded yet.</p>'; return; }
+  tc.innerHTML = `<div class="card"><table>
+    <thead><tr><th>Type</th><th>Content</th><th>Concept</th></tr></thead>
+    <tbody>${memories.map(m=>{
+      const cm=C.conceptMap?.get(m.context?.conceptId);
+      return `<tr><td><span class="badge a">${m.type}</span></td><td>${esc(m.content)}</td><td style="color:var(--muted);font-size:12px">${esc(cm?.title??m.context?.conceptId??'—')}</td></tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── Session detail ────────────────────────────────────────────────────────────
+async function renderSession(sessionId) {
+  document.getElementById('hdr-search').style.display = 'none';
+  setMain('<p class="loading">Loading session…</p>');
+  try {
+    await loadCms();
+    const s = await api('', `/sessions/${sessionId}`);
+    const students = await loadStudents().catch(()=>[]);
+    const stu  = students.find(st=>st.studentId===s.studentId);
+    const sname = stu?.name ?? s.studentId;
+    const cm   = C.conceptMap?.get(s.conceptId);
+
+    setBreadcrumb([
+      {label:'Students',params:null},
+      {label:sname, params:{student:s.studentId}},
+      {label:cm?.title??s.conceptId},
+    ]);
+
+    setMain(`
+      <div class="ctx-bar">
+        <div class="ctx-item"><label>Student</label><span style="font-weight:600;color:var(--accent);cursor:pointer" onclick="navigate({student:'${s.studentId}'})">${esc(sname)}</span></div>
+        ${cm?.subjectName?`<div class="ctx-item"><label>Subject</label><span>${esc(cm.subjectName)}</span></div>`:''}
+        <div class="ctx-item"><label>Concept</label><span>${esc(cm?.title??s.conceptId)}</span></div>
+        <div class="ctx-item"><label>Phase</label>${stateBadge(s.conceptStateAtStart)}</div>
+        <div class="ctx-item"><label>Status</label>${statusBadge(s.status)}</div>
+        <div class="ctx-item"><label>Started</label><span style="color:var(--muted)">${shortDate(s.createdAt)}</span></div>
+        ${s.endedAt?`<div class="ctx-item"><label>Ended</label><span style="color:var(--muted)">${shortDate(s.endedAt)}</span></div>`:''}
+        <details style="margin-left:auto;position:relative">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">IDs ▾</summary>
+          <div style="position:absolute;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;z-index:10;min-width:260px;font-size:11px;font-family:monospace;line-height:2;box-shadow:0 4px 16px rgba(0,0,0,.1)">
+            <div><span style="color:var(--muted)">session &nbsp;</span>${esc(sessionId)}</div>
+            <div><span style="color:var(--muted)">student &nbsp;</span>${esc(s.studentId)}</div>
+            <div><span style="color:var(--muted)">concept &nbsp;</span>${esc(s.conceptId)}</div>
+          </div>
+        </details>
+      </div>
+      <div class="tab-bar" style="margin:0 -24px;padding:0 24px">
+        <button class="tab active" id="t-conv" onclick="switchSesTab('conv')">Conversation</button>
+        <button class="tab" id="t-plan" onclick="switchSesTab('plan')">Teaching plan</button>
+        <button class="tab" id="t-diag" onclick="switchSesTab('diag')">Diagnostics</button>
+      </div>
+      <div id="ses-content" style="padding-top:12px"></div>`);
+
+    window.switchSesTab = tab => {
+      ['conv','plan','diag'].forEach(t => document.getElementById('t-'+t)?.classList.toggle('active', t===tab));
+      const sc = document.getElementById('ses-content');
+      if (tab==='conv') buildConvTab(sc, s);
+      else if (tab==='plan') buildPlanTab(sc, s);
+      else buildDiagTab(sc, s);
+    };
+    switchSesTab('conv');
+
+  } catch(e) { setMain(`<p class="err">Error: ${esc(e.message)}</p>`); }
+}
+
+function buildConvTab(sc, s) {
+  const chat = s.history ?? [], raw = s.rawHistory ?? [];
+  if (!chat.length) { sc.innerHTML = '<p class="empty">No conversation turns.</p>'; return; }
+  sc.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="btn-chat" class="primary" onclick="switchConvView(false)">Chat (${chat.length})</button>
+      ${raw.length?`<button id="btn-raw" onclick="switchConvView(true)">Tool calls (${raw.length})</button>`:''}
+    </div>
+    <div class="card"><div id="chat-area" class="chat"></div></div>`;
+
+  window.switchConvView = raw_mode => {
+    const bc = document.getElementById('btn-chat'), br = document.getElementById('btn-raw');
+    if (bc) { bc.className = raw_mode ? '' : 'primary'; }
+    if (br) { br.className = raw_mode ? 'primary' : ''; }
+    const area = document.getElementById('chat-area');
+    area.innerHTML = '';
+    const turns = raw_mode ? raw : chat;
+    for (const t of turns) raw_mode ? area.appendChild(renderRawTurn(t)) : renderTurn(area, t);
+  };
+  switchConvView(false);
+}
+
+function buildPlanTab(sc, s) {
+  const ph = s.planHistory ?? [];
+  if (!ph.length) { sc.innerHTML = '<p class="empty">No teaching plan recorded.</p>'; return; }
+  sc.innerHTML = ph.map(entry => {
+    const steps = entry.plan ?? [];
+    return `<div class="card mt12">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border-lt);display:flex;justify-content:space-between;font-weight:600;font-size:12px">
+        <span>${esc(entry.conceptTitle??entry.conceptId??'')}</span>
+        <span style="color:var(--muted);font-weight:400">${steps.length} steps</span>
+      </div>
+      ${steps.map(step=>{
+        const c=step.content??{}, text=c.question??c.explanation??c.instruction??(c.conceptTitle?'→ '+c.conceptTitle:'');
+        const sc2={'done':'g','in_progress':'c','pending':'mu','failed':'r'}[step.status]??'mu';
+        return `<div class="plan-step">
+          <span class="step-num">${step.id}</span>
+          <div class="step-body">
+            <div class="step-type">${step.type}${step.ifCorrect!=null?` ✓→${step.ifCorrect} ✗→${step.ifWrong}`:''}</div>
+            ${text?`<div class="step-text">${esc(text)}</div>`:''}
+          </div>
+          <span class="badge ${sc2}">${step.status}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+function buildDiagTab(sc, s) {
+  let html = '';
+  if (s.systemPrompt) {
+    const secs = s.systemPrompt.split(/\n---\n/);
+    const lbls = ['Base Prompt','Skill Prompt','Canvas Output Format'];
+    html += `<details class="card" style="margin-bottom:12px">
+      <summary style="cursor:pointer;padding:10px 16px;font-size:12px;font-weight:600;color:var(--muted)">System Prompt (${secs.length} section${secs.length===1?'':'s'}) ▶</summary>
+      <div class="prompt-box">${secs.map((sec,i)=>`<div class="prompt-sec"><div class="prompt-lbl">${lbls[i]??'Section '+(i+1)}</div>${esc(sec.trim())}</div>`).join('')}</div>
+    </details>`;
+  }
+  const raw = s.rawHistory ?? [];
+  if (raw.length) {
+    html += `<div class="card"><div style="padding:10px 16px;border-bottom:1px solid var(--border-lt);font-size:12px;font-weight:600;color:var(--muted)">Tool calls &amp; raw messages (${raw.length})</div><div id="raw-wrap" style="display:flex;flex-direction:column;gap:6px;padding:10px"></div></div>`;
+    sc.innerHTML = html || '<p class="empty">No diagnostic data.</p>';
+    const wrap = document.getElementById('raw-wrap');
+    if (wrap) for (const t of raw) wrap.appendChild(renderRawTurn(t));
+    return;
+  }
+  sc.innerHTML = html || '<p class="empty">No diagnostic data recorded.</p>';
+}
+
+// ── Raw turn ──────────────────────────────────────────────────────────────────
+function renderRawTurn(turn) {
+  if (turn.role==='metric') {
+    const b=document.createElement('div'); b.className='metric-badge';
+    b.textContent=`⏱ ttfr ${turn.content?.value??'?'} ms`; return b;
+  }
+  const d=document.createElement('details'); d.className='raw-turn';
+  const s=document.createElement('summary');
+  const rl={student:'👤 student',agent:'🤖 agent',tool_call:'🔧 '+(turn.name??'tool'),tool_result:'↩ '+(turn.name??'result')};
+  s.textContent=(rl[turn.role]??turn.role)+(turn.timestamp?'  '+shortDate(turn.timestamp):'');
+  d.appendChild(s);
+  const pre=document.createElement('pre'); pre.textContent=JSON.stringify(turn,null,2); d.appendChild(pre);
+  const content=typeof turn.content==='string'?turn.content:'';
+  const imgs=[...content.matchAll(/\[image:([^\]]+)\]/g)].map(m=>m[1]);
+  const auds=[...content.matchAll(/\[audio:([^\]]+)\]/g)].map(m=>m[1]);
+  if (imgs.length||auds.length) {
+    const row=document.createElement('div'); row.className='raw-media';
+    imgs.forEach(f=>{ const img=document.createElement('img'); img.src='/image-uploads/'+f; img.onclick=()=>{document.getElementById('img-modal-src').src=img.src;document.getElementById('img-modal').classList.add('open');}; row.appendChild(img); });
+    auds.forEach(f=>{ const a=document.createElement('audio'); a.controls=true; a.src='/audio-uploads/'+f; row.appendChild(a); });
+    d.appendChild(row);
+  }
+  return d;
+}
+
+// ── Turn renderer ─────────────────────────────────────────────────────────────
+function renderTurn(container, turn) {
+  const msgEl=document.createElement('div'); msgEl.className='msg '+turn.role;
+  const meta=document.createElement('div'); meta.className='msg-meta';
+  meta.textContent=turn.role+(turn.timestamp?'  '+shortDate(turn.timestamp):''); msgEl.appendChild(meta);
+
+  if (turn.role==='student') {
+    const raw=String(turn.content), imgRe=/\[image:([^\]]+)\]/g, audRe=/\[audio:([^\]]+)\]/g;
+    const text=raw.replace(imgRe,'').replace(audRe,'').trim();
+    const imgs=[...raw.matchAll(imgRe)].map(m=>m[1]), auds=[...raw.matchAll(audRe)].map(m=>m[1]);
+    const b=document.createElement('div'); b.className='student-bubble';
+    if (text) b.textContent=text;
+    if (imgs.length) { const row=document.createElement('div'); row.className='student-images'; imgs.forEach(f=>{ const img=document.createElement('img'); img.className='img-thumb'; img.src='/image-uploads/'+f; img.onclick=()=>{document.getElementById('img-modal-src').src=img.src;document.getElementById('img-modal').classList.add('open');}; row.appendChild(img); }); b.appendChild(row); }
+    auds.forEach(f=>{ const w=document.createElement('div'); w.className='student-audio'; const a=document.createElement('audio'); a.controls=true; a.src='/audio-uploads/'+f; w.appendChild(a); b.appendChild(w); });
+    msgEl.appendChild(b);
+  } else if (turn.role==='agent') {
+    const blocks=document.createElement('div'); blocks.className='agent-blocks';
+    blocks.appendChild(parseAgentDSL(String(turn.content))); msgEl.appendChild(blocks);
+  } else if (turn.role==='metric') {
+    const b=document.createElement('div'); b.className='metric-badge';
+    b.textContent=`⏱ ttfr ${typeof turn.content==='object'?turn.content?.value:'?'} ms`; msgEl.appendChild(b);
+  } else if (turn.role==='tool_call') {
+    const b=document.createElement('div'); b.className='tool-bubble call';
+    const nm=document.createElement('div'); nm.className='tool-name'; nm.textContent='🔧 '+(turn.name??'tool_call');
+    b.appendChild(nm); b.appendChild(renderToolContent(turn.content)); msgEl.appendChild(b);
+  } else if (turn.role==='tool_result') {
+    const b=document.createElement('div'); b.className='tool-bubble result';
+    const nm=document.createElement('div'); nm.className='tool-name'; nm.textContent='↩ '+(turn.name??'tool_result');
+    b.appendChild(nm); b.appendChild(renderToolContent(turn.content)); msgEl.appendChild(b);
+  }
+  container.appendChild(msgEl);
+}
+
+function renderToolContent(raw) {
+  const frag=document.createDocumentFragment();
+  if (typeof raw==='string') { frag.appendChild(document.createTextNode(raw)); return frag; }
+  const obj=(typeof raw==='object'&&raw!==null)?raw:{};
+  const step=obj.step??obj.nextStep??null;
+  if (step) {
+    const c=step.content??{}, text=c.instruction??c.question??c.explanation??'';
+    if (text) { const e=document.createElement('div'); e.style.cssText='white-space:pre-wrap;font-size:12px'; e.textContent=`Step ${step.id} (${step.type}): `+text; frag.appendChild(e); return frag; }
+  }
+  if (obj.plan&&typeof obj.plan==='string') { const p=document.createElement('div'); p.style.cssText='white-space:pre-wrap'; p.textContent=obj.plan; frag.appendChild(p); return frag; }
+  const keys=['message','error','ok','done','state','action'];
+  const sum=keys.filter(k=>obj[k]!==undefined).map(k=>`${k}: ${JSON.stringify(obj[k])}`).join('  ');
+  if (sum) { const e=document.createElement('div'); e.style.cssText='margin-bottom:4px'; e.textContent=sum; frag.appendChild(e); }
+  const shown=new Set(['message','error','ok','done','state','action','step','nextStep','plan']);
+  const rest=Object.fromEntries(Object.entries(obj).filter(([k])=>!shown.has(k)));
+  if (Object.keys(rest).length) { const e=document.createElement('div'); e.style.cssText='white-space:pre-wrap;color:var(--muted);font-size:11px;margin-top:4px'; e.textContent=JSON.stringify(rest,null,2); frag.appendChild(e); }
+  if (!sum&&!Object.keys(rest).length) frag.appendChild(document.createTextNode(JSON.stringify(obj,null,2)));
+  return frag;
+}
+
+// ── Agent DSL ─────────────────────────────────────────────────────────────────
+function parseAgentDSL(raw) {
+  const frag=document.createDocumentFragment();
+  const BRE=/^(speak|write|ask|annotate|draw|play|model3d):\s*/,PRE=/^parallel:(start|end)\s*$/,QRE=/^question:\s*(.+)$/,ARE=/^\/([a-z_]+):\s*(.*)/;
+  let cur=null,par=null;
+  const cont=()=>par??frag;
+  function flush() {
+    if (!cur) return;
+    const content=cur.lines.join('\n').trim();
+    if (!content&&!Object.keys(cur.attrs).length) { cur=null; return; }
+    const b=document.createElement('div'); b.className='block block-'+cur.key;
+    const l=document.createElement('div'); l.className='block-label'; l.textContent=cur.key; b.appendChild(l);
+    if (cur.key==='draw') { const w=document.createElement('div'); w.innerHTML=content; b.appendChild(w); }
+    else if (content) b.appendChild(document.createTextNode(content));
+    const ae=Object.entries(cur.attrs);
+    if (ae.length) { const ad=document.createElement('div'); ad.className='block-attrs'; ad.textContent=ae.map(([k,v])=>`/${k}: ${v}`).join('  '); b.appendChild(ad); }
+    cont().appendChild(b); cur=null;
+  }
+  for (const line of raw.split('\n')) {
+    const am=line.match(ARE); if (am&&cur) { cur.attrs[am[1]]=am[2].trim(); continue; }
+    const pm=line.match(PRE);
+    if (pm) { flush(); if (pm[1]==='start') { par=document.createElement('div'); par.className='parallel-wrap'; const l=document.createElement('div'); l.className='parallel-lbl'; l.textContent='⬡ parallel'; par.appendChild(l); frag.appendChild(par); } else par=null; continue; }
+    const qm=line.match(QRE);
+    if (qm) { flush(); const m=document.createElement('div'); m.className='q-marker'; const qid=qm[1].trim(); m.textContent=qid.toLowerCase()==='end'?'question ended':'📝 '+qid+' started'; if(qid.toLowerCase()==='end') m.style.cssText='color:var(--muted);font-weight:400'; frag.appendChild(m); continue; }
+    const bm=line.match(BRE);
+    if (bm) { flush(); const key=bm[1],rest=line.slice(bm[0].length); cur={key,lines:rest?[rest]:[],attrs:{}}; } else if (cur) cur.lines.push(line);
+  }
+  flush(); return frag;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+document.getElementById('q-input')?.addEventListener('keydown', e => {
+  if (e.key==='Enter') navigate({q:e.target.value,page:1});
+});
+route();
 </script>
 </body>
 </html>

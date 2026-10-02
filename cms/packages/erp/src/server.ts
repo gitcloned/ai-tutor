@@ -303,7 +303,20 @@ app.post('/students', wrap(async (req, res) => {
 // Admin/dev — no auth required.
 app.get('/students/all', wrap(async (_req, res) => {
   const students = await Student.find({}, { hashedCode: 0, encryptedCode: 0, idempotencyKey: 0 }).lean();
-  return res.json(students.map(s => ({ studentId: s.id, name: s.name, grade: s.grade })));
+  const result = await Promise.all((students as any[]).map(async (s) => {
+    const enrollments      = await Enrollment.find({ studentId: s.id }).lean() as any[];
+    const enrolledIds      = enrollments.map((e: any) => e.classroomId);
+    const [enrolled, personal] = await Promise.all([
+      Classroom.find({ id: { $in: enrolledIds }, kind: 'teacher', status: 'active' }, { id: 1, name: 1, kind: 1 }).lean(),
+      Classroom.find({ personalStudentId: s.id, kind: 'personal' }, { id: 1, name: 1, kind: 1 }).lean(),
+    ]);
+    const classes = [
+      ...(personal as any[]).map((c: any) => ({ id: c.id, name: 'Home learning', kind: 'personal' })),
+      ...(enrolled as any[]).map((c: any) => ({ id: c.id, name: c.name, kind: 'teacher' })),
+    ];
+    return { studentId: s.id, name: s.name, grade: s.grade, classes };
+  }));
+  return res.json(result);
 }));
 
 app.get('/students', wrap(async (req, res) => {

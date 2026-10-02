@@ -569,12 +569,13 @@ app.post('/students/:studentId/memories', wrap(async (req, res) => {
 app.get('/students', wrap(async (_req, res) => {
   const studentIds = await LearningJourney.distinct('studentId') as string[];
   const result = await Promise.all(studentIds.map(async (studentId) => {
-    const [journeyCount, sessionCount, memoryCount] = await Promise.all([
+    const [journeyCount, sessionCount, memoryCount, lastSession] = await Promise.all([
       LearningJourney.countDocuments({ studentId }),
       Session.countDocuments({ studentId }),
       Memory.countDocuments({ studentId }),
+      Session.findOne({ studentId }).sort({ createdAt: -1 }).select('createdAt').lean(),
     ]);
-    return { studentId, journeyCount, sessionCount, memoryCount };
+    return { studentId, journeyCount, sessionCount, memoryCount, lastActivityAt: (lastSession as any)?.createdAt ?? null };
   }));
   res.json(result);
 }));

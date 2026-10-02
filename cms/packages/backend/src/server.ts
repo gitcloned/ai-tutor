@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import mongoose from 'mongoose';
 import { connectDb } from './db.js';
-import { Strand, Unit, Topic, Concept, Resource, Question } from './models/index.js';
+import { Subject, Strand, Unit, Topic, Concept, Resource, Question } from './models/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -34,23 +34,30 @@ app.get('/strands', wrap(async (_req, res) => {
 }));
 
 app.get('/strands/:id/units', wrap(async (req, res) => {
-  const strand = await Strand.findOne({ id: req.params.id });
+  const db = rawDb();
+  const strand = await db.collection('strands').findOne({ id: req.params.id });
   if (!strand) return res.status(404).json({ error: 'Not found' });
-  const units = await Unit.find({ strand: strand._id }).sort({ order: 1 });
+  const units = await db.collection('units').find({ strand: (strand as any).id }).sort({ order: 1 }).toArray();
   res.json(units);
 }));
 
 app.get('/units/:id/topics', wrap(async (req, res) => {
-  const unit = await Unit.findOne({ id: req.params.id });
+  const db = rawDb();
+  const unit = await db.collection('units').findOne({ id: req.params.id });
   if (!unit) return res.status(404).json({ error: 'Not found' });
-  const topics = await Topic.find({ unit: unit._id }).sort({ order: 1 });
+  const topics = await db.collection('topics').find({ unit: (unit as any).id }).sort({ order: 1 }).toArray();
   res.json(topics);
 }));
 
 app.get('/topics/:id/concepts', wrap(async (req, res) => {
-  const topic = await Topic.findOne({ id: req.params.id });
+  const db = rawDb();
+  const topic = await db.collection('topics').findOne({ id: req.params.id });
   if (!topic) return res.status(404).json({ error: 'Not found' });
-  const concepts = await Concept.find({ topic: topic._id }).sort({ order: 1 });
+  // Concepts store `topic` as the string topic.id (not ObjectId) — use rawDb to avoid cast failure
+  const concepts = await db.collection('concepts')
+    .find({ topic: (topic as any).id })
+    .sort({ order: 1 })
+    .toArray();
   res.json(concepts);
 }));
 
@@ -103,6 +110,99 @@ app.get('/concepts/:id/mastery-questions', wrap(async (req, res) => {
   if (!concept) return res.status(404).json({ error: 'Not found' });
   const questions = (concept.masteryQuestions ?? []).flatMap((r: any) => r.questions ?? []);
   res.json(questions);
+}));
+
+// ── Subjects ──────────────────────────────────────────────────────────────────
+
+app.get('/subjects', wrap(async (_req, res) => {
+  const subjects = await Subject.find().sort({ title: 1 });
+  res.json(subjects);
+}));
+
+app.post('/subjects', wrap(async (req, res) => {
+  const { title } = req.body as { title?: string };
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  const subject = await Subject.create({ title: title.trim() });
+  res.status(201).json(subject);
+}));
+
+// ── Curriculum tree ───────────────────────────────────────────────────────────
+
+app.get('/curriculum', wrap(async (req, res) => {
+  const grade = req.query['grade'] !== undefined ? Number(req.query['grade']) : null;
+  const db = rawDb();
+
+  const strands = await db.collection('strands').find({}).sort({ title: 1 }).toArray() as any[];
+
+  // Group strands by subjectId (fall back to subject string if subjectId not yet set)
+  const subjectMap = new Map<string, { subjectId: string; title: string; strands: any[] }>();
+
+  // Load all subjects for title lookup
+  const subjectDocs = await db.collection('subjects').find({}).toArray() as any[];
+  const subjectById = new Map(subjectDocs.map((s: any) => [s.id, s]));
+
+  for (const strand of strands) {
+    const subjectId: string = strand.subjectId ?? strand.subject ?? 'unknown';
+    if (!subjectMap.has(subjectId)) {
+      const subjectDoc = subjectById.get(subjectId);
+      subjectMap.set(subjectId, {
+        subjectId,
+        title: subjectDoc?.title ?? strand.subject ?? subjectId,
+        strands: [],
+      });
+    }
+
+    const units = await db.collection('units')
+      .find({ strand: strand.id })
+      .sort({ order: 1 })
+      .toArray() as any[];
+
+    for (const unit of units) {
+      const topics = await db.collection('topics')
+        .find({ unit: unit.id })
+        .sort({ order: 1 })
+        .toArray() as any[];
+
+      unit.topics = await Promise.all(topics.map(async (t: any) => {
+        const concepts = await db.collection('concepts')
+          .find({ topic: t.id }, { projection: { id: 1, title: 1, order: 1, supportedPhases: 1, _id: 0 } })
+          .sort({ order: 1 })
+          .toArray();
+        const grades: number[] = Array.isArray(t.recommendedGrades) ? t.recommendedGrades : [];
+        return {
+          ...t,
+          recommendedGrades: grades,
+          recommended: grade !== null && grades.includes(grade),
+          concepts,
+        };
+      }));
+    }
+    strand.units = units;
+    subjectMap.get(subjectId)!.strands.push(strand);
+  }
+
+  res.json(Array.from(subjectMap.values()));
+}));
+
+// ── Topic subject lookup (used by agent to find the correct journey) ──────────
+
+app.get('/topics/:id/subject', wrap(async (req, res) => {
+  const db = rawDb();
+  const topic = await db.collection('topics').findOne({ id: req.params.id });
+  if (!topic) return res.status(404).json({ error: `Topic '${req.params.id}' not found` });
+
+  const unit = await db.collection('units').findOne({ id: (topic as any).unit });
+  if (!unit) return res.status(404).json({ error: `Unit '${(topic as any).unit}' not found — broken curriculum link` });
+
+  const strand = await db.collection('strands').findOne({ id: (unit as any).strand });
+  if (!strand) return res.status(404).json({ error: `Strand '${(unit as any).strand}' not found — broken curriculum link` });
+
+  const subjectId: string | null = (strand as any).subjectId ?? null;
+  if (!subjectId) {
+    return res.status(404).json({ error: `Strand '${(strand as any).id}' has no subjectId — run migration first` });
+  }
+
+  res.json({ subjectId });
 }));
 
 // ── Admin routes (raw MongoDB — bypass Mongoose type casting) ─────────────────

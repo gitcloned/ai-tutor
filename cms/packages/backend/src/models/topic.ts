@@ -8,15 +8,16 @@ const probingTreeSchema = new Schema({
 }, { _id: false });
 
 const topicSchema = new Schema<ITopic>({
-  id:           { type: String, required: true, unique: true },
-  title:        { type: String, required: true },
-  description:  { type: String, default: null },
-  unit:         { type: Schema.Types.ObjectId, ref: 'Unit', required: true },
-  order:        { type: Number, required: true },
-  probingTree:  { type: probingTreeSchema, default: null },
-  practiceTests: [{ type: Schema.Types.ObjectId, ref: 'Resource' }],
-  kaSlug:       { type: String, index: true, sparse: true },
-  source:       { type: String },
+  id:                { type: String, required: true, unique: true },
+  title:             { type: String, required: true },
+  description:       { type: String, default: null },
+  unit:              { type: Schema.Types.ObjectId, ref: 'Unit', required: true },
+  order:             { type: Number, required: true },
+  recommendedGrades: { type: [Number], default: [] },
+  probingTree:       { type: probingTreeSchema, default: null },
+  practiceTests:     [{ type: Schema.Types.ObjectId, ref: 'Resource' }],
+  kaSlug:            { type: String, index: true, sparse: true },
+  source:            { type: String },
 }, { collection: 'topics', id: false });
 
 topicSchema.pre('validate', function (next) {

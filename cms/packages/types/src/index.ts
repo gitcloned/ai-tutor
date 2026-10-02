@@ -93,10 +93,16 @@ export interface IBoard  { id?: string; name: string; description?: string; }
 export interface IClass  { id?: string; name: string; code: string; }
 export interface IExam   { id?: string; name: string; year: number; }
 
+export interface ISubject {
+  id: string;
+  title: string;
+}
+
 export interface IStrand {
   id: string;
   title: string;
-  subject: string;
+  subject: string;    // legacy display string; kept for backward compat
+  subjectId: string;  // stable Subject.id
   weight?: number | null;
   kaSlug?: string;
   source?: string;
@@ -119,6 +125,7 @@ export interface ITopic {
   description?: string | null;
   unit: ObjectId;
   order: number;
+  recommendedGrades: number[];
   probingTree?: ProbingTree | null;
   practiceTests: ObjectId[];
   kaSlug?: string;

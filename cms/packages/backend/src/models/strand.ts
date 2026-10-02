@@ -2,12 +2,13 @@ import { Schema, model, Types } from 'mongoose';
 import type { IStrand } from '@prodigy/types';
 
 const strandSchema = new Schema<IStrand>({
-  id:      { type: String, required: true, unique: true },
-  title:   { type: String, required: true },
-  subject: { type: String, required: true },
-  weight:  { type: Number, default: null },
-  kaSlug:  { type: String, index: true, sparse: true },
-  source:  { type: String },
+  id:        { type: String, required: true, unique: true },
+  title:     { type: String, required: true },
+  subject:   { type: String, required: true },
+  subjectId: { type: String, default: null },
+  weight:    { type: Number, default: null },
+  kaSlug:    { type: String, index: true, sparse: true },
+  source:    { type: String },
 }, { collection: 'strands', id: false });
 
 strandSchema.pre('validate', function (next) {

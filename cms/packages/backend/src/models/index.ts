@@ -1,6 +1,7 @@
 export { Board } from './board.js';
 export { Class } from './class.js';
 export { Exam } from './exam.js';
+export { Subject } from './subject.js';
 export { Strand } from './strand.js';
 export { Unit } from './unit.js';
 export { Topic } from './topic.js';

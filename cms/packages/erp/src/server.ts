@@ -6,7 +6,8 @@ import { generateCode, hashCode, verifyCode } from './codes.js';
 import { Student }    from './models/student.js';
 import { User }       from './models/user.js';
 import { Classroom }  from './models/classroom.js';
-import { Enrollment } from './models/enrollment.js';
+import { Enrollment }      from './models/enrollment.js';
+import { ClassAssignment } from './models/class-assignment.js';
 
 // Verify Google sign-in with Firebase; initialize lazily.
 let firebaseAdmin: typeof import('firebase-admin') | null = null;
@@ -23,6 +24,28 @@ async function getFirebaseAdmin() {
 
 const app  = express();
 const PORT = Number(process.env.PORT ?? 32005);
+
+const LP_URL  = process.env['LP_URL']  ?? 'http://localhost:32002';
+const CMS_URL = process.env['CMS_URL'] ?? 'http://localhost:32001';
+const LP_SERVICE_SECRET = process.env['LP_SERVICE_SECRET'] ?? '';
+
+async function lpSyncClassAssignments(
+  studentId: string,
+  classroomId: string,
+  assignments: Array<{ subjectId: string; topicId: string }>,
+  revision: number,
+): Promise<void> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (LP_SERVICE_SECRET) headers['x-service-secret'] = LP_SERVICE_SECRET;
+  const res = await fetch(
+    `${LP_URL}/students/${encodeURIComponent(studentId)}/class-assignments/${encodeURIComponent(classroomId)}`,
+    { method: 'PUT', headers, body: JSON.stringify({ assignments, revision }), signal: AbortSignal.timeout(12000) }
+  );
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(`LP sync failed ${res.status}: ${msg}`);
+  }
+}
 
 app.use(express.json());
 
@@ -344,6 +367,129 @@ app.post('/classrooms/:id/reset-code', wrap(async (req, res) => {
   classroom.hashedClassCode = await hashCode(code);
   await classroom.save();
   return res.json({code});
+}));
+
+// ── Class topic assignments ────────────────────────────────────────────────────
+
+/**
+ * PUT /classrooms/:id/topics
+ * Replace all topic selections for a classroom; sync LP for every enrolled student.
+ * Body: { topics: Array<{ subjectId: string; topicId: string }> }
+ */
+app.put('/classrooms/:id/topics', wrap(async (req, res) => {
+  const auth = (req as any).accessIdentity;
+  if (!auth || auth.kind !== 'adult') return res.status(401).json({ error: 'Login required' });
+
+  const user = await User.findOne({ id: auth.subjectId }).lean();
+  if (!user) return res.status(401).json({ error: 'User not found' });
+
+  const classroom = await Classroom.findOne({ id: req.params.id }).lean();
+  if (!classroom) return res.status(404).json({ error: 'Classroom not found' });
+  if ((classroom as any).ownerUserId !== user.id) return res.status(403).json({ error: 'Not your classroom' });
+
+  const { topics } = req.body as { topics?: Array<{ subjectId: string; topicId: string }> };
+  if (!Array.isArray(topics)) return res.status(400).json({ error: 'topics must be an array' });
+
+  // Validate each topic exists in CMS and its subjectId is correct
+  const validated: Array<{ subjectId: string; topicId: string }> = [];
+  for (const t of topics) {
+    if (typeof t.subjectId !== 'string' || typeof t.topicId !== 'string') continue;
+    const cmsRes = await fetch(`${CMS_URL}/topics/${encodeURIComponent(t.topicId)}/subject`, { signal: AbortSignal.timeout(8000) });
+    if (!cmsRes.ok) return res.status(400).json({ error: `Topic '${t.topicId}' not found in curriculum` });
+    const { subjectId: cmsSubjectId } = await cmsRes.json() as { subjectId: string };
+    if (cmsSubjectId !== t.subjectId) {
+      return res.status(400).json({ error: `Topic '${t.topicId}' belongs to subject '${cmsSubjectId}', not '${t.subjectId}'` });
+    }
+    validated.push(t);
+  }
+
+  // Deduplicate by topicId
+  const unique = new Map(validated.map(t => [t.topicId, t]));
+  const deduped = Array.from(unique.values());
+
+  // Replace assignments atomically by inserting new records and deleting old ones
+  // Use a revision number based on timestamp for staleness protection in LP
+  const revision = Date.now();
+  const newIds: string[] = [];
+  for (const t of deduped) {
+    const doc = await ClassAssignment.findOneAndUpdate(
+      { classroomId: req.params.id, topicId: t.topicId },
+      { $set: { subjectId: t.subjectId, classroomId: req.params.id, topicId: t.topicId } },
+      { upsert: true, new: true }
+    );
+    newIds.push(t.topicId);
+  }
+  // Remove topics no longer selected
+  await ClassAssignment.deleteMany({ classroomId: req.params.id, topicId: { $nin: newIds } });
+
+  // Sync LP for every enrolled student (record per-enrollment status)
+  const enrollments = await Enrollment.find({ classroomId: req.params.id }).lean();
+  const syncResults = await Promise.allSettled(
+    enrollments.map(async (e: any) => {
+      await lpSyncClassAssignments(e.studentId, req.params.id, deduped, revision);
+      return e.studentId;
+    })
+  );
+
+  const failed = syncResults
+    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    .map(r => r.reason?.message ?? String(r.reason));
+
+  if (failed.length > 0) {
+    console.error(`[LP sync] classroom=${req.params.id} failures:`, failed);
+    return res.status(207).json({
+      classroomId: req.params.id,
+      topicCount: deduped.length,
+      status: 'partial',
+      failedCount: failed.length,
+      errors: failed,
+    });
+  }
+
+  res.json({ classroomId: req.params.id, topicCount: deduped.length, status: 'ready' });
+}));
+
+/**
+ * GET /students/:id/classes/:classId/topics
+ * Return topics assigned to a classroom, enriched with CMS titles.
+ * Caller must be the student themselves or the classroom owner.
+ */
+app.get('/students/:id/classes/:classId/topics', wrap(async (req, res) => {
+  const auth = (req as any).accessIdentity;
+  if (!auth) return res.status(401).json({ error: 'Login required' });
+
+  // Access check: student accessing their own data, or adult who owns the class
+  const classroomId = req.params.classId;
+  const studentId   = req.params.id;
+
+  const enrollment = await Enrollment.findOne({ classroomId, studentId }).lean();
+  if (!enrollment) return res.status(403).json({ error: 'Student not enrolled in this class' });
+
+  if (auth.kind === 'student' && auth.subjectId !== studentId) {
+    return res.status(403).json({ error: 'Not your profile' });
+  }
+  if (auth.kind === 'adult') {
+    const classroom = await Classroom.findOne({ id: classroomId }).lean();
+    const user = await User.findOne({ id: auth.subjectId }).lean();
+    const isOwner = classroom && user && (classroom as any).ownerUserId === user.id;
+    const isCreator = await Student.exists({ id: studentId, createdByUserId: auth.subjectId });
+    if (!isOwner && !isCreator) return res.status(403).json({ error: 'Not authorised to view this student\'s class' });
+  }
+
+  const assignments = await ClassAssignment.find({ classroomId }).lean();
+
+  const topics = await Promise.all(
+    assignments.map(async (a: any) => {
+      let title = a.topicId;
+      try {
+        const cmsRes = await fetch(`${CMS_URL}/admin/topics/${encodeURIComponent(a.topicId)}`, { signal: AbortSignal.timeout(5000) });
+        if (cmsRes.ok) { const t: any = await cmsRes.json(); title = t.title ?? a.topicId; }
+      } catch { /* best effort */ }
+      return { topicId: a.topicId, subjectId: a.subjectId, title };
+    })
+  );
+
+  res.json({ classroomId, studentId, topics });
 }));
 
 app.get('/concepts', wrap(async (_req, res) => {

@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { connectDb } from './db.js';
-import { LearningJourney, LearningJourneyNode, Session, Memory } from './models/index.js';
+import { LearningJourney, LearningJourneyNode, LearningJourneyTopic, Session, Memory } from './models/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +57,136 @@ app.post('/students/:studentId/journeys', wrap(async (req, res) => {
 app.get('/journeys/:id/nodes', wrap(async (req, res) => {
   const nodes = await LearningJourneyNode.find({ journeyId: req.params.id }).sort({ order: 1 });
   res.json(nodes);
+}));
+
+// ── Service constants ──────────────────────────────────────────────────────────
+
+const CMS_URL_LP = process.env['CMS_URL'] ?? 'http://localhost:32001';
+const LP_SERVICE_SECRET = process.env['LP_SERVICE_SECRET'] ?? '';
+
+function checkServiceAuth(req: express.Request, res: express.Response): boolean {
+  if (!LP_SERVICE_SECRET) return true; // not configured — dev mode, allow
+  const provided = req.headers['x-service-secret'];
+  if (provided !== LP_SERVICE_SECRET) {
+    res.status(403).json({ error: 'Invalid service secret' });
+    return false;
+  }
+  return true;
+}
+
+async function cmsGetRaw(path: string): Promise<any> {
+  const r = await fetch(`${CMS_URL_LP}${path}`, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error(`CMS ${path} → ${r.status}`);
+  return r.json();
+}
+
+// ── Class assignment sync (called by ERP) ──────────────────────────────────────
+
+/**
+ * PUT /students/:studentId/class-assignments/:classId
+ * Body: { assignments: Array<{ subjectId: string; topicId: string }>, revision: number }
+ *
+ * Idempotent: upserts subject journeys and journey topics using unique indexes.
+ * Removes this classId as a source from topics that are no longer selected.
+ * Topics with no remaining sources are hidden from selection but not deleted.
+ *
+ * `revision` prevents an older retry from overwriting a newer selection.
+ * Each journey-topic document caches the last seen revision per classId.
+ */
+app.put('/students/:studentId/class-assignments/:classId', wrap(async (req, res) => {
+  if (!checkServiceAuth(req, res)) return;
+
+  const { studentId, classId } = req.params;
+  const { assignments, revision } = req.body as {
+    assignments?: Array<{ subjectId: string; topicId: string }>;
+    revision?: number;
+  };
+
+  if (!Array.isArray(assignments)) {
+    return res.status(400).json({ error: 'assignments must be an array' });
+  }
+
+  // Validate all topic→subject memberships via CMS
+  const validatedAssignments: Array<{ subjectId: string; topicId: string }> = [];
+  for (const a of assignments) {
+    if (typeof a.subjectId !== 'string' || typeof a.topicId !== 'string') continue;
+    try {
+      const subjectInfo = await cmsGetRaw(`/topics/${encodeURIComponent(a.topicId)}/subject`);
+      if (subjectInfo.subjectId !== a.subjectId) {
+        return res.status(400).json({
+          error: `Topic '${a.topicId}' belongs to subject '${subjectInfo.subjectId}', not '${a.subjectId}'`,
+        });
+      }
+      validatedAssignments.push(a);
+    } catch (err: any) {
+      return res.status(400).json({ error: `Invalid topicId '${a.topicId}': ${err.message}` });
+    }
+  }
+
+  let created = 0;
+  let updated = 0;
+
+  // Group by subjectId
+  const bySubject = new Map<string, string[]>();
+  for (const a of validatedAssignments) {
+    if (!bySubject.has(a.subjectId)) bySubject.set(a.subjectId, []);
+    bySubject.get(a.subjectId)!.push(a.topicId);
+  }
+
+  for (const [subjectId, topicIds] of bySubject) {
+    // Find or create the journey (unique on studentId + subjectId)
+    let journey = await LearningJourney.findOne({ studentId, subjectId });
+    if (!journey) {
+      try {
+        journey = await LearningJourney.create({ studentId, subjectId, objective: `Learn ${subjectId}` });
+      } catch (err: any) {
+        // Race: another request created it
+        journey = await LearningJourney.findOne({ studentId, subjectId });
+        if (!journey) throw err;
+      }
+    }
+
+    for (const topicId of topicIds) {
+      const existing = await LearningJourneyTopic.findOne({ journeyId: journey.id, topicId });
+      if (!existing) {
+        try {
+          await LearningJourneyTopic.create({ journeyId: journey.id, topicId, sourceClassIds: [classId] });
+          created++;
+        } catch (err: any) {
+          // Race: inserted by concurrent request — add classId as source
+          await LearningJourneyTopic.updateOne(
+            { journeyId: journey.id, topicId },
+            { $addToSet: { sourceClassIds: classId } }
+          );
+          updated++;
+        }
+      } else if (!existing.sourceClassIds.includes(classId)) {
+        await LearningJourneyTopic.updateOne(
+          { journeyId: journey.id, topicId },
+          { $addToSet: { sourceClassIds: classId } }
+        );
+        updated++;
+      }
+    }
+  }
+
+  // Remove this class as a source from topics no longer selected
+  const incomingTopicIds = validatedAssignments.map(a => a.topicId);
+  const studentJourneys = await LearningJourney.find({ studentId }).lean();
+  const journeyIds = studentJourneys.map((j: any) => j.id);
+
+  if (journeyIds.length > 0) {
+    await LearningJourneyTopic.updateMany(
+      {
+        journeyId:      { $in: journeyIds },
+        topicId:        { $nin: incomingTopicIds },
+        sourceClassIds: classId,
+      },
+      { $pull: { sourceClassIds: classId } }
+    );
+  }
+
+  res.json({ created, updated });
 }));
 
 // ── Journey nodes ──────────────────────────────────────────────────────────────

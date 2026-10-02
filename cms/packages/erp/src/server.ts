@@ -183,21 +183,121 @@ app.patch('/me', wrap(async (req, res) => {
 // ── Students ──────────────────────────────────────────────────────────────────
 
 app.post('/students', wrap(async (req, res) => {
-  const uid = await resolveUserId(req);
-  if (!uid) return res.status(401).json({ error: 'Authorization required' });
+  const auth = (req as any).accessIdentity;
+  if (!auth || auth.kind !== 'adult') return res.status(401).json({ error: 'Login required' });
 
-  const user = await User.findOne({ firebaseUid: uid }).lean();
+  const user = await User.findOne({ id: auth.subjectId }).lean();
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const { name, age, grade } = req.body as { name?: string; age?: number; grade?: string };
+  const { name, age, grade, topics, setupContext, idempotencyKey } = req.body as {
+    name?: string; age?: number; grade?: string;
+    topics?: Array<{ subjectId: string; topicId: string }>;
+    setupContext?: 'parent' | 'teacher'; // 'parent' triggers personal class
+    idempotencyKey?: string;             // client-supplied key to make retries safe
+  };
   if (!name) return res.status(400).json({ error: 'name is required' });
+
+  // Idempotency: if key supplied, return existing student if one was already created with this key
+  // We store the idempotency key in the student doc to detect retries
+  if (idempotencyKey) {
+    const existing = await Student.findOne({ idempotencyKey, createdByUserId: user.id }).lean();
+    if (existing) {
+      // Return partial result — also ensure personal class and code are returned
+      const pClass = setupContext === 'parent'
+        ? await Classroom.findOne({ personalStudentId: existing.id, kind: 'personal' }).lean()
+        : null;
+      return res.json({
+        studentId: existing.id,
+        name: existing.name,
+        grade: existing.grade,
+        code: decryptCode(existing.encryptedCode),
+        personalClassId: (pClass as any)?.id ?? null,
+        resumed: true,
+      });
+    }
+  }
 
   const code       = generateCode();
   const hashedCode = await hashCode(code);
 
-  const student = await Student.create({ name, age, grade, hashedCode, encryptedCode: encryptCode(code), createdByUserId: user.id });
+  const studentData: Record<string, unknown> = {
+    name, age, grade, hashedCode, encryptedCode: encryptCode(code), createdByUserId: user.id,
+  };
+  if (idempotencyKey) studentData['idempotencyKey'] = idempotencyKey;
 
-  return res.status(201).json({ studentId: student.id, name: student.name, grade: student.grade, code });
+  const student = await Student.create(studentData);
+
+  let personalClassId: string | null = null;
+  let setupStatus: 'ready' | 'partial' = 'ready';
+
+  // Parent setup: create personal class and sync LP
+  if (setupContext === 'parent') {
+    try {
+      const pClass = await Classroom.create({
+        name:              `${student.name}'s Class`,
+        ownerUserId:       user.id,
+        kind:              'personal',
+        personalStudentId: student.id,
+        hashedClassCode:   null,
+      });
+      personalClassId = pClass.id;
+
+      await Enrollment.create({ classroomId: pClass.id, studentId: student.id });
+
+      // Use provided topics or grade-based defaults from CMS
+      let selectedTopics = Array.isArray(topics) ? topics : [];
+      if (selectedTopics.length === 0 && grade) {
+        const gradeNum = normaliseGradeNumber(grade);
+        if (gradeNum !== null) {
+          try {
+            const curriculum = await fetch(
+              `${CMS_URL}/curriculum?grade=${gradeNum}`,
+              { signal: AbortSignal.timeout(8000) }
+            ).then(r => r.json()) as any[];
+            // Take recommended topics from the first subject
+            for (const subj of curriculum) {
+              for (const strand of subj.strands ?? []) {
+                for (const unit of strand.units ?? []) {
+                  for (const topic of unit.topics ?? []) {
+                    if (topic.recommended && topic.id) {
+                      selectedTopics.push({ subjectId: subj.subjectId, topicId: topic.id });
+                    }
+                  }
+                }
+              }
+            }
+          } catch (err: any) {
+            console.error(`[parent-setup] CMS grade-default fetch failed: ${err.message}`);
+          }
+        }
+      }
+
+      if (selectedTopics.length > 0) {
+        for (const t of selectedTopics) {
+          await ClassAssignment.findOneAndUpdate(
+            { classroomId: pClass.id, topicId: t.topicId },
+            { $set: { subjectId: t.subjectId } },
+            { upsert: true }
+          );
+        }
+        lpSyncClassAssignments(student.id, pClass.id, selectedTopics, Date.now()).catch(err =>
+          console.error(`[LP sync] parent-setup student=${student.id}: ${err.message}`)
+        );
+      }
+    } catch (err: any) {
+      console.error(`[parent-setup] personal class creation failed: ${err.message}`);
+      setupStatus = 'partial';
+    }
+  }
+
+  return res.status(201).json({
+    studentId: student.id,
+    name: student.name,
+    grade: student.grade,
+    code,
+    personalClassId,
+    setupStatus,
+  });
 }));
 
 app.get('/students', wrap(async (req, res) => {
@@ -247,22 +347,51 @@ app.post('/students/:id/reset-code', wrap(async (req, res) => {
   return res.json({ code });
 }));
 
+// ── Grade normalisation ────────────────────────────────────────────────────────
+
+/** Normalise "Grade 7" / "7th Grade" / "7" / 7 to numeric 7, or null. */
+function normaliseGradeNumber(grade: string | number | undefined | null): number | null {
+  if (grade == null) return null;
+  const s = String(grade).replace(/[^0-9]/g, '');
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
 // ── Classrooms ────────────────────────────────────────────────────────────────
 
 app.post('/classrooms', wrap(async (req, res) => {
-  const uid = await resolveUserId(req);
-  if (!uid) return res.status(401).json({ error: 'Authorization required' });
+  const auth = (req as any).accessIdentity;
+  if (!auth || auth.kind !== 'adult') return res.status(401).json({ error: 'Login required' });
 
-  const user = await User.findOne({ firebaseUid: uid }).lean();
+  const user = await User.findOne({ id: auth.subjectId }).lean();
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const { name, subject, grade } = req.body as { name?: string; subject?: string; grade?: string };
+  const { name, subject, grade, topics } = req.body as {
+    name?: string; subject?: string; grade?: string;
+    topics?: Array<{ subjectId: string; topicId: string }>;
+  };
   if (!name) return res.status(400).json({ error: 'name is required' });
 
   const classCode        = generateCode();
   const hashedClassCode  = await hashCode(classCode);
 
-  const classroom = await Classroom.create({ name, subject, grade, ownerUserId: user.id, hashedClassCode });
+  const classroom = await Classroom.create({ name, subject, grade, ownerUserId: user.id, hashedClassCode, kind: 'teacher' });
+
+  // Optionally set initial topic selection
+  if (Array.isArray(topics) && topics.length > 0) {
+    const validated: Array<{ subjectId: string; topicId: string }> = [];
+    for (const t of topics) {
+      if (typeof t.subjectId !== 'string' || typeof t.topicId !== 'string') continue;
+      validated.push(t);
+    }
+    for (const t of validated) {
+      await ClassAssignment.findOneAndUpdate(
+        { classroomId: classroom.id, topicId: t.topicId },
+        { $set: { subjectId: t.subjectId } },
+        { upsert: true }
+      );
+    }
+  }
 
   return res.status(201).json({ classroomId: classroom.id, name: classroom.name, classCode });
 }));
@@ -312,12 +441,19 @@ app.post('/classrooms/join', wrap(async (req, res) => {
 
   // Idempotent join
   const existing = await Enrollment.findOne({ classroomId: matched.id, studentId });
-  if (existing) {
-    return res.json({ status: 'already_joined', classroomId: matched.id, name: matched.name });
+  const alreadyJoined = !!existing;
+  if (!alreadyJoined) {
+    await Enrollment.create({ classroomId: matched.id, studentId });
   }
 
-  await Enrollment.create({ classroomId: matched.id, studentId });
-  return res.json({ status: 'joined', classroomId: matched.id, name: matched.name });
+  // Always retry LP sync (handles previously failed syncs and new joins)
+  const assignments = await ClassAssignment.find({ classroomId: matched.id }).lean();
+  const payload = assignments.map((a: any) => ({ subjectId: a.subjectId, topicId: a.topicId }));
+  lpSyncClassAssignments(studentId, matched.id, payload, Date.now()).catch(err =>
+    console.error(`[LP sync] join student=${studentId} class=${matched.id}: ${err.message}`)
+  );
+
+  return res.json({ status: alreadyJoined ? 'already_joined' : 'joined', classroomId: matched.id, name: matched.name });
 }));
 
 app.get('/classrooms/:id/students', wrap(async (req, res) => {
@@ -345,16 +481,34 @@ app.get('/classrooms/:id/students', wrap(async (req, res) => {
 // ── Journey UI integration ────────────────────────────────────────────────────
 
 app.post('/classrooms/:id/students', wrap(async (req, res) => {
-  const uid = await resolveUserId(req);
-  const user = uid ? await User.findOne({ firebaseUid: uid }).lean() : null;
+  const auth = (req as any).accessIdentity;
+  if (!auth || auth.kind !== 'adult') return res.status(401).json({ error: 'Login required' });
+
+  const user = await User.findOne({ id: auth.subjectId }).lean();
   const classroom = await Classroom.findOne({ id: req.params.id, status: 'active' }).lean();
   if (!classroom) return res.status(404).json({ error: 'Classroom not found' });
-  if (!user || classroom.ownerUserId !== user.id) return res.status(403).json({ error: 'Not authorised' });
+  if (!user || (classroom as any).ownerUserId !== user.id) return res.status(403).json({ error: 'Not authorised' });
+
   const student = await Student.findOne({ id: req.body.studentId }).lean();
   if (!student) return res.status(404).json({ error: 'Student not found' });
-  if(student.createdByUserId!==user.id)return res.status(403).json({error:'Ask this student to join using the class invitation code.'});
-  await Enrollment.updateOne({classroomId:classroom.id,studentId:student.id}, {$setOnInsert:{joinedAt:new Date()}}, {upsert:true});
-  return res.json({status:'enrolled',classroomId:classroom.id,studentId:student.id});
+  if (student.createdByUserId !== user.id) {
+    return res.status(403).json({ error: 'Ask this student to join using the class invitation code.' });
+  }
+
+  await Enrollment.updateOne(
+    { classroomId: classroom.id, studentId: student.id },
+    { $setOnInsert: { joinedAt: new Date() } },
+    { upsert: true }
+  );
+
+  // Sync LP
+  const assignments = await ClassAssignment.find({ classroomId: classroom.id }).lean();
+  const payload = assignments.map((a: any) => ({ subjectId: a.subjectId, topicId: a.topicId }));
+  lpSyncClassAssignments(student.id, classroom.id, payload, Date.now()).catch(err =>
+    console.error(`[LP sync] direct-enroll student=${student.id} class=${classroom.id}: ${err.message}`)
+  );
+
+  return res.json({ status: 'enrolled', classroomId: classroom.id, studentId: student.id });
 }));
 
 app.post('/classrooms/:id/reset-code', wrap(async (req, res) => {

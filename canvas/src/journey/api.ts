@@ -3,7 +3,7 @@ export type Role = 'parent'|'teacher';
 export type Student = {token?:string;studentId:string;name:string;grade:string;age?:number};
 export type Adult = {token?:string;userId:string;name:string;email:string;roles:Role[]};
 export type Identity = ({type:'student'}&Student)|({type:'adult'}&Adult);
-export type Classroom = {id:string;name:string;subject:string;grade:string;createdByUserId:string;status:string};
+export type Classroom = {id:string;name:string;subject:string;grade:string;createdByUserId:string;status:string;kind?:'teacher'|'personal'};
 export type Concept = {id:string;title:string;description?:string};
 export type LessonSession = {sessionId:string;resumed:boolean;wsUrl:string;concept:{id:string;title:string}};
 export const preview = new URLSearchParams(location.search).get('preview')==='1';
@@ -20,13 +20,14 @@ export function rememberIdentity(identity:Identity|null,remember=false){
   localStorage.removeItem(identityKey);sessionStorage.removeItem(identityKey);
   if(identity)(remember?localStorage:sessionStorage).setItem(identityKey,JSON.stringify(identity));
 }
-function apiBase(service:'erp'|'agent'){
-  const configured=service==='erp'?import.meta.env.VITE_ERP_API_URL:import.meta.env.VITE_AGENT_API_URL;
+type Service='erp'|'agent'|'cms'|'learning';
+function apiBase(service:Service){
+  const configured={erp:import.meta.env.VITE_ERP_API_URL,agent:import.meta.env.VITE_AGENT_API_URL,cms:import.meta.env.VITE_CMS_API_URL,learning:import.meta.env.VITE_LEARNING_API_URL}[service];
   if(configured)return configured.replace(/\/$/,'');
   if(location.protocol==='https:')throw new Error('This service is not connected yet. Please try again once setup is complete.');
-  return `http://${location.hostname.includes(':')?'['+location.hostname+']':location.hostname}:${service==='erp'?32005:32004}`;
+  return `http://${location.hostname.includes(':')?'['+location.hostname+']':location.hostname}:${{erp:32005,agent:32004,cms:32001,learning:32002}[service]}`;
 }
-export async function request<T>(path:string,body?:unknown,service:'erp'|'agent'='erp'):Promise<T>{
+export async function request<T>(path:string,body?:unknown,service:Service='erp',method?:'PUT'|'POST'|'PATCH'):Promise<T>{
   if(preview)return demoRequest(path,body) as T;
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
   try{
@@ -38,7 +39,7 @@ export async function request<T>(path:string,body?:unknown,service:'erp'|'agent'
     }else {
       const identity=readIdentity();if(identity?.token)headers.Authorization=`Bearer ${identity.token}`;
     }
-    const response=await fetch(apiBase(service)+path,{method:body===undefined?'GET':path==='/me'?'PATCH':'POST',headers,body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});
+    const response=await fetch(apiBase(service)+path,{method:method??(body===undefined?'GET':path==='/me'?'PATCH':'POST'),headers,body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});
     const data=await response.json().catch(()=>({}));
     if(response.status===401&&path!=='/auth/student'&&path!=='/auth/google'){rememberIdentity(null);location.assign('/login');}
     if(!response.ok)throw new Error(data.error||'That did not work. Please try again.');

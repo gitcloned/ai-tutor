@@ -4,6 +4,13 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { connectDb } from './db.js';
 import { LearningJourney, LearningJourneyNode, LearningJourneyTopic, Session, Memory } from './models/index.js';
+import {
+  selectNextConcept,
+  isTerminalForConcept,
+  type ConceptSummary,
+  type NodeSummary,
+  type NextLearningResult,
+} from '@prodigy/progression';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -187,6 +194,278 @@ app.put('/students/:studentId/class-assignments/:classId', wrap(async (req, res)
   }
 
   res.json({ created, updated });
+}));
+
+// ── Student identity check ─────────────────────────────────────────────────────
+
+/**
+ * Verify that the caller may access this student's LP data.
+ * We call ERP /me with the caller's Authorization header and check that
+ * the returned studentId matches. Adults (teachers/parents) who manage
+ * the student are accepted if ERP confirms their identity.
+ */
+const ERP_URL_LP = process.env['ERP_URL'] ?? 'http://localhost:32005';
+
+async function verifyStudentAccess(req: express.Request, studentId: string): Promise<boolean> {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) return false;
+  try {
+    const r = await fetch(
+      `${ERP_URL_LP}/me?studentId=${encodeURIComponent(studentId)}`,
+      { headers: { authorization: authHeader }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) return false;
+    const body: any = await r.json();
+    // ERP returns { type:'student', studentId } or { type:'user', ... }
+    // A student may only access their own data; an adult may access any student they manage
+    if (body.type === 'student') return body.studentId === studentId;
+    if (body.type === 'user') return true; // ERP already verified they manage this student via the ?studentId query
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// ── CMS helpers ────────────────────────────────────────────────────────────────
+
+async function cmsGetConcepts(topicId: string): Promise<ConceptSummary[]> {
+  const r = await fetch(`${CMS_URL_LP}/topics/${encodeURIComponent(topicId)}/concepts`, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error(`CMS concepts for topic '${topicId}' → ${r.status}`);
+  const docs: any[] = await r.json();
+  return docs.map((d: any) => ({
+    id:              d.id,
+    order:           d.order ?? 0,
+    supportedPhases: Array.isArray(d.supportedPhases) ? d.supportedPhases : [],
+    tieBreakId:      d.id,
+  }));
+}
+
+async function cmsGetTopicTitle(topicId: string): Promise<string> {
+  try {
+    const r = await fetch(`${CMS_URL_LP}/admin/topics/${encodeURIComponent(topicId)}`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return topicId;
+    const d: any = await r.json();
+    return d.title ?? topicId;
+  } catch { return topicId; }
+}
+
+// ── LP Home ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /students/:studentId/home
+ *
+ * Returns:
+ * - subjects: journeys with their assigned topics and per-topic status
+ * - continueWith: the suggested next concept (from most recently active topic)
+ */
+app.get('/students/:studentId/home', wrap(async (req, res) => {
+  const { studentId } = req.params;
+
+  if (!await verifyStudentAccess(req, studentId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const journeys = await LearningJourney.find({ studentId }).lean();
+  if (journeys.length === 0) {
+    return res.json({ subjects: [], continueWith: null });
+  }
+
+  const journeyIds = journeys.map((j: any) => j.id);
+
+  // Load all nodes and journey topics in one pass
+  const allNodes: any[] = await LearningJourneyNode.find({ journeyId: { $in: journeyIds } }).lean();
+  const allNodesByConceptId = new Map<string, any>(allNodes.map(n => [n.conceptId, n]));
+  const allNodeSummaries: NodeSummary[] = allNodes.map(n => ({
+    conceptId:     n.conceptId,
+    topicId:       n.topicId ?? null,
+    state:         n.state,
+    lastActivity:  n.lastActivity ?? null,
+    cameFrom:      n.cameFrom ?? null,
+    preReqToLearn: n.preReqToLearn ?? null,
+  }));
+
+  // For each journey, load assigned topics and compute status
+  const subjects = await Promise.all(
+    journeys.map(async (journey: any) => {
+      const jTopics: any[] = await LearningJourneyTopic.find({ journeyId: journey.id }).sort({ assignedAt: 1 }).lean();
+      // Only show topics with at least one source class
+      const activeTopics = jTopics.filter((jt: any) => jt.sourceClassIds.length > 0);
+
+      const topicsWithStatus = await Promise.all(
+        activeTopics.map(async (jt: any) => {
+          let status: 'not_started' | 'in_progress' | 'completed' | 'unavailable' = 'not_started';
+          let conceptCount = 0;
+          try {
+            const concepts = await cmsGetConcepts(jt.topicId);
+            conceptCount = concepts.length;
+            if (concepts.length === 0) {
+              status = 'unavailable';
+            } else {
+              const nodeMap = new Map<string, NodeSummary>(
+                concepts
+                  .map(c => allNodesByConceptId.get(c.id))
+                  .filter(Boolean)
+                  .map(n => [n.conceptId, {
+                    conceptId: n.conceptId, topicId: n.topicId, state: n.state,
+                    lastActivity: n.lastActivity, cameFrom: n.cameFrom, preReqToLearn: n.preReqToLearn,
+                  }])
+              );
+              const allDone = concepts.every(c => isTerminalForConcept(nodeMap.get(c.id)?.state, c.supportedPhases));
+              const anyStarted = concepts.some(c => nodeMap.has(c.id) && nodeMap.get(c.id)!.state !== 'not_assessed');
+              status = allDone ? 'completed' : anyStarted ? 'in_progress' : 'not_started';
+            }
+          } catch {
+            status = 'unavailable';
+          }
+          return {
+            topicId:        jt.topicId,
+            sourceClassIds: jt.sourceClassIds,
+            assignedAt:     jt.assignedAt,
+            status,
+            conceptCount,
+          };
+        })
+      );
+
+      return {
+        subjectId: journey.subjectId,
+        journeyId: journey.id,
+        topics:    topicsWithStatus,
+      };
+    })
+  );
+
+  // Determine continueWith: most recently active unfinished topic across all active assignments
+  // Find the node with the most recent lastActivity
+  const allActiveTopicIds = new Set(
+    subjects.flatMap(s => s.topics.filter(t => t.status === 'in_progress').map(t => t.topicId))
+  );
+
+  let continueWith: any = null;
+  let bestActivity: number = 0;
+
+  for (const node of allNodes) {
+    if (!node.lastActivity) continue;
+    const activity = new Date(node.lastActivity).getTime();
+    if (activity <= bestActivity) continue;
+
+    // Node must belong to an active assigned topic
+    const nodeTopic = node.topicId;
+    if (!nodeTopic || !allActiveTopicIds.has(nodeTopic)) continue;
+
+    // Node must not be terminal
+    const nodeMap = allNodesByConceptId;
+    const concepts = await cmsGetConcepts(nodeTopic).catch(() => []);
+    const conceptDef = concepts.find(c => c.id === node.conceptId);
+    if (!conceptDef) continue;
+    if (isTerminalForConcept(node.state, conceptDef.supportedPhases)) continue;
+
+    // Find a started session for this node
+    const session = await Session.findOne({ studentId, journeyNodeId: node.id, status: 'started' })
+      .sort({ createdAt: -1 }).lean();
+
+    bestActivity = activity;
+    continueWith = {
+      topicId:         nodeTopic,
+      conceptId:       node.conceptId,
+      state:           node.state,
+      resumeSessionId: session ? (session as any).id : null,
+    };
+  }
+
+  res.json({ subjects, continueWith });
+}));
+
+// ── LP topic-next ─────────────────────────────────────────────────────────────
+
+/**
+ * GET /students/:studentId/topics/:topicId/next
+ *
+ * Returns NextLearning:
+ *   { status: 'continue', topicId, conceptId, state, resumeSessionId }
+ *   { status: 'completed' }
+ *   { status: 'unavailable', reason }
+ *
+ * GET only — never creates nodes, sessions, or state transitions.
+ */
+app.get('/students/:studentId/topics/:topicId/next', wrap(async (req, res) => {
+  const { studentId, topicId } = req.params;
+
+  if (!await verifyStudentAccess(req, studentId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Verify topic is actively assigned to this student
+  const journeys = await LearningJourney.find({ studentId }).lean();
+  const journeyIds = journeys.map((j: any) => j.id);
+  const jt = await LearningJourneyTopic.findOne({
+    journeyId:      { $in: journeyIds },
+    topicId,
+    sourceClassIds: { $not: { $size: 0 } },
+  }).lean();
+  if (!jt) return res.status(403).json({ error: 'Topic not assigned to this student' });
+
+  // Get concepts from CMS
+  let concepts: ConceptSummary[];
+  try {
+    concepts = await cmsGetConcepts(topicId);
+  } catch (err: any) {
+    return res.status(502).json({ error: `Curriculum unavailable: ${err.message}` });
+  }
+
+  if (concepts.length === 0) {
+    return res.json({ status: 'unavailable', reason: 'Topic has no concepts' });
+  }
+
+  const conceptIds = concepts.map(c => c.id);
+
+  // Load all journey nodes for this student
+  const allNodes: any[] = await LearningJourneyNode.find({ journeyId: { $in: journeyIds } }).lean();
+  const allNodeSummaries: NodeSummary[] = allNodes.map(n => ({
+    conceptId:     n.conceptId,
+    topicId:       n.topicId ?? null,
+    state:         n.state,
+    lastActivity:  n.lastActivity ?? null,
+    cameFrom:      n.cameFrom ?? null,
+    preReqToLearn: n.preReqToLearn ?? null,
+  }));
+
+  const nodeByConceptId = new Map<string, NodeSummary>(
+    allNodeSummaries
+      .filter(n => conceptIds.includes(n.conceptId))
+      .map(n => [n.conceptId, n])
+  );
+
+  const result: NextLearningResult = selectNextConcept(
+    topicId,
+    concepts,
+    nodeByConceptId,
+    allNodeSummaries,
+  );
+
+  if (result.status !== 'continue') {
+    return res.json(result);
+  }
+
+  // Find a 'started' session for the chosen concept node
+  const chosenNode = allNodes.find(n => n.conceptId === result.conceptId);
+  let resumeSessionId: string | null = null;
+  if (chosenNode) {
+    const session = await Session.findOne({
+      studentId,
+      journeyNodeId: chosenNode.id,
+      status:        'started',
+    }).sort({ createdAt: -1 }).lean();
+    if (session) resumeSessionId = (session as any).id;
+  }
+
+  res.json({
+    status:          'continue',
+    topicId:         result.originTopicId,
+    conceptId:       result.conceptId,
+    state:           result.state,
+    resumeSessionId,
+  });
 }));
 
 // ── Journey nodes ──────────────────────────────────────────────────────────────

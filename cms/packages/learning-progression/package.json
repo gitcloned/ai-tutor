@@ -10,7 +10,8 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@prodigy/types": "workspace:*",
+    "@prodigy/types":       "workspace:*",
+    "@prodigy/progression": "workspace:*",
     "express": "^4.19.2",
     "mongoose": "^8.5.0"
   },

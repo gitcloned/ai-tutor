@@ -116,6 +116,9 @@ importers:
 
   packages/learning-progression:
     dependencies:
+      '@prodigy/progression':
+        specifier: workspace:*
+        version: link:../progression
       '@prodigy/types':
         specifier: workspace:*
         version: link:../types
@@ -135,6 +138,19 @@ importers:
       tsx:
         specifier: ^4.16.0
         version: 4.23.13
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  packages/progression:
+    dependencies:
+      '@prodigy/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

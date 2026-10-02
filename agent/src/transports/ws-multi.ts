@@ -106,7 +106,9 @@ export class MultiSessionServer {
       if (req.method === 'POST' && req.url === '/sessions') {
         try {
           const body = await readBody(req);
-          const { studentId, conceptId } = JSON.parse(body) as { studentId?: string; conceptId?: string };
+          const { studentId, conceptId, topicId, resumeSessionId } = JSON.parse(body) as {
+            studentId?: string; conceptId?: string; topicId?: string; resumeSessionId?: string;
+          };
           if (!studentId || !conceptId) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'studentId and conceptId are required' }));
@@ -114,7 +116,7 @@ export class MultiSessionServer {
           }
 
           await authenticate(req,studentId);
-          const result  = await sm.create(studentId, conceptId);
+          const result  = await sm.create({ studentId, conceptId, topicId, resumeSessionId });
           const ticket=randomBytes(24).toString('base64url');access.set(result.sessionId,{studentId,ticket});
           const agent   = sm.getAgent(result.sessionId);
           res.writeHead(201, { 'Content-Type': 'application/json' });

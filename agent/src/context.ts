@@ -38,7 +38,12 @@ export interface AgentContext {
  *   • learn_pre_req_before
  *     → the node is paused waiting for a prereq; redirect to that prereq's node.
  */
-export async function buildContext(studentId: string, conceptId: string, journeyNodeId: string): Promise<AgentContext> {
+export async function buildContext(
+  studentId:      string,
+  conceptId:      string,
+  journeyNodeId:  string,
+  originTopicId?: string | null,
+): Promise<AgentContext> {
   const [concept, journeyNode, memories] = await Promise.all([
     cms.get<Concept>(`/concepts/${conceptId}`),
     lp.get<JourneyNode>(`/journey-nodes/${journeyNodeId}`),
@@ -52,7 +57,7 @@ export async function buildContext(studentId: string, conceptId: string, journey
     );
     const prereqNode = prereqNodes[0];
     if (prereqNode) {
-      return buildContext(studentId, journeyNode.preReqToLearn, prereqNode.id);
+      return buildContext(studentId, journeyNode.preReqToLearn, prereqNode.id, originTopicId);
     }
     // prereq node missing — fall through and start fresh for current concept
   }
@@ -64,7 +69,7 @@ export async function buildContext(studentId: string, conceptId: string, journey
     );
     const { plan, models } = buildConceptPlan(concept, journeyNode.state);
     const modelPrompt = buildModelPrompt(models);
-    const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
+    const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state, undefined, originTopicId);
     if (session.planHistory.length === 0) {
       session.planHistory.push({ conceptId: concept.id, conceptTitle: concept.title, plan, startedAt: new Date().toISOString() });
     }
@@ -95,14 +100,14 @@ export async function buildContext(studentId: string, conceptId: string, journey
         await lp.patch(`/journey-nodes/${nextNode.id}`, move.updateToNextNode);
         Object.assign(nextNode, move.updateToNextNode);
       }
-      return buildContext(studentId, move.nextConceptId, nextNode.id);
+      return buildContext(studentId, move.nextConceptId, nextNode.id, originTopicId);
     }
   }
 
   // advance-state: node state already updated above; create fresh session for new phase
   const { plan, models } = buildConceptPlan(concept, journeyNode.state);
   const modelPrompt = buildModelPrompt(models);
-  const session = await createSession(studentId, conceptId, journeyNodeId, journeyNode.state);
+  const session = await createSession(studentId, conceptId, journeyNodeId, journeyNode.state, undefined, originTopicId);
   session.planHistory.push({ conceptId: concept.id, conceptTitle: concept.title, plan, startedAt: new Date().toISOString() });
   const practice = await loadPractice(journeyNode.state, concept.id, session);
 
@@ -128,12 +133,17 @@ async function loadPractice(state: ConceptState, conceptId: string, session: Ses
 }
 
 export async function createSession(
-  studentId: string, conceptId: string, journeyNodeId: string, state: ConceptState,
+  studentId:              string,
+  conceptId:              string,
+  journeyNodeId:          string,
+  state:                  ConceptState,
   observationToStartWith?: string,
+  originTopicId?:          string | null,
 ): Promise<Session> {
   const now = new Date().toISOString();
   return lp.post<Session>('/sessions', {
     ...(observationToStartWith ? { observationToStartWith } : {}),
+    ...(originTopicId         ? { originTopicId }          : {}),
     studentId, conceptId, journeyNodeId,
     status: 'initialised', conceptStateAtStart: state, conceptStateAtEnd: null,
     teachingPlan: { content: '', createdAt: now, updatedAt: now },

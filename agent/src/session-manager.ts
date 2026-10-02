@@ -27,39 +27,83 @@ interface ActiveSession {
   resumed: boolean;
 }
 
+export interface CreateSessionOptions {
+  studentId:        string;
+  conceptId:        string;
+  /** Topic that initiated this session — used to resolve the correct subject journey. */
+  topicId?:         string;
+  /** If provided and still active, reuse the existing session without creating a new one. */
+  resumeSessionId?: string;
+  /** Override node state (local testing only). */
+  forceState?:      string;
+}
+
 export class SessionManager {
   private sessions = new Map<string, ActiveSession>();
 
   /**
    * Create or resume a session for this student + concept.
-   * Pass `forceState` to override the journey node state (useful for local testing).
+   *
+   * Resolves the correct subject journey via `topicId` (provided or derived from
+   * the concept's CMS topic link). No fallback to journeys[0]; missing subject
+   * links produce a clear error.
    */
-  async create(studentId: string, conceptId: string, forceState?: string): Promise<{ sessionId: string; resumed: boolean }> {
+  async create(opts: CreateSessionOptions): Promise<{ sessionId: string; resumed: boolean }> {
+    const { studentId, conceptId, topicId, resumeSessionId, forceState } = opts;
+
+    // Reuse an existing in-memory session without spawning a second agent.
+    if (resumeSessionId && this.sessions.has(resumeSessionId)) {
+      const existing = this.sessions.get(resumeSessionId)!;
+      return { sessionId: resumeSessionId, resumed: existing.resumed };
+    }
+
+    // ── Resolve topicId and subjectId ────────────────────────────────────────
+    // Fetch the concept early — needed for goTo and topic derivation.
+    const concept = await cms.get<Concept>(`/concepts/${conceptId}`);
+
+    let resolvedTopicId: string | null = topicId ?? concept.topic ?? null;
+
+    let subjectId: string | null = null;
+    if (resolvedTopicId) {
+      const subjectInfo = await cms.get<{ subjectId: string }>(`/topics/${resolvedTopicId}/subject`)
+        .catch((err: unknown) => { throw new Error(`Cannot resolve subject for topic '${resolvedTopicId}': ${err}`); });
+      subjectId = subjectInfo.subjectId;
+    }
+
+    if (!subjectId) {
+      throw new Error(
+        `Cannot determine subject for concept '${conceptId}' — concept has no CMS topic link. ` +
+        `Pass topicId in the request or ensure the concept's topic field is set in CMS.`,
+      );
+    }
+
+    // ── Find or create subject journey ───────────────────────────────────────
     const journeys = await lp.get<Journey[]>(`/students/${studentId}/journeys`);
-    let journey = journeys[0];
+    let journey = journeys.find(j => j.subjectId === subjectId) ?? null;
     if (!journey) {
       journey = await lp.post<Journey>(`/students/${studentId}/journeys`, {
-        objective: 'Learn mathematics',
+        objective: 'Learn subject',
+        subjectId,
       });
     }
 
+    // ── Find or create journey node ──────────────────────────────────────────
     const nodes = await lp.get<JourneyNode[]>(
       `/journey-nodes?journeyId=${journey.id}&conceptId=${conceptId}`,
     );
     let node = nodes[0];
     if (!node) {
-      const concept = await cms.get<Concept>(`/concepts/${conceptId}`);
       const goTo = concept.nextConcepts?.[0] ?? null;
-
       node = await lp.post<JourneyNode>('/journey-nodes', {
-        journeyId:    journey.id,
+        journeyId:     journey.id,
         conceptId,
-        order:        1,
-        state:        forceState ?? CS.NOT_ASSESSED,
-        masteryLevel: null,
+        order:         1,
+        state:         forceState ?? CS.NOT_ASSESSED,
+        masteryLevel:  null,
         goTo,
-        cameFrom:     null,
+        cameFrom:      null,
         preReqToLearn: null,
+        topicId:       resolvedTopicId,
       });
     } else if (forceState && node.state !== forceState) {
       // Override existing node state for testing — patch LP and update local copy
@@ -67,7 +111,7 @@ export class SessionManager {
       node.state = forceState as JourneyNode['state'];
     }
 
-    const agent   = await newAgent(studentId, conceptId, node.id);
+    const agent   = await newAgent(studentId, conceptId, node.id, resolvedTopicId);
     const resumed = agent.ctx.session.history.length > 0;
 
     this.sessions.set(agent.ctx.session.id, { agent, resumed });
@@ -155,14 +199,17 @@ export class SessionManager {
     const { ctx } = active.agent;
 
     if (ctx.session.status !== 'initialised') {
+      // Preserve 'completed' set by the agent (e.g. returnToOrigin on prereq finish).
+      // On disconnect save unfinished sessions as 'started' so resume can find them.
+      const statusToSave = ctx.session.status === 'completed' ? 'completed' : 'started';
       await lp.patch<Session>(`/sessions/${ctx.session.id}`, {
-        status:       'completed',
+        status:       statusToSave,
         history:      ctx.session.history,
         rawHistory:   ctx.session.rawHistory,
         systemPrompt: ctx.session.systemPrompt,
         planHistory:  ctx.session.planHistory,
         teachingPlan: ctx.session.teachingPlan,
-        endedAt:      new Date().toISOString(),
+        ...(statusToSave === 'completed' ? { endedAt: new Date().toISOString() } : {}),
       });
     }
 

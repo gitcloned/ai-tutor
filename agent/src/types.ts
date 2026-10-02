@@ -69,6 +69,8 @@ export interface Concept {
   supportedPhases?: string[];
   probingTree?:    ProbingTree | null;
   lessonPlan?:     LessonStep[];
+  /** Raw CMS topic ID this concept belongs to. Used for subject derivation. */
+  topic?:          string | null;
 }
 
 export type PlanStepType = 'probe' | 'teach' | 'redirect' | 'inline' | 'store_memory' | 'resource' | 'practice' | 'step';
@@ -116,9 +118,16 @@ export interface Session {
   resumeFromStep?:     string | null;
   /** Per-question outcomes recorded during a practice exercise. */
   questionProgress?:   QuestionResult[];
+  /** Topic that initiated this session (preserved across prereq hops). */
+  originTopicId?:      string | null;
 }
 
-export interface Journey { id: string; studentId: string; objective: string; }
+export interface Journey {
+  id:         string;
+  studentId:  string;
+  objective:  string;
+  subjectId?: string | null;
+}
 
 export interface JourneyNode {
   id:            string;
@@ -128,5 +137,7 @@ export interface JourneyNode {
   goTo?:         string | null;
   cameFrom?:     string | null;
   preReqToLearn?: string | null;
+  /** CMS topic this node belongs to. */
+  topicId?:      string | null;
 }
 export interface Memory      { id: string; type: 'factual' | 'reflected'; content: string; }

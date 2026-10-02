@@ -76,10 +76,10 @@ export async function redirectToPrereq(
     await lp.patch(`/sessions/${ctx.session.id}`, { resumeFromStep: resumeStep });
   }
 
-  // Create a new session for the prereq.
-  // Routing back to origin is via the prereq node's cameFrom field — no cameFromSession needed.
+  // Create a new session for the prereq, preserving originTopicId across hops.
   const prereqSession = await createSession(
     ctx.session.studentId, prereqConceptId, prereqNode.id, prereqNodeState, observation,
+    ctx.session.originTopicId,
   );
 
   // Seed planHistory and teachingPlan on the prereq session

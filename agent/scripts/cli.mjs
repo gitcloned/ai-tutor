@@ -56,7 +56,7 @@ const sm = new SessionManager();
 
 // ── Create or resume session ──────────────────────────────────────────────────
 
-const { sessionId, resumed } = await sm.create(studentId, conceptId, forceState);
+const { sessionId, resumed } = await sm.create({ studentId, conceptId, forceState });
 const agent = sm.getAgent(sessionId);
 
 const conceptTitle = agent?.ctx?.concept?.title ?? conceptId;

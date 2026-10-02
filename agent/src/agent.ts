@@ -26,8 +26,8 @@ const engine = new TurnEngine(tools, basePrompt);
 
 // ── Public interface ───────────────────────────────────────────────────────────
 
-export async function newAgent(studentId: string, conceptId: string, journeyNodeId: string) {
-  const ctx = await buildContext(studentId, conceptId, journeyNodeId);
+export async function newAgent(studentId: string, conceptId: string, journeyNodeId: string, originTopicId?: string | null) {
+  const ctx = await buildContext(studentId, conceptId, journeyNodeId, originTopicId);
 
   // Ensure rawHistory array exists (for sessions created before this field was added).
   if (!ctx.session.rawHistory) ctx.session.rawHistory = [];

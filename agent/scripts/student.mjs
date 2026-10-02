@@ -5,14 +5,18 @@
  * Commands:
  *   node student.mjs list
  *   node student.mjs details --student <id>
- *   node student.mjs flushAll --student <id>
+ *   node student.mjs flushAll --student <id>   LP data only
+ *   node student.mjs delete --student <id>     ERP + LP
+ *   node student.mjs deleteAll                 ERP + LP for every student
+ *   node student.mjs flushOthers --keep <id>   LP only, keep one
  *
  * Env:
  *   LP_URL   (default: http://localhost:32002)
- *   CMS_URL  (default: http://localhost:32001)
+ *   ERP_URL  (default: http://localhost:32003)
  */
 
 const LP  = process.env.LP_URL  ?? 'http://localhost:32002';
+const ERP = process.env.ERP_URL ?? 'http://localhost:32005';
 
 const args   = process.argv.slice(2);
 const cmd    = args[0];
@@ -48,6 +52,18 @@ async function get(path) {
 async function del(path) {
   const r = await fetch(`${LP}${path}`, { method: 'DELETE' });
   if (!r.ok) throw new Error(`DELETE ${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function erpGet(path) {
+  const r = await fetch(`${ERP}${path}`);
+  if (!r.ok) throw new Error(`GET ${ERP}${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function erpDel(path) {
+  const r = await fetch(`${ERP}${path}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`DELETE ${ERP}${path} → ${r.status} ${r.statusText}`);
   return r.json();
 }
 
@@ -273,17 +289,164 @@ async function cmdFlushAll() {
   console.log();
 }
 
+async function cmdFlushOthers() {
+  const keepId = flag('keep');
+  if (!keepId) { console.error(c.red('  --keep <id> required')); process.exit(1); }
+
+  let students;
+  try {
+    students = await get('/students');
+  } catch (e) {
+    console.error(c.red(`Cannot reach LP at ${LP}: ${e.message}`));
+    process.exit(1);
+  }
+
+  const targets = students.filter(s => s.studentId !== keepId);
+  if (targets.length === 0) {
+    console.log(`\n  ${c.dim('No other students to delete.')}\n`);
+    return;
+  }
+
+  console.log();
+  console.log(`  Keeping: ${c.cyan(keepId)}`);
+  console.log(`  Deleting ${targets.length} other student(s):`);
+  for (const s of targets) console.log(`    ${c.dim(s.studentId)}`);
+  console.log();
+
+  let total = { journeys: 0, nodes: 0, journeyTopics: 0, sessions: 0, memories: 0 };
+  for (const s of targets) {
+    try {
+      const result = await del(`/students/${s.studentId}/all`);
+      const d = result.deleted;
+      total.journeys      += d.journeys      ?? 0;
+      total.nodes         += d.nodes         ?? 0;
+      total.journeyTopics += d.journeyTopics ?? 0;
+      total.sessions      += d.sessions      ?? 0;
+      total.memories      += d.memories      ?? 0;
+      console.log(`  ${c.green('✓')} ${s.studentId}`);
+    } catch (e) {
+      console.error(`  ${c.red('✗')} ${s.studentId}  ${c.dim(e.message)}`);
+    }
+  }
+
+  console.log();
+  console.log(
+    `  ${c.green('Total deleted:')}  ` +
+    `${plural(total.journeys, 'journey')}  ` +
+    `${plural(total.nodes, 'node')}  ` +
+    `${plural(total.sessions, 'session')}  ` +
+    `${plural(total.memories, 'memory')}`,
+  );
+  console.log();
+}
+
+/** Delete one student from ERP + LP via ERP's DELETE /students/:id */
+async function cmdDelete() {
+  const studentId = flag('student');
+  if (!studentId) { console.error(c.red('  --student <id> required')); process.exit(1); }
+
+  console.log();
+  console.log(`  Deleting student ${c.cyan(studentId)} from ERP + LP...`);
+
+  let result;
+  try {
+    result = await erpDel(`/students/${studentId}`);
+  } catch (e) {
+    console.error(c.red(`  Error: ${e.message}`));
+    process.exit(1);
+  }
+
+  const d = result.deleted;
+  console.log(`  ${c.green('ERP:')}  enrollments=${d.enrollments}  assignments=${d.assignments}  personalClassrooms=${d.personalClassrooms}`);
+  if (d.lp) {
+    const lp = d.lp;
+    console.log(`  ${c.green('LP:')}   journeys=${lp.journeys}  nodes=${lp.nodes}  sessions=${lp.sessions}  memories=${lp.memories}`);
+  }
+  console.log(`  ${c.green('Done.')}`);
+  console.log();
+}
+
+/** Delete every student from ERP + LP */
+async function cmdDeleteAll() {
+  // Fetch student list from LP (doesn't need auth)
+  let students;
+  try {
+    students = await get('/students');
+  } catch (e) {
+    console.error(c.red(`Cannot reach LP at ${LP}: ${e.message}`));
+    process.exit(1);
+  }
+
+  if (students.length === 0) {
+    console.log(`\n  ${c.dim('No students found.')}\n`);
+    return;
+  }
+
+  console.log();
+  console.log(`  Deleting ${c.bold(String(students.length))} student(s) from ERP + LP:`);
+  for (const s of students) console.log(`    ${c.dim(s.studentId)}`);
+  console.log();
+
+  let erp = { enrollments: 0, assignments: 0, personalClassrooms: 0 };
+  let lp  = { journeys: 0, nodes: 0, journeyTopics: 0, sessions: 0, memories: 0 };
+
+  for (const s of students) {
+    try {
+      let erpR, lpR;
+      // Try ERP delete (covers ERP + LP). If student not in ERP, fall back to LP flush.
+      const erpRes = await fetch(`${ERP}/students/${s.studentId}`, { method: 'DELETE' });
+      if (erpRes.ok) {
+        const d = (await erpRes.json()).deleted;
+        erp.enrollments        += d.enrollments        ?? 0;
+        erp.assignments        += d.assignments        ?? 0;
+        erp.personalClassrooms += d.personalClassrooms ?? 0;
+        if (d.lp) {
+          lp.journeys      += d.lp.journeys      ?? 0;
+          lp.nodes         += d.lp.nodes         ?? 0;
+          lp.journeyTopics += d.lp.journeyTopics ?? 0;
+          lp.sessions      += d.lp.sessions      ?? 0;
+          lp.memories      += d.lp.memories      ?? 0;
+        }
+      } else if (erpRes.status === 404) {
+        // LP-only student — flush LP directly
+        const lpRes = await fetch(`${LP}/students/${s.studentId}/all`, { method: 'DELETE' });
+        if (lpRes.ok) {
+          const d = (await lpRes.json()).deleted;
+          lp.journeys      += d.journeys      ?? 0;
+          lp.nodes         += d.nodes         ?? 0;
+          lp.journeyTopics += d.journeyTopics ?? 0;
+          lp.sessions      += d.sessions      ?? 0;
+          lp.memories      += d.memories      ?? 0;
+        }
+      } else {
+        throw new Error(`ERP ${erpRes.status} ${erpRes.statusText}`);
+      }
+      console.log(`  ${c.green('✓')} ${s.studentId}`);
+    } catch (e) {
+      console.error(`  ${c.red('✗')} ${s.studentId}  ${c.dim(e.message)}`);
+    }
+  }
+
+  console.log();
+  console.log(`  ${c.green('ERP total:')}  enrollments=${erp.enrollments}  assignments=${erp.assignments}  personalClassrooms=${erp.personalClassrooms}`);
+  console.log(`  ${c.green('LP total:')}   journeys=${lp.journeys}  nodes=${lp.nodes}  sessions=${lp.sessions}  memories=${lp.memories}`);
+  console.log();
+}
+
 function usage() {
   console.log(`
   Usage:
     node student.mjs list
     node student.mjs details         --student <id>
     node student.mjs session-details --session <id>
-    node student.mjs flushAll        --student <id>
+    node student.mjs flushAll        --student <id>   (LP only)
+    node student.mjs flushOthers     --keep <id>      (LP only)
+    node student.mjs delete          --student <id>   (ERP + LP)
+    node student.mjs deleteAll                        (ERP + LP, all students)
 
   Env:
     LP_URL   (default: http://localhost:32002)
-    CMS_URL  (default: http://localhost:32001)
+    ERP_URL  (default: http://localhost:32005)
   `);
   process.exit(0);
 }
@@ -292,11 +455,14 @@ function usage() {
 
 try {
   switch (cmd) {
-    case 'list':           await cmdList();           break;
-    case 'details':        await cmdDetails();        break;
-    case 'session-details': await cmdSessionDetails(); break;
-    case 'flushAll':       await cmdFlushAll();       break;
-    default:               usage();
+    case 'list':            await cmdList();            break;
+    case 'details':         await cmdDetails();         break;
+    case 'session-details': await cmdSessionDetails();  break;
+    case 'flushAll':        await cmdFlushAll();        break;
+    case 'flushOthers':     await cmdFlushOthers();     break;
+    case 'delete':          await cmdDelete();          break;
+    case 'deleteAll':       await cmdDeleteAll();       break;
+    default:                usage();
   }
 } catch (e) {
   console.error(c.red(`  Error: ${e.message}`));

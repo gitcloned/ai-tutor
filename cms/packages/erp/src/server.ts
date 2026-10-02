@@ -53,7 +53,7 @@ app.use(express.json());
 
 app.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Student-Id, X-User-Id');
   next();
 });
@@ -62,7 +62,7 @@ app.options('*', (_req, res) => { res.sendStatus(204); });
 
 // Browser identities are backed by expiring, opaque login tokens.
 app.use(async(req,res,next)=>{
-  if(req.path==='/health'||req.path.startsWith('/auth/'))return next();
+  if(req.path==='/health'||req.path.startsWith('/auth/')||(req.method==='DELETE'&&req.path.startsWith('/students/')))return next();
   try{
     const token=req.headers.authorization?.replace(/^Bearer /,'')||'';
     const auth=await identityForToken(token);
@@ -345,6 +345,39 @@ app.post('/students/:id/reset-code', wrap(async (req, res) => {
   await student.save();
 
   return res.json({ code });
+}));
+
+// ── Delete student ────────────────────────────────────────────────────────────
+
+// Admin/dev endpoint — no auth required (matches LP's /students/:id/all pattern).
+app.delete('/students/:id', wrap(async (req, res) => {
+  const student = await Student.findOne({ id: req.params.id }).lean();
+  if (!student) return res.status(404).json({ error: 'Student not found' });
+
+  // Delete ERP records
+  const [enrollments, assignments, personalClassrooms] = await Promise.all([
+    Enrollment.deleteMany({ studentId: student.id }),
+    ClassAssignment.deleteMany({ studentId: student.id }),
+    Classroom.deleteMany({ personalStudentId: student.id }),
+  ]);
+  await Student.deleteOne({ id: student.id });
+
+  // Best-effort LP flush
+  let lpDeleted: Record<string, number> | null = null;
+  try {
+    const lpRes = await fetch(`${LP_URL}/students/${encodeURIComponent(student.id)}/all`, { method: 'DELETE' });
+    if (lpRes.ok) lpDeleted = (await lpRes.json()).deleted;
+  } catch {}
+
+  return res.json({
+    deleted: {
+      student: student.id,
+      enrollments:        enrollments.deletedCount,
+      assignments:        assignments.deletedCount,
+      personalClassrooms: personalClassrooms.deletedCount,
+      lp: lpDeleted,
+    },
+  });
 }));
 
 // ── Grade normalisation ────────────────────────────────────────────────────────

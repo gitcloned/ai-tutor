@@ -8,6 +8,18 @@ import { isTransitionState } from '../learning/what-is-next.js';
 import { buildConceptPlan }  from '../learning/stateManagement.js';
 import { buildModelPrompt }  from '../learning/modelPrompt.js';
 import { lp }                from '../api.js';
+import type { AgentContext } from '../context.js';
+
+/** Mark session completed in-memory and in LP. Idempotent. */
+async function completeSession(ctx: AgentContext): Promise<void> {
+  if (ctx.session.status === 'completed') return;
+  ctx.session.status = 'completed';
+  // Best-effort — end() will also persist on disconnect.
+  await Promise.resolve(lp.patch(`/sessions/${ctx.session.id}`, {
+    status: 'completed',
+    endedAt: new Date().toISOString(),
+  })).catch(() => {});
+}
 
 // ── read_plan ──────────────────────────────────────────────────────────────────
 
@@ -171,6 +183,7 @@ export const update_step: Tool = {
             reminder: 'Follow the plan. Do exactly what the next step says.',
           };
         }
+        await completeSession(ctx);
         return { ok: true, allDone: true, message: 'Session complete.' };
       }
 
@@ -189,6 +202,7 @@ export const update_step: Tool = {
           reminder: 'Follow the plan. Do exactly what the next step says.',
         };
       }
+      await completeSession(ctx);
       return { ok: true, allDone: true, message: 'All steps complete. Session is done.' };
     }
 

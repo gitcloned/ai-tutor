@@ -368,14 +368,17 @@ async function cmdDelete() {
 
 /** Delete every student from ERP + LP */
 async function cmdDeleteAll() {
-  // Fetch student list from LP (doesn't need auth)
-  let students;
-  try {
-    students = await get('/students');
-  } catch (e) {
-    console.error(c.red(`Cannot reach LP at ${LP}: ${e.message}`));
-    process.exit(1);
+  // Fetch student list from ERP admin endpoint (all students, no auth needed).
+  // Also merge any LP-only students (exist in LP but not ERP).
+  let erpStudents = [], lpStudents = [];
+  try { erpStudents = await erpGet('/students/all'); } catch (e) {
+    console.error(c.red(`Cannot reach ERP at ${ERP}: ${e.message}`)); process.exit(1);
   }
+  try { lpStudents = await get('/students'); } catch {}
+
+  const seen = new Set(erpStudents.map(s => s.studentId));
+  const lpOnly = lpStudents.filter(s => !seen.has(s.studentId));
+  const students = [...erpStudents, ...lpOnly];
 
   if (students.length === 0) {
     console.log(`\n  ${c.dim('No students found.')}\n`);

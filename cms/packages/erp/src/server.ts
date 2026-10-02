@@ -62,7 +62,7 @@ app.options('*', (_req, res) => { res.sendStatus(204); });
 
 // Browser identities are backed by expiring, opaque login tokens.
 app.use(async(req,res,next)=>{
-  if(req.path==='/health'||req.path.startsWith('/auth/')||(req.method==='DELETE'&&req.path.startsWith('/students/')))return next();
+  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path==='/students/all'||(req.method==='DELETE'&&req.path.startsWith('/students/')))return next();
   try{
     const token=req.headers.authorization?.replace(/^Bearer /,'')||'';
     const auth=await identityForToken(token);
@@ -298,6 +298,12 @@ app.post('/students', wrap(async (req, res) => {
     personalClassId,
     setupStatus,
   });
+}));
+
+// Admin/dev — no auth required.
+app.get('/students/all', wrap(async (_req, res) => {
+  const students = await Student.find({}, { hashedCode: 0, encryptedCode: 0, idempotencyKey: 0 }).lean();
+  return res.json(students.map(s => ({ studentId: s.id, name: s.name, grade: s.grade })));
 }));
 
 app.get('/students', wrap(async (req, res) => {

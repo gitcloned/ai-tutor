@@ -17,6 +17,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
 const PORT = Number(process.env.PORT ?? 32002);
 
+// Canvas sends authenticated requests from its own origin. Handle preflight
+// before routes so errors and successful responses both remain readable.
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+app.options('*', (_req, res) => { res.sendStatus(204); });
+
 app.use(express.json());
 
 type AsyncHandler = (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<unknown>;
@@ -573,18 +583,20 @@ app.delete('/students/:studentId/all', wrap(async (req, res) => {
   const { studentId } = req.params;
   const journeys   = await LearningJourney.find({ studentId }).lean();
   const journeyIds = journeys.map((j: any) => j.id);
-  const [nodes, sessions, memories, deletedJourneys] = await Promise.all([
+  const [nodes, journeyTopics, sessions, memories, deletedJourneys] = await Promise.all([
     LearningJourneyNode.deleteMany({ journeyId: { $in: journeyIds } }),
+    LearningJourneyTopic.deleteMany({ journeyId: { $in: journeyIds } }),
     Session.deleteMany({ studentId }),
     Memory.deleteMany({ studentId }),
     LearningJourney.deleteMany({ studentId }),
   ]);
   res.json({
     deleted: {
-      journeys: deletedJourneys.deletedCount,
-      nodes:    nodes.deletedCount,
-      sessions: sessions.deletedCount,
-      memories: memories.deletedCount,
+      journeys:      deletedJourneys.deletedCount,
+      nodes:         nodes.deletedCount,
+      journeyTopics: journeyTopics.deletedCount,
+      sessions:      sessions.deletedCount,
+      memories:      memories.deletedCount,
     },
   });
 }));

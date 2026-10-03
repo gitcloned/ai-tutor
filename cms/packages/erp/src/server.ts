@@ -8,6 +8,7 @@ import { User }       from './models/user.js';
 import { Classroom }  from './models/classroom.js';
 import { Enrollment }      from './models/enrollment.js';
 import { ClassAssignment } from './models/class-assignment.js';
+import { Types } from 'mongoose';
 
 // Verify Google sign-in with Firebase; initialize lazily.
 let firebaseAdmin: typeof import('firebase-admin') | null = null;
@@ -276,13 +277,16 @@ app.post('/students', wrap(async (req, res) => {
         for (const t of selectedTopics) {
           await ClassAssignment.findOneAndUpdate(
             { classroomId: pClass.id, topicId: t.topicId },
-            { $set: { subjectId: t.subjectId } },
+            { $set: { subjectId: t.subjectId }, $setOnInsert: { id: new Types.ObjectId().toHexString(), classroomId: pClass.id, topicId: t.topicId } },
             { upsert: true }
           );
         }
-        lpSyncClassAssignments(student.id, pClass.id, selectedTopics, Date.now()).catch(err =>
-          console.error(`[LP sync] parent-setup student=${student.id}: ${err.message}`)
-        );
+        try {
+          await lpSyncClassAssignments(student.id, pClass.id, selectedTopics, Date.now());
+        } catch (err: any) {
+          console.error(`[LP sync] parent-setup student=${student.id}: ${err.message}`);
+          setupStatus = 'partial';
+        }
       }
     } catch (err: any) {
       console.error(`[parent-setup] personal class creation failed: ${err.message}`);
@@ -399,6 +403,35 @@ app.delete('/students/:id', wrap(async (req, res) => {
   });
 }));
 
+// Admin/dev — re-push all class assignments for a student to LP.
+app.post('/students/:id/resync', wrap(async (req, res) => {
+  const student = await Student.findOne({ id: req.params.id }).lean();
+  if (!student) return res.status(404).json({ error: 'Student not found' });
+
+  const enrollments = await Enrollment.find({ studentId: student.id }).lean() as any[];
+  if (enrollments.length === 0) return res.json({ synced: [], skipped: 'no enrollments' });
+
+  const revision = Date.now();
+  const results: Array<{ classroomId: string; status: string; error?: string }> = [];
+
+  for (const enrollment of enrollments) {
+    const assignments = await ClassAssignment.find({ classroomId: enrollment.classroomId }).lean() as any[];
+    const payload = assignments.map((a: any) => ({ subjectId: a.subjectId, topicId: a.topicId }));
+    if (payload.length === 0) {
+      results.push({ classroomId: enrollment.classroomId, status: 'skipped', error: 'no assignments' });
+      continue;
+    }
+    try {
+      await lpSyncClassAssignments(student.id, enrollment.classroomId, payload, revision);
+      results.push({ classroomId: enrollment.classroomId, status: 'ok' });
+    } catch (err: any) {
+      results.push({ classroomId: enrollment.classroomId, status: 'error', error: err.message });
+    }
+  }
+
+  return res.json({ studentId: student.id, synced: results });
+}));
+
 // ── Grade normalisation ────────────────────────────────────────────────────────
 
 /** Normalise "Grade 7" / "7th Grade" / "7" / 7 to numeric 7, or null. */
@@ -439,7 +472,7 @@ app.post('/classrooms', wrap(async (req, res) => {
     for (const t of validated) {
       await ClassAssignment.findOneAndUpdate(
         { classroomId: classroom.id, topicId: t.topicId },
-        { $set: { subjectId: t.subjectId } },
+        { $set: { subjectId: t.subjectId }, $setOnInsert: { id: new Types.ObjectId().toHexString(), classroomId: classroom.id, topicId: t.topicId } },
         { upsert: true }
       );
     }
@@ -620,7 +653,7 @@ app.put('/classrooms/:id/topics', wrap(async (req, res) => {
   for (const t of deduped) {
     const doc = await ClassAssignment.findOneAndUpdate(
       { classroomId: req.params.id, topicId: t.topicId },
-      { $set: { subjectId: t.subjectId, classroomId: req.params.id, topicId: t.topicId } },
+      { $set: { subjectId: t.subjectId }, $setOnInsert: { id: new Types.ObjectId().toHexString(), classroomId: req.params.id, topicId: t.topicId } },
       { upsert: true, new: true }
     );
     newIds.push(t.topicId);

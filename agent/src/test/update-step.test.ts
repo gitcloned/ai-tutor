@@ -22,18 +22,18 @@ vi.mock('../api.js', () => ({
 // Prevent file-system reads of real content files during tests.
 // buildConceptPlan / loadPractice fall back to the in-memory builders when all has* return false.
 vi.mock('../learning/plan-builder-v2.js', () => ({
-  hasProbePlan:        () => false,
-  hasTeachPlan:        () => false,
-  hasMasteryPlan:      () => false,
-  hasQuestionsJson:    () => false,
-  loadProbePlan:       () => ({ steps: [], models: [] }),
-  loadTeachPlan:       () => ({ steps: [], models: [] }),
-  loadMasteryPlan:     () => ({ steps: [], models: [] }),
-  loadQuestionsFromJson: () => [],
-  questionsJsonPath:   () => '',
-  probePlanPath:       () => '',
-  teachPlanPath:       () => '',
-  masteryPlanPath:     () => '',
+  hasProbePlan:              () => false,
+  hasTeachPlan:              () => false,
+  hasMasteryPlan:            () => false,
+  hasStateQuestionsJson:     () => false,
+  loadProbePlan:             () => ({ steps: [], models: [] }),
+  loadTeachPlan:             () => ({ steps: [], models: [] }),
+  loadMasteryPlan:           () => ({ steps: [], models: [] }),
+  loadStateQuestionsFromJson: () => [],
+  stateQuestionsJsonPath:    () => '',
+  probePlanPath:             () => '',
+  teachPlanPath:             () => '',
+  masteryPlanPath:           () => '',
 }));
 
 import { lp, cms } from '../api.js';

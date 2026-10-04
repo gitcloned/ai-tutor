@@ -6,7 +6,7 @@ import { whatIsNext, isTransitionState } from './learning/what-is-next.js';
 import { buildConceptPlan } from './learning/stateManagement.js';
 import { buildModelPrompt } from './learning/modelPrompt.js';
 import { PracticeExercise } from './learning/practiceExercise.js';
-import { hasQuestionsJson, loadQuestionsFromJson } from './learning/plan-builder-v2.js';
+import { hasStateQuestionsJson, loadStateQuestionsFromJson } from './learning/plan-builder-v2.js';
 import { cms, lp }          from './api.js';
 
 export interface AgentContext {
@@ -123,14 +123,8 @@ export async function buildContext(
  * Returns undefined if practice is not applicable.
  */
 export async function loadPractice(state: ConceptState, conceptId: string, session: Session): Promise<PracticeExercise | undefined> {
-  if (state !== CS.MASTERING && state !== CS.GETTING_EXAM_READY) return undefined;
-  // Prefer questions.json from content folder; fall back to CMS DB.
-  let questions: Question[];
-  if (hasQuestionsJson(conceptId)) {
-    questions = loadQuestionsFromJson(conceptId);
-  } else {
-    questions = await cms.get<Question[]>(`/concepts/${conceptId}/mastery-questions`).catch(() => []);
-  }
+  if (!hasStateQuestionsJson(conceptId, state)) return undefined;
+  const questions = loadStateQuestionsFromJson(conceptId, state);
   if (!questions.length) return undefined;
   return new PracticeExercise(questions, session.questionProgress ?? [], session.id);
 }

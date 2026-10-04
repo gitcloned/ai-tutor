@@ -85,6 +85,13 @@ export const update_step: Tool = {
 
     ctx.log({ level: 'debug', message: `update_step | [${id}] ${stepLabel(step)} | outcome=${outcome}` });
 
+    // ── guard: practice step must not be advanced until all questions are done ─
+    if (step.type === 'practice' && ctx.practice && !ctx.practice.isDone) {
+      return {
+        error: `Cannot advance past practice step '${id}': practice questions are not finished. Keep calling get_next_question (passing the outcome for each answered question) until it returns { done: true }, then call update_step.`,
+      };
+    }
+
     step.outcome = outcome as import('../types.js').PlanStep['outcome'];
     step.status  = 'done';
 

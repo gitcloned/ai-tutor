@@ -198,6 +198,42 @@
     .filter-chip button { background: none; border: none; padding: 0 2px; color: var(--accent); cursor: pointer; height: auto; font-size: 14px; line-height: 1; font-weight: 400; }
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
+
+    /* Compact learning and session grids */
+    main { max-width:1440px; }
+    .section-intro { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:10px 0; }
+    .section-intro h2 { display:none; }
+    .section-intro p, .subtle { color:var(--muted); font-size:11px; }
+    .concept-hdr, .concept-row { grid-template-columns:minmax(180px,1.3fr) 120px minmax(230px,1.5fr) 95px 80px; gap:10px; }
+    .concept-row { padding:8px 14px; }
+    .technical { color:var(--muted); font-size:10px; overflow-wrap:anywhere; margin-top:4px; }
+    .node-ids { margin-top:3px; font-size:10px; color:var(--muted); }
+    .node-ids summary { cursor:pointer; width:fit-content; }
+    .routing { display:grid; gap:3px; font-size:11px; margin-top:4px; }
+    .routing>div { display:grid; grid-template-columns:40px minmax(0,1fr); gap:5px; }
+    .routing dt { color:var(--muted); font-size:10px; }
+    .route-link { border:0; padding:0; height:auto; white-space:normal; text-align:left; color:var(--accent); font-size:11px; line-height:1.3; text-decoration:underline; text-underline-offset:2px; }
+    .route-link:hover { background:transparent; color:var(--accent-h); }
+    .table-scroll, .topic-group { overflow-x:auto; }
+    .session-grid { min-width:1020px; table-layout:fixed; }
+    .session-grid th, .session-grid td { padding:9px 10px; vertical-align:top; }
+    .session-grid th { text-transform:none; letter-spacing:0; }
+    .session-grid th:nth-child(1) { width:130px; }
+    .session-grid th:nth-child(2) { width:19%; }
+    .session-grid th:nth-child(3) { width:160px; }
+    .session-grid th:nth-child(4) { width:135px; }
+    .session-grid th:nth-child(5) { width:23%; }
+    .session-grid th:nth-child(7) { width:65px; }
+    .session-grid tr:hover td { background:var(--accent-lt); }
+    .state-flow { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+    .return-cell { font-size:11px; }
+    .date-cell { font-size:11px; white-space:nowrap; }
+    .ses-link { height:27px; padding:0 9px; font-size:12px; }
+    button:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+    @media(max-width:1000px) {
+      .concept-hdr, .concept-row { min-width:800px; }
+      .topic-hdr { min-width:800px; }
+    }
   </style>
 </head>
 <body>
@@ -315,9 +351,9 @@ function setBreadcrumb(crumbs) {
   document.title = [...crumbs].reverse().map(c=>c.label).join(' · ') + ' — Prodigy Admin';
 }
 
-const STATE_LBL = { mastered:'Mastered', exam_ready:'Exam ready', learning:'Learning', clarity:'Assessing', not_assessed:'Not assessed', 'learn-pre-req-before':'Prereq detour' };
-const STATE_CLS = { mastered:'g', exam_ready:'g', learning:'c', clarity:'y', not_assessed:'mu', 'learn-pre-req-before':'o' };
-function stateBadge(s) { const l=STATE_LBL[s]??s??'Not assessed', c=STATE_CLS[s]??'mu'; return `<span class="badge ${c}">${l||'Not assessed'}</span>`; }
+const STATE_LBL = { mastered:'Mastered', exam_ready:'Exam ready', learning:'Learning', assessing:'Assessing', mastering:'Mastering', getting_exam_ready:'Preparing for exam', clarity:'Clarity', not_assessed:'Not assessed', 'learn-pre-req-before':'Prereq detour' };
+const STATE_CLS = { mastered:'g', exam_ready:'g', learning:'c', assessing:'y', mastering:'c', getting_exam_ready:'c', clarity:'g', not_assessed:'mu', 'learn-pre-req-before':'o' };
+function stateBadge(s) { const l=STATE_LBL[s]??s??'Not assessed', c=STATE_CLS[s]??'mu'; return `<span class="badge ${c}">${esc(l||'Not assessed')}</span>`; }
 
 const STA_LBL = { completed:'Completed', started:'In progress', initialised:'Pending' };
 const STA_CLS = { completed:'g', started:'c', initialised:'mu' };
@@ -326,6 +362,40 @@ function statusBadge(s) { return `<span class="badge ${STA_CLS[s]??'mu'}">${STA_
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
 // ── Data loaders ──────────────────────────────────────────────────────────────
+function conceptName(id) { return C.conceptMap?.get(id)?.title ?? id; }
+function conceptLink(id, studentId) {
+  return id ? `<button class="route-link" title="${esc(id)}" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:id})})">${esc(conceptName(id))}</button>` : '<span class="subtle">—</span>';
+}
+function stateDetail(state) {
+  return `<span title="${esc(state??'No learning node')}">${stateBadge(state)}</span>`;
+}
+function sessionActivity(s) {
+  const dates=[s.createdAt,s.endedAt,...(s.history??[]).map(t=>t.timestamp),...(s.rawHistory??[]).map(t=>t.timestamp)];
+  return Math.max(0,...dates.map(d=>Date.parse(d)).filter(Number.isFinite));
+}
+function activityDisplay(node, sessions) {
+  const latest=Math.max(Date.parse(node?.lastActivity)||0,...sessions.map(sessionActivity),0);
+  return latest ? `<time title="${esc(new Date(latest).toLocaleString())}">${relDate(new Date(latest).toISOString())}</time>` : sessions.length ? 'Activity unavailable' : 'Not started';
+}
+function nodeRouting(node, studentId) {
+  if (!node) return '<span class="subtle">—</span>';
+  return `<dl class="routing">${[['preReqToLearn','Prereq'],['cameFrom','From'],['goTo','Go to']].filter(([key])=>node[key]).map(([key,label])=>`<div><dt title="${key}">${label}</dt><dd>${conceptLink(node[key],studentId)}</dd></div>`).join('') || '<span class="subtle">—</span>'}</dl>`;
+}
+function learningRow(id, title, node, sessions, studentId) {
+  return `<div class="concept-row">
+    <div class="con-title"><strong>${esc(title)}</strong><details class="node-ids"><summary>IDs</summary><div class="technical">Concept: ${esc(id)}<br>Node: ${esc(node?.id??'Not created')}</div></details></div>
+    <div class="node-state">${stateDetail(node?.state)}</div>
+    <div>${nodeRouting(node,studentId)}</div>
+    <div class="con-date">${activityDisplay(node,sessions)}</div>
+    <div class="con-sessions">${sessions.length?`<button class="ses-link" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:id})})">View ${sessions.length}</button>`:'No sessions'}</div>
+  </div>`;
+}
+function resumeDisplay(s) {
+  if (!s.resumeFromStep) return '<span class="subtle">None recorded</span>';
+  const step=[...(s.planHistory??[])].reverse().flatMap(h=>h.plan??[]).find(p=>p.id===s.resumeFromStep);
+  return `Step ${esc(s.resumeFromStep)}${step?.content?.name?` — ${esc(step.content.name)}`:''}`;
+}
+
 async function loadStudents() {
   if (C.students) return C.students;
   const [erp, lp] = await Promise.all([
@@ -536,7 +606,7 @@ async function renderStudent(studentId, p) {
 
     const tc = document.getElementById('tab-content');
     if (tab==='learning') renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMap, sesByConc, mp);
-    else if (tab==='sessions') renderSessionsTab(tc, studentId, conc, sessions, mp);
+    else if (tab==='sessions') renderSessionsTab(tc, studentId, conc, sessions, mp, allNodes);
     else renderMemoriesTab(tc, memories);
 
   } catch(e) { setMain(`<p class="err">Error: ${esc(e.message)}</p>`); }
@@ -575,25 +645,9 @@ function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMa
           <span class="topic-ctx">${esc(strand.title??'')}${unit.title?' › '+unit.title:''}</span>
           <span class="topic-prog">${mastered}/${concepts.length} mastered</span>
         </div>
-        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Last activity</span><span>Sessions</span></div>`;
+        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Routing</span><span>Last activity</span><span>Sessions</span></div>`;
     for (const c of concepts) {
-      const node    = nodeMap.get(c.id);
-      const sessCnt = (sesByConc.get(c.id)??[]).length;
-      const sessHtml = sessCnt>0
-        ? `<button type="button" class="ses-link" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:c.id})})">View ${sessCnt}</button>`
-        : `<span style="color:var(--muted)">No sessions</span>`;
-      let detour = '';
-      if (node?.preReqToLearn) {
-        const pt = C.conceptMap?.get(node.preReqToLearn)?.title ?? node.preReqToLearn;
-        detour = `<div style="font-size:11px;color:var(--orange);margin-top:2px">Learning <strong>${esc(pt)}</strong> first</div>`;
-      }
-      thtml += `
-        <div class="concept-row">
-          <div class="con-title">${esc(c.title??'Title unavailable')}${detour}</div>
-          <div>${stateBadge(node?.state??null)}</div>
-          <div class="con-date">${relDate(node?.lastActivity??null)}</div>
-          <div class="con-sessions">${sessHtml}</div>
-        </div>`;
+      thtml += learningRow(c.id, c.title??'Title unavailable', nodeMap.get(c.id), sesByConc.get(c.id)??[], studentId);
     }
     thtml += '</div>';
   }
@@ -603,53 +657,41 @@ function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMa
   if (prev.length) {
     thtml += `<details><summary style="cursor:pointer;padding:8px 0;font-size:12px;font-weight:600;color:var(--muted)">▶ Previous learning (${prev.length})</summary>
       <div class="card mt12">
-        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Last activity</span><span>Sessions</span></div>`;
+        <div class="concept-hdr"><span>Concept</span><span>State</span><span>Routing</span><span>Last activity</span><span>Sessions</span></div>`;
     for (const n of prev) {
       const cm = C.conceptMap?.get(n.conceptId);
-      const sessCnt = (sesByConc.get(n.conceptId)??[]).length;
-      thtml += `<div class="concept-row">
-        <div class="con-title">${esc(cm?.title??n.conceptId)}</div>
-        <div>${stateBadge(n.state)}</div>
-        <div class="con-date">${relDate(n.lastActivity)}</div>
-        <div class="con-sessions">${sessCnt>0?`<button type="button" class="ses-link" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:n.conceptId})})">View ${sessCnt}</button>`:'<span style="color:var(--muted)">No sessions</span>'}</div>
-      </div>`;
+      thtml += learningRow(n.conceptId, cm?.title??n.conceptId, n, sesByConc.get(n.conceptId)??[], studentId);
     }
     thtml += '</div></details>';
   }
 
-  sc.innerHTML = thtml || '<p class="empty">No topics with concepts found.</p>';
+  sc.innerHTML = `<div class="section-intro"><div><h2>Learning</h2><p>Current states · Clarity means understood, not mastered.</p></div><button onclick="navigate(${navArgs(mp({tab:'learning',subject:activeSubj}))})">Refresh</button></div>` + (thtml || '<p class="empty">No topics with concepts found.</p>');
 }
 
 // ── Sessions tab ──────────────────────────────────────────────────────────────
-function renderSessionsTab(tc, studentId, concFilter, sessions, mp) {
-  const sorted = [...sessions].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  const filtered = concFilter ? sorted.filter(s=>s.conceptId===concFilter) : sorted;
-  const ct = C.conceptMap?.get(concFilter);
-  let html = '';
-  if (concFilter) {
-    html = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-      <span style="font-size:12px;color:var(--muted)">Concept:</span>
-      <span class="filter-chip">${esc(ct?.title??concFilter)}<button onclick="navigate(${navArgs(mp({tab:'sessions'}))})">×</button></span>
-    </div>`;
-  }
-  if (!filtered.length) { tc.innerHTML = html + '<p class="empty">No sessions yet.</p>'; return; }
-  html += `<div class="card"><table>
-    <thead><tr><th>Started</th><th>Concept</th><th>Phase</th><th>Status</th><th>Turns</th><th></th></tr></thead>
-    <tbody>
-      ${filtered.map(s=>{
-        const cm=C.conceptMap?.get(s.conceptId);
-        return `<tr class="row" onclick="navigate({session:'${s.id}'})">
-          <td style="color:var(--muted);white-space:nowrap">${shortDate(s.createdAt)}</td>
-          <td><div style="font-weight:500">${esc(cm?.title??s.conceptId)}</div>${cm?.subjectName?`<div style="font-size:11px;color:var(--muted)">${esc(cm.subjectName)}</div>`:''}</td>
-          <td>${stateBadge(s.conceptStateAtStart)}</td>
-          <td>${statusBadge(s.status)}</td>
-          <td style="color:var(--muted)">${(s.history??[]).length}</td>
-          <td style="white-space:nowrap"><button onclick="event.stopPropagation();navigate(${navArgs({student:s.studentId})})">View →</button> <button style="color:var(--red)" onclick="event.stopPropagation();confirmStudentDeletion(${navArgs(s.studentId)},${navArgs(s.name??s.studentId)})">Delete</button></td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table></div>`;
-  tc.innerHTML = html;
+function renderSessionsTab(tc, studentId, concFilter, sessions, mp, nodes=[]) {
+  const sorted=[...sessions].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const filtered=concFilter?sorted.filter(s=>s.conceptId===concFilter):sorted;
+  let html=`<div class="section-intro"><div><h2>Sessions</h2><p>Newest first · Start/end are historical; routing is current.</p></div><button onclick="navigate(${navArgs(mp({tab:'sessions',...(concFilter?{concept:concFilter}:{})}))})">Refresh</button></div>`;
+  if(concFilter) html+=`<div class="filter-chip">${esc(conceptName(concFilter))}<button aria-label="Clear concept filter" onclick="navigate(${navArgs(mp({tab:'sessions'}))})">×</button></div>`;
+  if(!filtered.length){tc.innerHTML=html+'<p class="empty">No sessions for this concept yet.</p>';return;}
+  html+=`<div class="card table-scroll"><table class="session-grid">
+    <thead><tr><th>Started / activity</th><th>Concept</th><th>Start → end</th><th>Status</th><th>Current routing</th><th>Return step</th><th></th></tr></thead><tbody>
+    ${filtered.map(s=>{
+      const node=nodes.find(n=>n.id===s.journeyNodeId);
+      const waiting=s.status==='started'&&node?.state==='learn-pre-req-before';
+      return `<tr>
+        <td class="date-cell">${shortDate(s.createdAt)}<div class="subtle">Active ${activityDisplay(null,[s])}</div>${s.endedAt?`<div class="subtle">Ended ${shortDate(s.endedAt)}</div>`:''}</td>
+        <td><strong>${esc(conceptName(s.conceptId))}</strong><details class="node-ids"><summary>IDs</summary><div class="technical">Session: ${esc(s.id)}<br>Node: ${esc(s.journeyNodeId??'—')}<br>Concept: ${esc(s.conceptId)}</div></details></td>
+        <td><div class="state-flow">${stateDetail(s.conceptStateAtStart)}<span aria-hidden="true">→</span>${s.conceptStateAtEnd?stateDetail(s.conceptStateAtEnd):'<span class="subtle" title="No end state recorded">—</span>'}</div></td>
+        <td>${waiting?'<span class="badge o" title="Session is started; its node is waiting for a prerequisite">Waiting for prereq</span>':statusBadge(s.status)}<div class="subtle">${(s.history??[]).length} messages</div></td>
+        <td>${node?stateDetail(node.state):'<span class="subtle">—</span>'}${nodeRouting(node,studentId)}</td>
+        <td class="return-cell">${resumeDisplay(s)}</td>
+        <td><button class="ses-link" onclick="navigate(${navArgs({session:s.id})})">Open</button></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+  tc.innerHTML=html;
 }
 
 // ── Memories tab ──────────────────────────────────────────────────────────────
@@ -687,7 +729,7 @@ async function renderSession(sessionId) {
         <div class="ctx-item"><label>Student</label><span style="font-weight:600;color:var(--accent);cursor:pointer" onclick="navigate({student:'${s.studentId}'})">${esc(sname)}</span></div>
         ${cm?.subjectName?`<div class="ctx-item"><label>Subject</label><span>${esc(cm.subjectName)}</span></div>`:''}
         <div class="ctx-item"><label>Concept</label><span>${esc(cm?.title??s.conceptId)}</span></div>
-        <div class="ctx-item"><label>Phase</label>${stateBadge(s.conceptStateAtStart)}</div>
+        <div class="ctx-item"><label>Start state</label>${stateBadge(s.conceptStateAtStart)}</div><div class="ctx-item"><label>End state</label>${s.conceptStateAtEnd?stateBadge(s.conceptStateAtEnd):'Not recorded'}</div><div class="ctx-item"><label>Saved return step</label>${resumeDisplay(s)}</div>
         <div class="ctx-item"><label>Status</label>${statusBadge(s.status)}</div>
         <div class="ctx-item"><label>Started</label><span style="color:var(--muted)">${shortDate(s.createdAt)}</span></div>
         ${s.endedAt?`<div class="ctx-item"><label>Ended</label><span style="color:var(--muted)">${shortDate(s.endedAt)}</span></div>`:''}

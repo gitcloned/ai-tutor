@@ -6,7 +6,7 @@
  *   node student.mjs list
  *   node student.mjs details --student <id>
  *   node student.mjs setup   --student <id> --concept <slug> --state <state>
- *                            [--flush-sessions]
+ *                            [--topic <topicId>] [--flush-sessions]
  *   node student.mjs flushAll --student <id>   LP data only
  *   node student.mjs delete --student <id>     ERP + LP
  *   node student.mjs deleteAll                 ERP + LP for every student
@@ -315,6 +315,7 @@ async function cmdSetup() {
   const studentId     = flag('student');
   const conceptId     = flag('concept');
   const state         = flag('state');
+  const topicHint     = flag('topic');
   const flushSessions = args.includes('--flush-sessions');
 
   const VALID_STATES = [
@@ -343,9 +344,10 @@ async function cmdSetup() {
     console.error(c.red(`  Concept not found in CMS: ${e.message}`));
     process.exit(1);
   }
-  const topicId = concept.topic ?? null;
+  const topicId = topicHint ?? concept.topic ?? null;
   if (!topicId) {
-    console.error(c.red(`  Concept "${conceptId}" has no topic set in CMS. Cannot resolve subject journey.`));
+    console.error(c.red(`  Concept "${conceptId}" has no topic set in CMS.`));
+    console.error(c.dim(`  Pass --topic <topicId> to specify it directly.`));
     process.exit(1);
   }
   console.log(`  concept   ${c.dim(concept.title ?? conceptId)}`);
@@ -612,7 +614,7 @@ function usage() {
     node student.mjs details         --student <id>
     node student.mjs session-details --session <id>
     node student.mjs setup           --student <id> --concept <slug> --state <state>
-                                     [--flush-sessions]
+                                     [--topic <topicId>] [--flush-sessions]
     node student.mjs flushAll        --student <id>   (LP only)
     node student.mjs flushOthers     --keep <id>      (LP only)
     node student.mjs delete          --student <id>   (ERP + LP)

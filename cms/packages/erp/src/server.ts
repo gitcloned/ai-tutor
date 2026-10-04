@@ -63,7 +63,7 @@ app.options('*', (_req, res) => { res.sendStatus(204); });
 
 // Browser identities are backed by expiring, opaque login tokens.
 app.use(async(req,res,next)=>{
-  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path==='/students/all'||(req.method==='DELETE'&&req.path.startsWith('/students/')))return next();
+  if(req.path==='/health'||req.path.startsWith('/auth/')||req.path==='/students/all'||req.path.startsWith('/admin/')||(req.method==='DELETE'&&req.path.startsWith('/students/')))return next();
   try{
     const token=req.headers.authorization?.replace(/^Bearer /,'')||'';
     const auth=await identityForToken(token);
@@ -401,6 +401,59 @@ app.delete('/students/:id', wrap(async (req, res) => {
       lp: lpDeleted,
     },
   });
+}));
+
+// Admin/dev — create student, classroom, enroll (no auth required).
+
+app.post('/admin/students', wrap(async (req, res) => {
+  const { name, grade } = req.body as { name?: string; grade?: string };
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const code    = generateCode();
+  const student = await Student.create({
+    name, grade: grade ?? null,
+    hashedCode: await hashCode(code), encryptedCode: encryptCode(code),
+    createdByUserId: 'dev',
+  });
+  return res.status(201).json({ studentId: student.id, name: student.name, grade: student.grade, code });
+}));
+
+app.post('/admin/classrooms', wrap(async (req, res) => {
+  const { name, topics } = req.body as {
+    name?: string;
+    topics?: Array<{ subjectId: string; topicId: string }>;
+  };
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const code      = generateCode();
+  const classroom = await Classroom.create({
+    name, ownerUserId: 'dev', kind: 'teacher',
+    hashedClassCode: await hashCode(code),
+  });
+  if (Array.isArray(topics) && topics.length > 0) {
+    for (const t of topics) {
+      await ClassAssignment.findOneAndUpdate(
+        { classroomId: classroom.id, topicId: t.topicId },
+        { $set: { subjectId: t.subjectId }, $setOnInsert: { id: new Types.ObjectId().toHexString(), classroomId: classroom.id, topicId: t.topicId } },
+        { upsert: true },
+      );
+    }
+  }
+  return res.status(201).json({ classroomId: classroom.id, name: classroom.name, classCode: code });
+}));
+
+app.post('/admin/classrooms/:id/enroll', wrap(async (req, res) => {
+  const { studentId } = req.body as { studentId?: string };
+  if (!studentId) return res.status(400).json({ error: 'studentId is required' });
+  const classroom = await Classroom.findOne({ id: req.params.id }).lean();
+  if (!classroom) return res.status(404).json({ error: 'Classroom not found' });
+  await Enrollment.updateOne(
+    { classroomId: classroom.id, studentId },
+    { $setOnInsert: { joinedAt: new Date() } },
+    { upsert: true },
+  );
+  const assignments = await ClassAssignment.find({ classroomId: classroom.id }).lean();
+  const payload = assignments.map((a: any) => ({ subjectId: a.subjectId, topicId: a.topicId }));
+  await lpSyncClassAssignments(studentId, classroom.id, payload, Date.now());
+  return res.json({ status: 'enrolled', classroomId: classroom.id, studentId });
 }));
 
 // Admin/dev — re-push all class assignments for a student to LP.

@@ -1,0 +1,8 @@
+{
+  "name": "Riley Very-Weak",
+  "grade": "Grade 7",
+  "flushSessions": true,
+  "concepts": [
+    { "concept": "algebraic-expression-basics", "state": "learning" }
+  ]
+}

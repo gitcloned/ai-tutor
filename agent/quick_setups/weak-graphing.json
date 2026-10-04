@@ -1,0 +1,12 @@
+{
+  "name": "Sam Weak-Graphing",
+  "grade": "Grade 7",
+  "flushSessions": true,
+  "concepts": [
+    { "concept": "algebraic-expression-basics", "state": "mastered" },
+    { "concept": "2-variable-linear-equations-graphs", "state": "mastered" },
+    { "concept": "checking-ordered-pair-solutions-to-equations-1", "state": "mastered" },
+    { "concept": "checking-ordered-pair-solutions-to-equations-2", "state": "clarity" },
+    { "concept": "graphing-solutions-to-2-variable-linear-equations-1", "state": "learning" }
+  ]
+}

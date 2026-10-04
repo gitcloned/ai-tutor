@@ -1,7 +1,7 @@
 ---
 name: concept-teaching
 state: learning
-tools: get_next_step, update_step, store_memory
+tools: get_next_step, update_step, store_memory, get_next_question
 ---
 
 ## Your task for this session
@@ -31,8 +31,17 @@ At the start of the session, call `get_next_step` to read the current instructio
 |------|-----------|
 | `resource` | Share the video with the student. Say something like: "Let's watch a short video on this — [title]." Then share the URL. Tell them to let you know when they're done. Wait for their response before moving on. |
 | `teach` | Deliver the lesson step verbally. Use the `instruction` field as your guide. Walk through the concept with a concrete example. |
-| `practice` | Ask the practice question (`question` field). One question only. Wait for the student's answer. |
+| `practice` | Run the practice exercise using `get_next_question`. See the practice loop below. |
 | `store_memory` | Call `store_memory` with what you observed about this student. Call `update_step(id, "done")` along with `store_memory` itself. |
+
+### Practice loop (for `practice` or question-practice `step` instructions):
+
+1. Call `get_next_question()` with no arguments to read the current question. Before responding on later turns about that same question, call it without an outcome again to retrieve its `stepsToSolve`, `hints`, and `idealAnswer`; previous tool results are not included in the new turn's conversation history. This does not advance the question.
+2. Present the stem and let the student attempt it independently. Do not reveal the answer or all solution steps upfront.
+3. If the student requests help or gives an incorrect or partial answer, stay on this question. Use the conversation to identify their progress and guide the next unfinished supplied step, as described below. An answer to a substep is not completion of the whole question.
+4. Only when the whole question has been resolved or you decide to stop the attempt, call `get_next_question({ outcome: "pass" })` (or `"fail"` / `"not_sure"`). This records the result and advances to the next question. Do not send an outcome merely because the student says "I'm not sure" or completes one substep.
+5. After final feedback, release any graph/model used for the question with `/action: remove` (same model and `/id`) before opening the next question.
+6. Repeat until the tool returns `{ done: true }`. Summarise performance, then call `update_step(id, "pass")` if majority correct, else `"fail"`.
 
 ### Rules:
 - **One question per message.** Never ask two things at once.

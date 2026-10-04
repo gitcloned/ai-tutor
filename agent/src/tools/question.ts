@@ -1,5 +1,6 @@
 import type { Tool } from './index.js';
 import type { QuestionOutcome } from '../types.js';
+import { CS } from '../types.js';
 
 /**
  * get_next_question — the single tool for driving a practice exercise.
@@ -9,13 +10,12 @@ import type { QuestionOutcome } from '../types.js';
  *   The tool records the outcome, persists it to the session, and returns the next question.
  * When all questions are answered it returns a done summary.
  *
- * The tool is only available in the mastering skill (and getting_exam_ready when added).
- * ctx.practice is guaranteed to exist when this tool is callable — buildContext loads it
- * whenever the concept has mastery questions and the state is mastering.
+ * Assessment states receive evaluation material without teaching aids. Other states
+ * retain the full question. Filtering never changes the stored exercise.
  */
 export const get_next_question: Tool = {
   name:        'get_next_question',
-  description: 'Read the current practice question and its solution steps and hints. Omit outcome to start or reread the same question without advancing. Pass outcome only when the whole attempt is finished and you want to record its result and advance.',
+  description: 'Read the current question. During assessment, idealAnswer is private evaluation material: do not reveal it or use it to coach the student. Teaching aids are included only outside assessment. Omit outcome to reread without advancing. Pass outcome only when the whole attempt is finished or deliberately stopped to record its result and advance.',
   schema: {
     type: 'object',
     properties: {
@@ -43,11 +43,17 @@ export const get_next_question: Tool = {
       };
     }
 
+    let question = result.question;
+    if (ctx.journeyNode.state === CS.NOT_ASSESSED || ctx.journeyNode.state === CS.ASSESSING) {
+      const { hints, stepsToSolve, writingHint, ...assessmentQuestion } = question;
+      question = assessmentQuestion;
+    }
+
     return {
       done:     false,
       index:    result.index,
       total:    result.total,
-      question: result.question,
+      question,
     };
   },
 };

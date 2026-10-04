@@ -1,3 +1,4 @@
+import {resumableSession,followPrerequisite} from '../../cms/packages/progression/dist/index.js';
 import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry, Question } from './types.js';
 import type { ImageBlob }   from './medium/modalities/input/types.js';
 import { CS }               from './types.js';
@@ -53,9 +54,9 @@ export async function buildContext(
   // ── Paused waiting for a prereq ──────────────────────────────────────────────
   if (journeyNode.state === CS.LEARN_PRE_REQ_BEFORE && journeyNode.preReqToLearn) {
     const prereqNodes = await lp.get<JourneyNode[]>(
-      `/journey-nodes?journeyId=${journeyNode.journeyId}&conceptId=${journeyNode.preReqToLearn}`,
+      `/journey-nodes?journeyId=${journeyNode.journeyId}`,
     );
-    const prereqNode = prereqNodes[0];
+    const prereqNode = followPrerequisite(journeyNode,prereqNodes);
     if (prereqNode) {
       return buildContext(studentId, journeyNode.preReqToLearn, prereqNode.id, originTopicId);
     }
@@ -67,9 +68,11 @@ export async function buildContext(
     const sessions = await lp.get<Session[]>(
       `/students/${studentId}/sessions?conceptId=${conceptId}&status=started`,
     );
-    const { plan, models } = buildConceptPlan(concept, journeyNode.state);
+    const { plan: freshPlan, models } = buildConceptPlan(concept, journeyNode.state);
     const modelPrompt = buildModelPrompt(models);
-    const session = sessions[0] ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state, undefined, originTopicId);
+    const session = resumableSession(sessions,{id:journeyNodeId,state:journeyNode.state}) ?? await createSession(studentId, conceptId, journeyNodeId, journeyNode.state, undefined, originTopicId);
+    const savedPlan=[...session.planHistory].reverse().find(entry=>entry.conceptId===concept.id)?.plan;
+    const plan=savedPlan?.length?savedPlan:freshPlan;
     if (session.planHistory.length === 0) {
       session.planHistory.push({ conceptId: concept.id, conceptTitle: concept.title, plan, startedAt: new Date().toISOString() });
     }
@@ -119,7 +122,7 @@ export async function buildContext(
  * getting_exam_ready and the concept has mastery questions on the CMS.
  * Returns undefined if practice is not applicable.
  */
-async function loadPractice(state: ConceptState, conceptId: string, session: Session): Promise<PracticeExercise | undefined> {
+export async function loadPractice(state: ConceptState, conceptId: string, session: Session): Promise<PracticeExercise | undefined> {
   if (state !== CS.MASTERING && state !== CS.GETTING_EXAM_READY) return undefined;
   // Prefer questions.json from content folder; fall back to CMS DB.
   let questions: Question[];

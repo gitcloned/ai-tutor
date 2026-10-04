@@ -417,6 +417,8 @@ describe('return to origin — triggered by update_step when advance_state compl
       });
 
       vi.mocked(lp.patch).mockResolvedValue({});
+      // transitionState creates a new session when advancing to a transition state (assessing)
+      vi.mocked(lp.post).mockResolvedValue(makeSession({ id: 'session-assessing', conceptStateAtStart: 'assessing', planHistory: [] }));
 
       const result = await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx) as any;
 

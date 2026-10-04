@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CONCEPT_COMPLETING_SOLUTIONS, makeNode, makeCtx } from './fixtures.js';
+import { CONCEPT_COMPLETING_SOLUTIONS, makeNode, makeCtx, makeSession } from './fixtures.js';
 import { buildPlan } from '../learning/plan-builder.js';
 import { get_next_step, update_step } from '../tools/plan.js';
 
@@ -19,7 +19,24 @@ vi.mock('../api.js', () => ({
   cms: { get: vi.fn() },
 }));
 
-import { lp } from '../api.js';
+// Prevent file-system reads of real content files during tests.
+// buildConceptPlan / loadPractice fall back to the in-memory builders when all has* return false.
+vi.mock('../learning/plan-builder-v2.js', () => ({
+  hasProbePlan:        () => false,
+  hasTeachPlan:        () => false,
+  hasMasteryPlan:      () => false,
+  hasQuestionsJson:    () => false,
+  loadProbePlan:       () => ({ steps: [], models: [] }),
+  loadTeachPlan:       () => ({ steps: [], models: [] }),
+  loadMasteryPlan:     () => ({ steps: [], models: [] }),
+  loadQuestionsFromJson: () => [],
+  questionsJsonPath:   () => '',
+  probePlanPath:       () => '',
+  teachPlanPath:       () => '',
+  masteryPlanPath:     () => '',
+}));
+
+import { lp, cms } from '../api.js';
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +49,18 @@ function makeLearningCtx() {
   const plan = buildPlan(CONCEPT_COMPLETING_SOLUTIONS, 'learning');
   return makeCtx({
     concept:     CONCEPT_COMPLETING_SOLUTIONS,
+    journeyNode: makeNode({ state: 'learning', goTo: null }),
+    plan,
+  });
+}
+
+// Uses a learn-only concept so clarity is a terminal checkpoint (no auto-advance to mastering).
+// This isolates "advance to checkpoint" behaviour from "advance to transition state" behaviour.
+const CONCEPT_LEARN_ONLY = { ...CONCEPT_COMPLETING_SOLUTIONS, supportedPhases: ['learn'] as any };
+function makeAdvanceStateCtx() {
+  const plan = buildPlan(CONCEPT_LEARN_ONLY, 'learning');
+  return makeCtx({
+    concept:     CONCEPT_LEARN_ONLY,
     journeyNode: makeNode({ state: 'learning', goTo: null }),
     plan,
   });
@@ -167,10 +196,12 @@ describe('update_step — navigating the learning plan', () => {
     });
   });
 
-  describe('when the agent completes the advance_state step', () => {
+  describe('when the agent completes the advance_state step (learn-only concept)', () => {
+    // These tests use a concept with supportedPhases=['learn'] so clarity is a terminal
+    // checkpoint — no auto-advance to mastering — and no new session is created.
 
     it('transitions ctx.journeyNode.state to "clarity"', async () => {
-      const ctx         = makeLearningCtx();
+      const ctx         = makeAdvanceStateCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -180,7 +211,7 @@ describe('update_step — navigating the learning plan', () => {
     });
 
     it('patches the journey node in LP with state "clarity"', async () => {
-      const ctx         = makeLearningCtx();
+      const ctx         = makeAdvanceStateCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -192,20 +223,20 @@ describe('update_step — navigating the learning plan', () => {
       );
     });
 
-    it('does NOT rebuild ctx.plan — clarity is a checkpoint so session ends here', async () => {
-      const ctx         = makeLearningCtx();
+    it('does NOT rebuild ctx.plan — clarity is terminal so session ends here', async () => {
+      const ctx         = makeAdvanceStateCtx();
       const planBefore  = ctx.plan;
       const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
       await update_step.run({ id: advanceStep.id, outcome: 'done' }, ctx);
 
-      // plan is NOT replaced — clarity plan is built by the next session via buildContext
+      // plan is NOT replaced — next session handles the clarity state via buildContext
       expect(ctx.plan).toBe(planBefore);
     });
 
     it('returns allDone when reaching a checkpoint state after advance_state', async () => {
-      const ctx         = makeLearningCtx();
+      const ctx         = makeAdvanceStateCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -219,7 +250,7 @@ describe('update_step — navigating the learning plan', () => {
     });
 
     it('does not trigger return-to-origin — goTo is null on this node', async () => {
-      const ctx         = makeLearningCtx();
+      const ctx         = makeAdvanceStateCtx();
       const advanceStep = ctx.plan.find(s => s.type === 'redirect' && !(s.content as any).conceptId)!;
       vi.mocked(lp.patch).mockResolvedValue({});
 
@@ -235,6 +266,14 @@ describe('update_step — navigating the learning plan', () => {
     it('completes all steps; continues through mastery and ends allDone at "mastered"', async () => {
       const ctx = makeLearningCtx();
       vi.mocked(lp.patch).mockResolvedValue({});
+      // createSession is called when clarity auto-advances to mastering
+      vi.mocked(lp.post).mockResolvedValue(makeSession({
+        id:                  'session-mastering',
+        conceptStateAtStart: 'mastering',
+        planHistory:         [],
+      }));
+      // loadPractice falls back to cms.get when no questions.json — return empty so no practice
+      vi.mocked(cms.get).mockResolvedValue([]);
 
       let lastResult: any;
       let guard = 30; // more steps now: teaching + mastery plan

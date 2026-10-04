@@ -10,6 +10,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
 const PORT = Number(process.env.PORT ?? 32001);
 
+// Canvas sends authenticated requests from its own origin. Handle preflight
+// before routes so errors and successful responses both remain readable.
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+app.options('*', (_req, res) => { res.sendStatus(204); });
+
 app.use(express.json());
 app.use('/interactive-models', express.static(fileURLToPath(new URL('../../resources/interactive-models/', import.meta.url)), {
   setHeaders: res => res.setHeader('Access-Control-Allow-Origin', '*'),
@@ -76,7 +86,12 @@ app.get('/concepts/:id', wrap(async (req, res) => {
     .populate('masteryQuestions')
     .populate('examQuestions');
   if (!concept) return res.status(404).json({ error: 'Not found' });
-  res.json(concept);
+  // `topic` is stored as a string slug but the Mongoose schema types it as ObjectId,
+  // so Mongoose returns null on read. Fetch the raw value and re-attach it.
+  const raw = await rawDb().collection('concepts').findOne({ id: req.params.id }, { projection: { topic: 1 } });
+  const obj = concept.toObject() as unknown as Record<string, unknown>;
+  obj.topic = (raw as any)?.topic ?? null;
+  res.json(obj);
 }));
 
 app.patch('/concepts/:id', wrap(async (req, res) => {

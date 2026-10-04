@@ -1,0 +1,82 @@
+[
+  {
+    "id": "aq1",
+    "order": 1,
+    "type": "open",
+    "difficulty": "easy",
+    "score": 1,
+    "stem": "Which of the following are linear equations in x and y? Select all that apply.\n\na) 2x + 3y = 12\nb) y = 5x − 4\nc) xy = 12\nd) y = x² + 1",
+    "idealAnswer": "a and b. Both have each variable to the power of 1 with no products of variables. c) xy = 12 has x and y multiplied together. d) y = x² + 1 has x squared. Neither is linear.",
+    "stepsToSolve": [
+      "Write all four options. Ask: which ones do you think are linear equations?",
+      "For each option, ask: what is the highest power of any variable? If every variable appears only to the power of 1 and no two variables are multiplied together, it is linear.",
+      "a) 2x + 3y = 12 — both x and y are to the power 1. Linear ✓",
+      "b) y = 5x − 4 — both variables to power 1. Linear ✓",
+      "c) xy = 12 — x and y are multiplied, making it non-linear ✗",
+      "d) y = x² + 1 — x is squared, making it non-linear ✗"
+    ],
+    "hints": [
+      "A linear equation has every variable to the power of 1 only — no x², no xy, no 1/x.",
+      "Look at each option one at a time. Does it have any variable raised to a power other than 1, or two variables multiplied together?"
+    ]
+  },
+  {
+    "id": "aq2",
+    "order": 2,
+    "type": "open",
+    "difficulty": "easy",
+    "score": 1,
+    "stem": "Is x = 5, y = 2 a solution to 4x − y = 3?",
+    "idealAnswer": "No. Substituting: 4(5) − 2 = 20 − 2 = 18. Since 18 ≠ 3, the pair (5, 2) is not a solution.",
+    "stepsToSolve": [
+      "Write the equation: 4x − y = 3. Write 'Substitute x = 5, y = 2' below it.",
+      "Replace x with 5 and y with 2: 4(5) − 2",
+      "Work out 4 × 5 first: 20 − 2 = 18",
+      "Compare: is 18 equal to 3? No — so (5, 2) is NOT a solution."
+    ],
+    "hints": [
+      "Replace x with 5 and y with 2 on the left side of the equation, then calculate.",
+      "What is 4 × 5?"
+    ]
+  },
+  {
+    "id": "aq3",
+    "order": 3,
+    "type": "open",
+    "difficulty": "medium",
+    "score": 2,
+    "stem": "Which of the following are solutions to y = 2x + 1? Select all that apply.\n\n(0, 1)\n(1, 3)\n(2, 4)\n(3, 7)",
+    "idealAnswer": "(0, 1), (1, 3), and (3, 7). For (2, 4): 2(2)+1 = 5 ≠ 4, so it is not a solution.",
+    "stepsToSolve": [
+      "Write the equation y = 2x + 1. For each ordered pair (x, y), substitute the x value and check whether you get the given y.",
+      "(0, 1): substitute x = 0 → 2(0) + 1 = 1. Does 1 = 1? Yes ✓",
+      "(1, 3): substitute x = 1 → 2(1) + 1 = 3. Does 3 = 3? Yes ✓",
+      "(2, 4): substitute x = 2 → 2(2) + 1 = 5. Does 5 = 4? No ✗",
+      "(3, 7): substitute x = 3 → 2(3) + 1 = 7. Does 7 = 7? Yes ✓"
+    ],
+    "hints": [
+      "For each pair (x, y), substitute the x value into 2x + 1 and check if the result matches y.",
+      "Start with (0, 1): what is 2 × 0 + 1?"
+    ]
+  },
+  {
+    "id": "aq4",
+    "order": 4,
+    "type": "open",
+    "difficulty": "medium",
+    "score": 2,
+    "stem": "Draw the line y = x + 4 on a graph.",
+    "idealAnswer": "A straight line passing through (0, 4) and (2, 6) — or any two correct points. Slope is 1, y-intercept is 4.",
+    "stepsToSolve": [
+      "Open function-graph: equation y = x + 4, x-span −6 to 6, y-span −2 to 10, curve hidden. Ask the student: find two points that lie on this line.",
+      "Ask: what is y when x = 0? Let student calculate. Answer: y = 0 + 4 = 4. Plot the point (0, 4) on the graph.",
+      "Ask: what is y when x = 2? Let student calculate. Answer: y = 2 + 4 = 6. Plot the point (2, 6) on the graph.",
+      "Ask the student to draw a straight line through both points. Then reveal the curve to confirm.",
+      "Remove the graph after confirming: /action: remove, same model id."
+    ],
+    "hints": [
+      "Pick any value for x, substitute it into y = x + 4, and you get a point (x, y) on the line.",
+      "Try x = 0. What is y = 0 + 4?"
+    ]
+  }
+]

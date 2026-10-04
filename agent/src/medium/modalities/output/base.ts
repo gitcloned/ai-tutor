@@ -11,6 +11,7 @@ import type { TurnEvent } from '../../../engine.js';
  * across multiple turns in the same session.
  */
 export abstract class BaseOutputModality {
+  reset(): void {}
   abstract readonly key: string;
   abstract handle(chunk: string): AsyncGenerator<TurnEvent>;
   abstract end(attrs: Record<string, string>): AsyncGenerator<TurnEvent>;
@@ -31,6 +32,8 @@ export class OutputModalityRegistry {
   keys(): string[] {
     return [...this.map.keys()];
   }
+
+  reset(): void { for(const modality of this.map.values())modality.reset(); }
 
   get size(): number {
     return this.map.size;

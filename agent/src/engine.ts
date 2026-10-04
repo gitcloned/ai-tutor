@@ -7,7 +7,7 @@
  * without knowing about Gemini internals.
  */
 
-import {requestBeforeOutput,serviceError} from './network.js';
+import { requestBeforeOutput, serviceError } from './network.js';
 import { GoogleGenAI } from '@google/genai';
 import type { AgentContext } from './context.js';
 import type { ToolRegistry } from './tools/index.js';
@@ -20,29 +20,29 @@ export type AgentEvent =
 
 type TurnEventPayload =
   // Internal agent events
-  | { type: 'session';      notebookId?: string; sessionId: string; conceptId: string; title: string }
-  | { type: 'text';         content: string }
-  | { type: 'text_chunk';   content: string; attrs?: Record<string, string> }
-  | { type: 'tool_call';    name: string; args: unknown }
-  | { type: 'tool_result';  name: string; result: unknown }
-  | { type: 'action';       action: unknown }
-  | { type: 'event';        event: AgentEvent }
-  | { type: 'error';        message: string }
+  | { type: 'session'; notebookId?: string; sessionId: string; conceptId: string; title: string }
+  | { type: 'text'; content: string }
+  | { type: 'text_chunk'; content: string; attrs?: Record<string, string> }
+  | { type: 'tool_call'; name: string; args: unknown }
+  | { type: 'tool_result'; name: string; result: unknown }
+  | { type: 'action'; action: unknown }
+  | { type: 'event'; event: AgentEvent }
+  | { type: 'error'; message: string }
   // Output events — emitted by Parser when an output modality is active.
   // All share the same shape: { type, content, attrs }.
   //   type    — discriminates what content means
   //   content — the payload (base64 audio, SVG, URL, question text, equation…)
   //   attrs   — open-ended metadata from /key: value lines in the LLM block
   | { type: 'audio_chunk'; content: string; attrs: Record<string, string> }
-  | { type: 'audio';       content: string; attrs: Record<string, string> }
-  | { type: 'svg';         content: string; attrs: Record<string, string> }
-  | { type: 'model3d';     content: string; attrs: Record<string, string> }
-  | { type: 'model';       content: string; attrs: Record<string, string> }
-  | { type: 'play';        content: string; attrs: Record<string, string> }
-  | { type: 'ask';         content: string; attrs: Record<string, string> }
-  | { type: 'question';    content: string; attrs: Record<string, string> }
-  | { type: 'annotate';    content: string; attrs: Record<string, string> }
-  | { type: 'metric';      name: string; value: number; unit: string };
+  | { type: 'audio'; content: string; attrs: Record<string, string> }
+  | { type: 'svg'; content: string; attrs: Record<string, string> }
+  | { type: 'model3d'; content: string; attrs: Record<string, string> }
+  | { type: 'model'; content: string; attrs: Record<string, string> }
+  | { type: 'play'; content: string; attrs: Record<string, string> }
+  | { type: 'ask'; content: string; attrs: Record<string, string> }
+  | { type: 'question'; content: string; attrs: Record<string, string> }
+  | { type: 'annotate'; content: string; attrs: Record<string, string> }
+  | { type: 'metric'; name: string; value: number; unit: string };
 
 /** Every turn event is enriched with the current session and node context. */
 export type TurnEvent = TurnEventPayload & { sessionId?: string; nodeId?: string };
@@ -55,7 +55,7 @@ export type OutputEvent = Extract<TurnEvent, { attrs: Record<string, string> }>
   | { type: 'text_chunk'; content: string; attrs: Record<string, string> };
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-flash';
 
 // Suppress Gemini SDK warning triggered internally when streaming a function-call response.
 // The SDK accesses .text on the aggregated response to update chat history, which fires a
@@ -103,7 +103,7 @@ export class TurnEngine {
       resumed ? RESUME_INSTRUCTION : null,
       skill.prompt(ctx),
       ctx.outputPrompt || null,
-      ctx.modelPrompt  || null,
+      ctx.modelPrompt || null,
       ctx.session.observationToStartWith?.trim()
         ? `Session opening observation (context about the student's work): ${JSON.stringify(ctx.session.observationToStartWith)}\nWhen starting this session, briefly acknowledge this observation, then introduce the lesson naturally. Do not invent praise or ask for confirmation. If it has already been acknowledged in the conversation, continue without repeating it.`
         : null,
@@ -136,23 +136,24 @@ export class TurnEngine {
     }
 
     while (true) {
-      const stream = await requestBeforeOutput('Gemini',()=>chat.sendMessageStream({ message }));
+      const stream = await requestBeforeOutput('Gemini', () => chat.sendMessageStream({ message }));
 
       let accText = '';
       let calls: any[] = [];
 
-      try { for await (const chunk of stream) {
-        const chunkCalls = chunk.functionCalls;
-        if (chunkCalls && chunkCalls.length > 0) {
-          // Function calls arrive complete — collect from whichever chunk carries them
-          calls = chunkCalls;
-        } else if (chunk.text) {
-          accText += chunk.text;
-          yield { type: 'text_chunk', content: chunk.text };
+      try {
+        for await (const chunk of stream) {
+          const chunkCalls = chunk.functionCalls;
+          if (chunkCalls && chunkCalls.length > 0) {
+            // Function calls arrive complete — collect from whichever chunk carries them
+            calls = chunkCalls;
+          } else if (chunk.text) {
+            accText += chunk.text;
+            yield { type: 'text_chunk', content: chunk.text };
+          }
         }
-      }
 
-      } catch(error) { throw serviceError('Gemini response stream',error); }
+      } catch (error) { throw serviceError('Gemini response stream', error); }
 
       if (calls.length === 0) {
         // No tool calls — streaming is done, emit full text for history accumulation

@@ -95,11 +95,13 @@ export async function redirectToPrereq(
   prereqSession.teachingPlan = { content, updatedAt: new Date().toISOString() };
 
   await lp.patch(`/sessions/${prereqSession.id}`, {
+    notebookId: ctx.session.notebookId ?? ctx.session.id,
     planHistory:  prereqSession.planHistory,
     teachingPlan: prereqSession.teachingPlan,
   });
 
   // Swap ctx to prereq
+  prereqSession.notebookId = ctx.session.notebookId ?? ctx.session.id;
   ctx.session     = prereqSession;
   ctx.concept     = prereqConcept;
   ctx.journeyNode = prereqNode;
@@ -195,12 +197,14 @@ export async function returnToOrigin(ctx: AgentContext, knownOriginId?: string):
     planHistory:    originSession.planHistory,
     teachingPlan:   originSession.teachingPlan,
     resumeFromStep: null,
+    notebookId: ctx.session.notebookId ?? ctx.session.id,
   });
 
   // Mark the prereq session completed
   await lp.patch(`/sessions/${ctx.session.id}`, { status: 'completed', endedAt: new Date().toISOString() });
 
   // Swap ctx to origin
+  originSession.notebookId = ctx.session.notebookId ?? ctx.session.id;
   ctx.session     = originSession;
   ctx.concept     = originConcept;
   ctx.journeyNode = originNode;

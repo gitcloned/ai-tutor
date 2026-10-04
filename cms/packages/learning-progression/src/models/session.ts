@@ -21,7 +21,7 @@ const messageSchema = new Schema({
 }, { _id: false });
 
 const rawTurnSchema = new Schema({
-  role:      { type: String, enum: ['student', 'agent', 'tool_call', 'tool_result'], required: true },
+  role:      { type: String, enum: ['student', 'agent', 'tool_call', 'tool_result', 'metric', 'error'], required: true },
   content:   { type: Schema.Types.Mixed, required: true },
   name:      { type: String },
   timestamp: { type: Date, default: Date.now },
@@ -37,6 +37,7 @@ const sessionSchema = new Schema<ISession>({
   studentId:           { type: String, required: true },
   conceptId:           { type: String, required: true },
   journeyNodeId:       { type: String, required: true },
+  notebookId:          { type: String },
   originTopicId:       { type: String, default: null },
   status:              { type: String, enum: ['initialised', 'started', 'completed'], default: 'initialised' },
   conceptStateAtStart: { type: String, enum: ['not_assessed', 'assessing', 'learning', 'mastering', 'getting_exam_ready', 'learn-pre-req-before', 'clarity', 'mastered', 'exam_ready'], required: true },

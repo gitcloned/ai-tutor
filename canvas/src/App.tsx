@@ -1,3 +1,5 @@
+import {request} from './journey/api';
+import {NotebookSync,type LessonBinding} from './notebookStorage';
 import {ConnectionOptions} from './ConnectionOptions';
 import {CameraCapture,PagePreview} from './CameraCapture';
 import {PageStackUtil,PageStackContext,addPageStack} from './PageStack';
@@ -41,22 +43,51 @@ function CanvasControls({editor,fit}:{editor:Editor;fit:()=>void}) {
 }
 export default function App() {
   const [editor,setEditor]=useState<Editor|null>(null);const lesson=useLesson(editor);
-  const [sheet,setSheet]=useState<'connect'|'reply'|'transcript'|null>(null),[notebook,setNotebook]=useState(false),[reply,setReply]=useState('');
+  const [sheet,setSheet]=useState<'connect'|'reply'|'transcript'|null>(location.pathname==='/test-session'?'connect':null),[notebook,setNotebook]=useState(false),[reply,setReply]=useState('');
   const [recentTutors,setRecentTutors]=useState(successfulTutors);
   const [url,setUrl]=useState(()=>successfulTutors()[0]||initialTutorUrl(window.location,localStorage.getItem('prodigy-ws')));
   useEffect(()=>{if(lesson.connectionError)setSheet('connect');},[lesson.connectionError]);
   useEffect(()=>{if(lesson.connected){setRecentTutors(successfulTutors());setSheet(current=>current==='connect'?null:current);}},[lesson.connected,lesson.successfulUrl]);
-  function tryConnect(address:string){setUrl(address);lesson.connect(address);}
-  function connectTutor(){if(lesson.connected||lesson.phase==='connecting'){setSheet('connect');return;}const last=successfulTutors()[0];if(last)tryConnect(last);else setSheet('connect');}
-  const journeyConnection=useRef(false);
+  const reconnecting=useRef(false);
+  async function tryConnect(address:string){
+    if(reconnecting.current)return;
+    // Managed lessons need a current ticket, especially after the server restarts.
+    if(binding&&location.pathname.startsWith('/sessions/')){
+      reconnecting.current=true;
+      try {
+        const fresh=await request<LessonBinding>('/sessions/'+encodeURIComponent(binding.sessionId),undefined,'agent');
+        sessionStorage.setItem('prodigy-journey-lesson',JSON.stringify(fresh));
+        binding.sessionId=fresh.sessionId;binding.wsUrl=fresh.wsUrl;
+        window.history.replaceState(null,'','/sessions/'+encodeURIComponent(fresh.sessionId));
+        setUrl(fresh.wsUrl);lesson.connect(fresh.wsUrl);
+      } catch {
+        lesson.notify('Your tutor is not available yet. Check that the server is running, then reconnect. Your canvas is still here.','connect');
+      } finally {reconnecting.current=false;}
+      return;
+    }
+    setUrl(address);lesson.connect(address);
+  }
+  function connectTutor(){if(reviewNotebook||openingNotebook||notebookError)return;if(lesson.connected||lesson.phase==='connecting'){setSheet('connect');return;}const last=successfulTutors()[0];if(last)tryConnect(last);else setSheet('connect');}
+  const [binding]=useState<LessonBinding|null>(()=>location.pathname==='/test-session'?null:JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'null'));
+  const notebookSync=useRef<NotebookSync|null>(null);
+  const [reviewNotebook,setReviewNotebook]=useState(false),[openingNotebook,setOpeningNotebook]=useState(false),[notebookError,setNotebookError]=useState('');
   useEffect(()=>{
-    if(!editor||journeyConnection.current||!location.pathname.startsWith('/sessions/'))return;
-    journeyConnection.current=true;
-    try{
-      const pending=JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'null');
-      if(pending?.wsUrl)tryConnect(pending.wsUrl);
-    }catch{setSheet('connect');}
+    if(!editor||!binding?.wsUrl||!location.pathname.startsWith('/sessions/'))return;
+    let cancelled=false;
+    const sync=new NotebookSync(editor,binding,lesson.notify);notebookSync.current=sync;
+    setOpeningNotebook(true);
+    void sync.restore().then(restored=>{
+      if(cancelled)return;
+      setOpeningNotebook(false);
+      if(restored){editor.setCurrentTool('hand');setReviewNotebook(true);}else tryConnect(binding.wsUrl);
+    }).catch(()=>{if(!cancelled){setOpeningNotebook(false);setNotebookError('We couldn’t open your notebook. Try again to keep your previous work.');}});
+    const save=()=>{void sync.save(true);};
+    const hidden=()=>{if(document.visibilityState==='hidden')save();};
+    window.addEventListener('pagehide',save);document.addEventListener('visibilitychange',hidden);
+    return()=>{cancelled=true;sync.dispose();window.removeEventListener('pagehide',save);document.removeEventListener('visibilitychange',hidden);};
   },[editor]);
+  useEffect(()=>{if(lesson.savedTurn>0)void notebookSync.current?.save();},[lesson.savedTurn]);
+  async function leaveLesson(){lesson.disconnect();await notebookSync.current?.save();window.location.assign('/home');}
   const [hasContent,setHasContent]=useState(false);
   const captionText=useRef<HTMLParagraphElement>(null);
   useEffect(()=>{const text=captionText.current;if(text)text.scrollTop=text.scrollHeight;},[lesson.caption]);
@@ -102,7 +133,7 @@ export default function App() {
     }catch{lesson.notify('Could not prepare your work. It is still pending. Try sending it again.','retry');}finally{sending.current=false;setPreparing(false);}
     return false;
   }
-  function tapOrb(){if(!lesson.connected){setSheet('connect');return;}void sendWork();}
+  function tapOrb(){if(reviewNotebook||openingNotebook||notebookError)return;if(!lesson.connected){setSheet('connect');return;}void sendWork();}
   async function exportPage(){
     if(!editor)return;const ids=[...editor.getCurrentPageShapeIds()];if(!ids.length){lesson.notify('Write or draw something first, then export your page.');return;}
     try{const result=await editor.toImageDataUrl(ids,{format:'png',background:true,padding:40});const link=document.createElement('a');link.href=result.url;link.download='prodigy-notebook.png';link.click();}catch{lesson.notify('This page could not be exported. Some embedded media may not support export.');}
@@ -113,18 +144,21 @@ export default function App() {
       <VideoCardContext.Provider value={{enabled:!lesson.tutorBusy&&!preparing&&!lesson.video,open:lesson.rewatch}}>
       <McqContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
       <GraphActivityContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
-        <Tldraw options={{maxPages:50}} hideUi shapeUtils={modelShapeUtils} persistenceKey={'prodigy-canvas-student-'+JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'{}').studentId} onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
+        <Tldraw options={{maxPages:1000}} hideUi shapeUtils={modelShapeUtils} persistenceKey={location.pathname==='/test-session'?'prodigy-canvas-test-sessions':'prodigy-canvas-student-'+binding?.studentId} onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
       </GraphActivityContext.Provider>
       </McqContext.Provider>
       </VideoCardContext.Provider>
       </PageStackContext.Provider>
     </section>
-    {!hasContent && !lesson.connected && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={connectTutor}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
+    {!hasContent && !lesson.connected && !openingNotebook && !reviewNotebook && !notebookError && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={connectTutor}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}
 
+    {(openingNotebook||reviewNotebook||notebookError)&&<div className="notebook-resume" role="status">
+      {openingNotebook?<span>Opening your notebook…</span>:notebookError?<><span>{notebookError}</span><button className="primary" onClick={()=>location.reload()}>Try again</button></>:<><span>Take a moment to look back.</span><button className="primary" onClick={()=>{setReviewNotebook(false);if(binding)tryConnect(binding.wsUrl);}}>Let’s start <ArrowUpRight size={18}/></button></>}
+    </div>}
     <footer className="tutor-space" aria-label="Tutor and responses">
-    <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(location.pathname.startsWith('/sessions/')){lesson.disconnect();window.location.assign('/home');}else if(window.history.length>1)window.history.back();else window.location.assign('/home');}}><ArrowLeft size={18}/></button>
+    <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(location.pathname.startsWith('/sessions/')){void leaveLesson();}else if(location.pathname==='/test-session'){lesson.disconnect();window.location.assign('/home');}else if(window.history.length>1)window.history.back();else window.location.assign('/home');}}><ArrowLeft size={18}/></button>
     <div className="lesson-tools">
       <button className="notebook-button lesson-breadcrumb" aria-label="Lesson notebook" title="Lesson notebook" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</button>
       <div className="lesson-tools-actions"><button className={`connection ${lesson.connected?'online':''}`} onClick={connectTutor} title="Tutor connection"><span/>{lesson.connected?'Connected':lesson.phase==='connecting'?'Connecting…':'Connect tutor'}</button>
@@ -135,12 +169,12 @@ export default function App() {
     <Orb pageCount={cameraPages.length} onCamera={()=>setCamera(true)} tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
     </footer>
     {editor&&<Appreciation editor={editor}/>}
-    {editor&&<HelpChips editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&!lesson.video&&!camera&&!pagePreview&&!sheet&&!notebook&&!lesson.issue&&['ready','waiting'].includes(lesson.phase)} canRepeat={lesson.canRepeat} repeat={lesson.repeatNarration} send={text=>lesson.send(text)}/>}
+    {editor&&<HelpChips editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&!lesson.video&&!camera&&!pagePreview&&!sheet&&!notebook&&(!lesson.issue||lesson.issue.action==='tutor-retry')&&['ready','waiting'].includes(lesson.phase)} canRepeat={lesson.canRepeat} repeat={lesson.repeatNarration} send={text=>lesson.send(text)}/>}
     {editor&&<InputHints key={lesson.connectionVersion.current} editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&['ready','waiting'].includes(lesson.phase)} blocked={!!lesson.video||camera||!!pagePreview||!!sheet||notebook}/>}
     {camera&&<CameraCapture pages={cameraPages} add={p=>setCameraPages(current=>[...current,p])} remove={id=>setCameraPages(current=>current.filter(p=>p.id!==id))} close={()=>setCamera(false)} send={()=>{void sendWork();}} busy={preparing} canSend={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'}/> }
     {pagePreview&&<PagePreview urls={pagePreview} close={()=>setPagePreview(null)}/>}
     {lesson.video&&<VideoLesson rewatching={lesson.rewatching} media={lesson.video} onDone={lesson.doneWatching}/>}
-    <LessonNotifications warnings={lesson.warnings} clear={lesson.clearWarnings} issue={lesson.video?null:lesson.issue} dismiss={lesson.dismissIssue} act={action=>{lesson.dismissIssue();if(action==='retry')void sendWork();else if(action==='sound')void lesson.enableSound();else setSheet(action==='reply'?'reply':'connect');}}/>
+    <LessonNotifications warnings={lesson.warnings} clear={lesson.clearWarnings} issue={lesson.video?null:lesson.issue} dismiss={lesson.dismissIssue} act={action=>{lesson.dismissIssue();if(action==='connect'&&binding){void tryConnect(binding.wsUrl);}else if(action==='tutor-retry')lesson.send('Your last response was interrupted. Please continue helping with my last message, using any work I already sent.');else if(action==='retry')void sendWork();else if(action==='sound')void lesson.enableSound();else setSheet(action==='reply'?'reply':'connect');}}/>
     {notebook&&editor&&<Notebook editor={editor} beforeDelete={lesson.beforeDeletePage} close={()=>setNotebook(false)}/>}
     {sheet&&<div className="sheet-backdrop" onPointerDown={e=>{if(e.target===e.currentTarget)setSheet(null);}}><section ref={dialogRef} className={`sheet ${sheet==='transcript'?'transcript-sheet':sheet==='connect'?'connection-sheet':''}`} role="dialog" aria-modal="true" aria-labelledby="sheet-title"><button className="close-sheet" aria-label="Close dialog" onClick={()=>setSheet(null)}><X size={20}/></button>
       {sheet==='connect'&&<ConnectionOptions url={url} setUrl={setUrl} recent={recentTutors} connected={lesson.connected} connecting={lesson.phase==='connecting'} error={lesson.connectionError} connect={tryConnect} disconnect={()=>{lesson.disconnect();setSheet(null);}}/>}

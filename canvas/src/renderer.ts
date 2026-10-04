@@ -1,3 +1,4 @@
+import {cleanNotebookCache} from './notebookStorage';
 import {appreciate,isPraise} from './appreciation';
 import { Box, Editor, DefaultFontFaces, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
 import { safeMedia, type Block } from './protocol';
@@ -36,18 +37,7 @@ export class CanvasRenderer {
     const sessionIds=this.editor.getPage(this.editor.getCurrentPageId())?.meta.sessionIds;
     if(this.started || current.length || (Array.isArray(sessionIds)&&sessionIds.length>0)) {
       const pages=this.editor.getPages();
-      if(pages.length>=this.editor.options.maxPages){
-        // Legacy pages have no timestamp; their existing notebook order is the
-        // best available ordering. Treat them as older than dated new pages.
-        const oldest=[...pages].sort((a,b)=>{
-          const time=(page:typeof a)=>typeof page.meta.createdAt==='number'?page.meta.createdAt:0;
-          return time(a)-time(b);
-        }).slice(0,Math.ceil(pages.length/2));
-        this.editor.markHistoryStoppingPoint('make-room-for-lesson');
-        for(const page of oldest)this.editor.deletePage(page.id);
-        removed=oldest.length;
-        this.editor.markHistoryStoppingPoint('after-make-room-for-lesson');
-      }
+      if(pages.length>=50)removed=cleanNotebookCache(this.editor);
       const id=PageRecordType.createId();
       this.editor.createPage({id,name:title,meta:{createdAt:Date.now()}});
       if(!this.editor.getPage(id))throw new Error('Could not create a new canvas. Please free space in the lesson notebook.');

@@ -8,7 +8,10 @@ it('describes the lesson when the WebSocket session starts', () => {
   })).toEqual({
     type:'session',
     sessionId:'session-1',
+    notebookId:'session-1',
     conceptId:'linear-equations',
     title:'Linear equations',
   });
 });
+
+it('keeps the original notebook identity after a session switch',()=>{expect(makeSessionEvent({session:{id:'prereq',notebookId:'original'},concept:{id:'c',title:'C'}})).toMatchObject({sessionId:'prereq',notebookId:'original'});});

@@ -17,6 +17,7 @@ export type { TTSProvider };
 export class Speak extends BaseOutputModality {
   readonly key = 'speak';
   private buffer = '';
+  reset(): void { this.buffer = ''; }
   private readonly tts: TTSProvider | undefined;
 
   constructor() {

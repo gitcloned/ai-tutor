@@ -15,3 +15,6 @@ environments/*/dumps/
 environments/dev/ashish-prodigy-dev-server
 environments/*/id_*
 environments/*/*.pem
+
+# Saved student canvas snapshots
+agent/data/notebooks/

@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {request,type Student} from './api';
+import {request,creationAttempt,type Student} from './api';
 export function parseNames(text:string){
   const rows:string[][]=[];let row:string[]=[],field='',quoted=false;
   for(let i=0;i<=text.length;i++){
@@ -23,7 +23,10 @@ export default function BulkStudents({userId,classroomId,grade,onChange}:{userId
     setBusy(true);
     try{
       for(let i=0;i<names.length;i++){
-        const student=await request<Student&{code:string}>('/students',{userId,name:names[i],grade});
+        const payload={userId,name:names[i],grade,setupContext:'teacher'};
+        const attempt=creationAttempt(`bulk-${classroomId}`,payload);
+        const student=await request<Student&{code:string}>('/students',{...payload,idempotencyKey:attempt.key});
+        attempt.done();
         setText(names.slice(i+1).join('\n'));
         let enrolled=false;
         try{await request(`/classrooms/${classroomId}/students`,{studentId:student.studentId});enrolled=true;}

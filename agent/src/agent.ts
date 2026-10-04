@@ -32,12 +32,13 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
   // Ensure rawHistory array exists (for sessions created before this field was added).
   if (!ctx.session.rawHistory) ctx.session.rawHistory = [];
 
-  async function *turn(): AsyncGenerator<TurnEvent> {
+  async function *turn(resumed = false): AsyncGenerator<TurnEvent> {
     const skill = skills.get(ctx.journeyNode.state);
-    let agentText = '';
-    for await (const event of engine.run(skill, ctx)) {
+    let agentText = '', partialText = '';
+    try { for await (const event of engine.run(skill, ctx, { resumed })) {
+      if(event.type==='text_chunk')partialText+=event.content;
       if (event.type === 'text') {
-        agentText += event.content;
+        agentText += event.content;partialText='';
         // Mark session as started on first agent text — only once
         if (ctx.session.status === 'initialised') {
           ctx.session.status = 'started';
@@ -50,10 +51,13 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
       }
       yield event;
     }
+    } finally {
+    agentText += partialText;
     if (agentText) {
       const ts = new Date().toISOString();
       ctx.session.history.push({ role: 'agent', content: agentText, timestamp: ts });
       ctx.session.rawHistory.push({ role: 'agent', content: agentText, timestamp: ts });
+    }
     }
   }
 
@@ -82,6 +86,7 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
     ctx,
     /** Agent opens the session — fires without waiting for student input. */
     initiate: () => {
+      const resumed = ctx.session.history.length > 0;
       // Seed history with a synthetic user turn so history always starts with 'user'.
       // Gemini requires history[0].role === 'user'.
       if (ctx.session.history.length === 0) {
@@ -89,7 +94,7 @@ export async function newAgent(studentId: string, conceptId: string, journeyNode
         ctx.session.history.push({ role: 'student', content: 'Begin the session.', timestamp: ts });
         ctx.session.rawHistory.push({ role: 'student', content: 'Begin the session.', timestamp: ts });
       }
-      return turn();
+      return turn(resumed);
     },
     /** Student sends a message; agent responds. */
     send: (input: ProcessedInput) => appendAndRun('student', input),

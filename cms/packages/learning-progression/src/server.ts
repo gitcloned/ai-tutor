@@ -6,6 +6,7 @@ import { connectDb } from './db.js';
 import { LearningJourney, LearningJourneyNode, LearningJourneyTopic, Session, Memory } from './models/index.js';
 import {
   selectNextConcept,
+  sessionActivity, withSessionActivity, resumableSession,
   isTerminalForConcept,
   type ConceptSummary,
   type NodeSummary,
@@ -259,6 +260,15 @@ async function cmsGetTopicTitle(topicId: string): Promise<string> {
   } catch { return topicId; }
 }
 
+async function resolveTopicContinuation(topicId:string, nodes:any[], sessions:any[]) {
+  const concepts=await cmsGetConcepts(topicId);
+  const enriched=withSessionActivity(nodes,sessions);
+  const result=selectNextConcept(topicId,concepts,new Map(enriched.map(n=>[n.conceptId,n])),enriched);
+  if(result.status!=='continue')return result;
+  const node=enriched.find(n=>n.conceptId===result.conceptId);
+  return {status:'continue' as const,topicId,conceptId:result.conceptId,state:result.state,resumeSessionId:node?resumableSession(sessions,node)?.id??null:null};
+}
+
 // ── LP Home ───────────────────────────────────────────────────────────────────
 
 /**
@@ -345,42 +355,25 @@ app.get('/students/:studentId/home', wrap(async (req, res) => {
     })
   );
 
-  // Determine continueWith: most recently active unfinished topic across all active assignments
-  // Find the node with the most recent lastActivity
-  const allActiveTopicIds = new Set(
-    subjects.flatMap(s => s.topics.filter(t => t.status === 'in_progress').map(t => t.topicId))
-  );
-
-  let continueWith: any = null;
-  let bestActivity: number = 0;
-
-  for (const node of allNodes) {
-    if (!node.lastActivity) continue;
-    const activity = new Date(node.lastActivity).getTime();
-    if (activity <= bestActivity) continue;
-
-    // Node must belong to an active assigned topic
-    const nodeTopic = node.topicId;
-    if (!nodeTopic || !allActiveTopicIds.has(nodeTopic)) continue;
-
-    // Node must not be terminal
-    const nodeMap = allNodesByConceptId;
-    const concepts = await cmsGetConcepts(nodeTopic).catch(() => []);
-    const conceptDef = concepts.find(c => c.id === node.conceptId);
-    if (!conceptDef) continue;
-    if (isTerminalForConcept(node.state, conceptDef.supportedPhases)) continue;
-
-    // Find a started session for this node
-    const session = await Session.findOne({ studentId, journeyNodeId: node.id, status: 'started' })
-      .sort({ createdAt: -1 }).lean();
-
-    bestActivity = activity;
-    continueWith = {
-      topicId:         nodeTopic,
-      conceptId:       node.conceptId,
-      state:           node.state,
-      resumeSessionId: session ? (session as any).id : null,
-    };
+  // Rank previously visited assigned topics by actual conversation activity.
+  // Missing node timestamps must not hide unfinished sessions.
+  const sessions:any[]=await Session.find({studentId}).lean();
+  const ranked: {topicId:string;journeyId:string;activity:number}[]=[];
+  for(const subject of subjects){
+    for(const topic of subject.topics.filter(t=>t.status==='in_progress')){
+      const journeyNodes=allNodes.filter(n=>n.journeyId===subject.journeyId);
+      const concepts=await cmsGetConcepts(topic.topicId).catch(()=>[]);
+      const ids=new Set(concepts.map(c=>c.id));
+      const enriched=withSessionActivity(journeyNodes,sessions);
+      const activity=Math.max(0,...enriched.filter(n=>ids.has(n.conceptId)).map(n=>new Date(n.lastActivity??0).getTime()),...sessions.filter(s=>s.originTopicId===topic.topicId&&journeyNodes.some(n=>n.id===s.journeyNodeId)).map(sessionActivity));
+      if(activity>0)ranked.push({topicId:topic.topicId,journeyId:subject.journeyId,activity});
+    }
+  }
+  ranked.sort((a,b)=>b.activity-a.activity||a.topicId.localeCompare(b.topicId));
+  let continueWith:any=null;
+  for(const topic of ranked){
+    const result=await resolveTopicContinuation(topic.topicId,allNodes.filter(n=>n.journeyId===topic.journeyId),sessions);
+    if(result.status==='continue'){continueWith=result;break;}
   }
 
   res.json({ subjects, continueWith });
@@ -415,67 +408,11 @@ app.get('/students/:studentId/topics/:topicId/next', wrap(async (req, res) => {
   }).lean();
   if (!jt) return res.status(403).json({ error: 'Topic not assigned to this student' });
 
-  // Get concepts from CMS
-  let concepts: ConceptSummary[];
-  try {
-    concepts = await cmsGetConcepts(topicId);
-  } catch (err: any) {
-    return res.status(502).json({ error: `Curriculum unavailable: ${err.message}` });
-  }
-
-  if (concepts.length === 0) {
-    return res.json({ status: 'unavailable', reason: 'Topic has no concepts' });
-  }
-
-  const conceptIds = concepts.map(c => c.id);
-
-  // Load all journey nodes for this student
-  const allNodes: any[] = await LearningJourneyNode.find({ journeyId: { $in: journeyIds } }).lean();
-  const allNodeSummaries: NodeSummary[] = allNodes.map(n => ({
-    conceptId:     n.conceptId,
-    topicId:       n.topicId ?? null,
-    state:         n.state,
-    lastActivity:  n.lastActivity ?? null,
-    cameFrom:      n.cameFrom ?? null,
-    preReqToLearn: n.preReqToLearn ?? null,
-  }));
-
-  const nodeByConceptId = new Map<string, NodeSummary>(
-    allNodeSummaries
-      .filter(n => conceptIds.includes(n.conceptId))
-      .map(n => [n.conceptId, n])
-  );
-
-  const result: NextLearningResult = selectNextConcept(
-    topicId,
-    concepts,
-    nodeByConceptId,
-    allNodeSummaries,
-  );
-
-  if (result.status !== 'continue') {
-    return res.json(result);
-  }
-
-  // Find a 'started' session for the chosen concept node
-  const chosenNode = allNodes.find(n => n.conceptId === result.conceptId);
-  let resumeSessionId: string | null = null;
-  if (chosenNode) {
-    const session = await Session.findOne({
-      studentId,
-      journeyNodeId: chosenNode.id,
-      status:        'started',
-    }).sort({ createdAt: -1 }).lean();
-    if (session) resumeSessionId = (session as any).id;
-  }
-
-  res.json({
-    status:          'continue',
-    topicId:         result.originTopicId,
-    conceptId:       result.conceptId,
-    state:           result.state,
-    resumeSessionId,
-  });
+  const [nodes,sessions]=await Promise.all([
+    LearningJourneyNode.find({journeyId:jt.journeyId}).lean(),
+    Session.find({studentId}).lean(),
+  ]);
+  res.json(await resolveTopicContinuation(topicId,nodes,sessions));
 }));
 
 // ── Journey nodes ──────────────────────────────────────────────────────────────

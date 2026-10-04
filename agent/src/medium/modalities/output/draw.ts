@@ -10,6 +10,7 @@ import { BaseOutputModality } from './base.js';
 export class Draw extends BaseOutputModality {
   readonly key = 'draw';
   private buffer = '';
+  reset(): void { this.buffer = ''; }
 
   async *handle(chunk: string): AsyncGenerator<TurnEvent> {
     this.buffer += chunk;

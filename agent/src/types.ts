@@ -88,7 +88,7 @@ export interface PlanStep {
 export interface Message { role: 'student' | 'agent'; content: string; timestamp: string; }
 
 export interface RawTurn {
-  role: 'student' | 'agent' | 'tool_call' | 'tool_result' | 'metric';
+  role: 'student' | 'agent' | 'tool_call' | 'tool_result' | 'metric' | 'error';
   content: unknown;
   name?: string;   // tool name for tool_call / tool_result
   timestamp: string;
@@ -102,6 +102,8 @@ export interface PlanHistoryEntry {
 }
 
 export interface Session {
+  createdAt?: string;
+  notebookId?: string;
   id:                  string;
   studentId:           string;
   conceptId:           string;

@@ -1,3 +1,6 @@
+import {NotebookFiles, NotebookConflict} from '../notebooks.js';
+import {lp} from '../api.js';
+import type {Session} from '../types.js';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import { createServer }              from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -76,6 +79,7 @@ export class MultiSessionServer {
   }
 
   start(sm: SessionManager): void {
+    const notebooks = new NotebookFiles();
     const access = new Map<string,{studentId:string;ticket:string}>();
     async function authenticate(req:IncomingMessage,studentId:string){
       const base=process.env.ERP_URL??'http://localhost:32005';
@@ -87,7 +91,7 @@ export class MultiSessionServer {
     function address(req:IncomingMessage,id:string,ticket:string){const url=new URL(sessionSocketUrl(req,id));url.searchParams.set('ticket',ticket);return url.href;}
     const http = createServer(async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
       if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -98,10 +102,45 @@ export class MultiSessionServer {
         return;
       }
 
+      const notebookRoute = new URL(req.url ?? '/', 'http://local').pathname.match(/^\/notebooks\/([a-zA-Z0-9_-]+)$/);
+      if (notebookRoute && ['GET','PUT'].includes(req.method ?? '')) {
+        try {
+          const id=notebookRoute[1];
+          // The first session's ID is the notebook ID. Ownership survives disconnects.
+          const owner=await lp.get<Session>(`/sessions/${id}`);
+          await authenticate(req,owner.studentId);
+          res.setHeader('Content-Type','application/json');
+          if(req.method==='GET')res.end(JSON.stringify(await notebooks.get(owner.studentId,id)));
+          else {
+            const body=JSON.parse(await readBody(req,32*1024*1024));
+            if(!Number.isInteger(body.revision)||body.revision<0||!body.snapshot?.store||!body.snapshot?.schema)throw new Error('Invalid notebook snapshot');
+            const saved=await notebooks.put(owner.studentId,id,body.revision,body.snapshot,typeof body.saveId==='string'?body.saveId:undefined);
+            res.end(JSON.stringify({revision:saved.revision,updatedAt:saved.updatedAt}));
+          }
+        } catch(error) {
+          res.writeHead(error instanceof NotebookConflict?409:400,{'Content-Type':'application/json'});
+          res.end(JSON.stringify({error:error instanceof Error?error.message:'Could not save notebook'}));
+        }
+        return;
+      }
+
       if(req.method==='GET'&&req.url?.startsWith('/sessions/')){
-        const id=decodeURIComponent(req.url.split('/')[2]);const allowed=access.get(id);
-        try{if(!allowed||!sm.isActive(id))throw new Error('Session ended. Start or continue your lesson from Home.');await authenticate(req,allowed.studentId);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:id,studentId:allowed.studentId,wsUrl:address(req,id,allowed.ticket)}));}
-        catch(e){res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}return;
+        const id=decodeURIComponent(new URL(req.url,'http://local').pathname.split('/')[2]);
+        try {
+          const stored=await lp.get<Session>(`/sessions/${encodeURIComponent(id)}`);
+          await authenticate(req,stored.studentId);
+          let activeId=id;
+          if(!sm.isActive(id)){
+            if(stored.status==='completed')throw new Error('This lesson has finished. Continue your learning from Home.');
+            const restored=await restoreActiveSession(sm,stored);
+            activeId=restored.sessionId;
+          }
+          let allowed=access.get(activeId);
+          if(!allowed){allowed={studentId:stored.studentId,ticket:randomBytes(24).toString('base64url')};access.set(activeId,allowed);}
+          res.setHeader('Content-Type','application/json');
+          res.end(JSON.stringify({sessionId:activeId,studentId:stored.studentId,notebookId:sm.getAgent(activeId)?.ctx.session.notebookId??activeId,resumed:(sm.getAgent(activeId)?.ctx.session.history.length??0)>0,wsUrl:address(req,activeId,allowed.ticket)}));
+        } catch(e){res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}
+        return;
       }
       if (req.method === 'POST' && req.url === '/sessions') {
         try {
@@ -123,6 +162,7 @@ export class MultiSessionServer {
           res.end(JSON.stringify({
             sessionId: result.sessionId,
             resumed:   result.resumed,
+            notebookId: agent?.ctx.session.notebookId ?? result.sessionId,
             wsUrl:     address(req, result.sessionId,ticket),
             concept:   agent?.ctx?.concept
               ? { id: agent.ctx.concept.id, title: agent.ctx.concept.title }
@@ -218,10 +258,11 @@ export class MultiSessionServer {
   }
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, limit=1024*1024): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    let bytes=0;
+    req.on('data', chunk => { bytes+=Buffer.byteLength(chunk);if(bytes>limit){reject(new Error('Upload too large'));return;} body += chunk; });
     req.on('end', () => resolve(body));
     req.on('error', reject);
   });
@@ -235,4 +276,17 @@ export function sessionSocketUrl(req: IncomingMessage, sessionId: string): strin
   url.protocol = ['https:', 'wss:'].includes(url.protocol) ? 'wss:' : 'ws:';
   url.searchParams.set('sessionId', sessionId);
   return url.href;
+}
+
+// Concurrent reload/reconnect requests must not create two agents for one session.
+const restoringSessions=new WeakMap<SessionManager,Map<string,Promise<{sessionId:string;resumed:boolean}>>>();
+export async function restoreActiveSession(sm:SessionManager,session:Session){
+  let pending=restoringSessions.get(sm);
+  if(!pending){pending=new Map();restoringSessions.set(sm,pending);}
+  let task=pending.get(session.id);
+  if(!task){
+    task=sm.create({studentId:session.studentId,conceptId:session.conceptId,topicId:session.originTopicId??undefined,resumeSessionId:session.id});
+    pending.set(session.id,task);
+  }
+  try{return await task;}finally{if(pending.get(session.id)===task)pending.delete(session.id);}
 }

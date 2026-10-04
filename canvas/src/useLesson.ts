@@ -18,10 +18,11 @@ export function useLesson(editor:Editor|null) {
   const [openCamera,setOpenCamera]=useState(false);
   const [caption,setCaption]=useState(''); const [question,setQuestion]=useState(''); const [title,setTitle]=useState('A little room to think');
   const [warnings,setWarnings]=useState<string[]>([]);
-  const [issue,setIssue]=useState<{text:string;action:'connect'|'reply'|'retry'|'sound'}|null>(null); const [entries,setEntries]=useState<Entry[]>([]);
+  const [issue,setIssue]=useState<{text:string;action:'connect'|'reply'|'retry'|'sound'|'tutor-retry'}|null>(null); const [entries,setEntries]=useState<Entry[]>([]);
   const turnActive=useRef(false),busyRef=useRef(false);
   const [tutorBusy,setTutorBusy]=useState(false);
   const [endedTurns,setEndedTurns]=useState(0);
+  const [savedTurn,setSavedTurn]=useState(0);
   const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
   const rewatching=useRef(false);
@@ -32,7 +33,7 @@ export function useLesson(editor:Editor|null) {
   const receivedReply=()=>{pendingReply.current=false;setSubmission(current=>current==='sent'?'sent':'idle');};
   const socket=useRef<WebSocket|null>(null), player=useRef<Playback|null>(null), renderer=useRef<CanvasRenderer|null>(null);
   const audio=useRef(new AudioPlayer()), adapter=useRef(new BlockAdapter()), waiting=useRef(false), paused=useRef(false), phaseBeforePause=useRef<Phase>('ready');
-  const notify=useCallback((text:string,action?:'connect'|'reply'|'retry'|'sound')=>{
+  const notify=useCallback((text:string,action?:'connect'|'reply'|'retry'|'sound'|'tutor-retry')=>{
     if(!text)return;
     if(action)setIssue({text,action});
     else setWarnings(previous=>[...previous.filter(item=>item!==text),text].slice(-30));
@@ -61,12 +62,12 @@ export function useLesson(editor:Editor|null) {
   useEffect(()=>{
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
-    const nameLesson=(name:string,sessionId='',conceptId='')=>{
+    const nameLesson=(name:string,sessionId='',conceptId='',notebookId=sessionId)=>{
       // Titles are presentation, not session identity. In particular a legacy
       // title arriving first after reconnect must never create an empty page.
       if(!sessionId){setTitle(name);log('lesson',name);record('page:title-only');return;}
       if(!connectionPage.current){
-        const candidates=editor.getPages().filter(page=>Array.isArray(page.meta.sessionIds)&&page.meta.sessionIds.includes(sessionId));
+        const candidates=editor.getPages().filter(page=>Array.isArray(page.meta.sessionIds)&&page.meta.sessionIds.includes(sessionId)||page.meta.notebookId===notebookId);
         const populated=(id:string)=>editor.store.allRecords().some(r=>r.typeName==='shape'&&r.parentId===id);
         // Older builds may have associated a blank duplicate with the same ID.
         // Prefer the page containing work, then the currently selected page.
@@ -83,7 +84,7 @@ export function useLesson(editor:Editor|null) {
       const page=editor.getPage(connectionPage.current);
       if(page){
         const ids=Array.isArray(page.meta.sessionIds)?page.meta.sessionIds.filter((id):id is string=>typeof id==='string'):[];
-        editor.updatePage({id:page.id,name,meta:{...page.meta,sessionIds:[...new Set([...ids,sessionId])],conceptId}});
+        editor.updatePage({id:page.id,name,meta:{...page.meta,sessionIds:[...new Set([...ids,sessionId])],conceptId,notebookId}});
       }
       setTitle(name);setQuestion('');waiting.current=false;setFollow(true);log('lesson',name);
     };
@@ -91,7 +92,7 @@ export function useLesson(editor:Editor|null) {
       if(signal.aborted) return;
       record(`present:${block.kind}`);
       if(block.kind==='session') {
-        nameLesson(block.content,block.attrs.sessionId,block.attrs.conceptId);return;
+        nameLesson(block.content,block.attrs.sessionId,block.attrs.conceptId,block.attrs.notebookId);return;
       }
       if(block.kind==='question'){
         waiting.current=false;setQuestion('');await renderer.current!.render(block,signal);return;
@@ -158,7 +159,15 @@ export function useLesson(editor:Editor|null) {
       const active=pendingReply.current||turnActive.current;
       setBusy(active);
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
-    },undefined,()=>renderer.current?.hasActiveQuestion??false);
+    },undefined,()=>renderer.current?.hasActiveQuestion??false,()=>{
+      // Choose the appropriate input tool after presentation, including when a
+      // resumed tutor only speaks and does not re-create the saved question.
+      const shapes=editor.getCurrentPageShapes();
+      const active=shapes.find(s=>s.type==='frame'&&s.meta.questionActive===true);
+      const mcq=active&&shapes.some(s=>s.type==='mcq'&&s.parentId===active.id);
+      editor.setCurrentTool(mcq?'select':'draw');
+      setSavedTurn(count=>count+1);
+    });
     player.current=playback;
     const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,audioStreaming:audio.current.snapshot(),turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;
@@ -191,6 +200,7 @@ export function useLesson(editor:Editor|null) {
       try {
         lastReceivedAt=Date.now();
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
+        if(event.type==='error'){player.current?.cancel();adapter.current.reset();clearSubmission();setPhase('ready');notify(event.message||'Your tutor could not respond. Please try again.','tutor-retry');return;}
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
         if(event.type==='event'&&event.event?.type==='tutor-ended'){turnActive.current=false;setEndedTurns(count=>count+1);}
@@ -267,5 +277,5 @@ export function useLesson(editor:Editor|null) {
     const media=safeMedia(url);if(!media||media.kind==='link')return;
     rewatching.current=true;paused.current=true;player.current?.setPaused(true);setVideo(media);setBusy(true);
   }
-  return {beforeDeletePage,connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
+  return {savedTurn,beforeDeletePage,connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
 }

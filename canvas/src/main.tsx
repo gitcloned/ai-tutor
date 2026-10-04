@@ -13,14 +13,14 @@ async function boot(){
     try{const profile=await request<any>('/me');refreshIdentity({...identity,...profile,type:profile.type==='student'?'student':'adult'} as Identity);}catch{root.render(<main style={{padding:32}}><p>We couldn’t verify your sign-in. Check your connection and try again.</p><button onClick={()=>location.reload()}>Try again</button><a href="/login" onClick={()=>rememberIdentity(null)}>Sign in again</a></main>);return;}
   }
   if(identity&&(path==='/'||path==='/login'||path==='/canvas')){redirect('/home');return;}
-  let canvas=false;
+  let canvas=path==='/test-session';
   if(path.startsWith('/sessions/')){
     const id=decodeURIComponent(path.split('/')[2]||'');
     try{
       const lesson=await request<{sessionId:string;studentId:string;wsUrl:string}>('/sessions/'+encodeURIComponent(id),undefined,'agent');
       sessionStorage.setItem('prodigy-journey-lesson',JSON.stringify(lesson));canvas=true;
     }catch{redirect('/home');return;}
-  }else if(!['/login','/home'].includes(path)&&!/^\/(classes|students)\/[^/]+$/.test(path)){redirect(identity?'/home':'/login');return;}
+  }else if(!['/login','/home','/test-session'].includes(path)&&!/^\/(classes|students)\/[^/]+$/.test(path)){redirect(identity?'/home':'/login');return;}
   root.render(<Suspense fallback={<p style={{padding:32}}>Opening Prodigy…</p>}>{canvas?<App/>:<Journey/>}</Suspense>);
 }
 root.render(<p style={{padding:32}}>Opening Prodigy…</p>);void boot();

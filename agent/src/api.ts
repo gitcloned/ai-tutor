@@ -1,3 +1,4 @@
+import {serviceError} from './network.js';
 const CMS_BASE = process.env['CMS_URL'] ?? 'http://localhost:32001';
 const LP_BASE  = process.env['LP_URL']  ?? 'http://localhost:32002';
 
@@ -6,7 +7,8 @@ async function req<T>(base: string, method: string, path: string, body?: unknown
     method,
     headers: body ? { 'content-type': 'application/json' } : {},
     body:    body ? JSON.stringify(body) : undefined,
-  });
+    signal: AbortSignal.timeout(15000),
+  }).catch(error=>{throw serviceError(`${base===CMS_BASE?'CMS':'Learning progression'} ${method} ${path.split('?')[0]}`,error);});
   if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
   return res.json() as Promise<T>;
 }

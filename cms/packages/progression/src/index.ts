@@ -6,6 +6,8 @@
  * and mirrored in agent/src/learning/what-is-next.ts (which is a copy
  * kept in sync manually because the agent lives outside the CMS workspace).
  *
+ * Resume eligibility, prerequisite following and session activity helpers below
+ * are imported by both LP and the agent.
  * All functions are pure — no side effects, no async, no DB calls.
  */
 
@@ -157,7 +159,7 @@ export function selectNextConcept(
     .filter((n): n is NodeSummary => {
       if (!n) return false;
       const phases = phasesByConceptId.get(n.conceptId) ?? [];
-      return !isTerminalForConcept(n.state, phases) && !!n.lastActivity;
+      return !isTerminalForConcept(n.state, phases) && !!n.lastActivity && new Date(n.lastActivity).getTime()>0;
     })
     .sort((a, b) => {
       const ta = a.lastActivity ? new Date(a.lastActivity as string).getTime() : 0;
@@ -167,34 +169,11 @@ export function selectNextConcept(
 
   let chosen: NodeSummary | null = topicNodes[0] ?? null;
 
-  // Follow prerequisite chain — guard against cycles with stable visited set
-  const visited = new Set<string>();
-  let isPrereqHop = false;
-  let depth = 0;
-  const MAX_DEPTH = 30;
-
-  while (chosen && chosen.state === CS.LEARN_PRE_REQ_BEFORE && depth < MAX_DEPTH) {
-    const prereqId: string | null | undefined = chosen.preReqToLearn;
-    if (!prereqId) break;
-    if (visited.has(prereqId)) {
-      return { status: 'unavailable', reason: `Prerequisite cycle detected at concept '${prereqId}'` };
-    }
-    visited.add(prereqId);
-
-    // Find prereq node across ALL journey nodes (may be outside this topic)
-    const prereqNode: NodeSummary | null = allJourneyNodes.find(n => n.conceptId === prereqId) ?? null;
-    if (!prereqNode) break; // prereq node not yet created — agent will create it
-
-    const prereqPhases = phasesByConceptId.get(prereqId) ?? [];
-    if (isTerminalForConcept(prereqNode.state, prereqPhases)) break; // prereq done — unblock
-
-    isPrereqHop = !conceptIds.includes(prereqId); // outside topic boundary
-    chosen = prereqNode;
-    depth++;
-  }
-
-  if (chosen && depth >= MAX_DEPTH) {
-    return { status: 'unavailable', reason: 'Prerequisite chain too deep — possible cycle' };
+  let isPrereqHop=false;
+  if(chosen){
+    try { chosen=followPrerequisite(chosen,allJourneyNodes); }
+    catch(error){return {status:'unavailable',reason:(error as Error).message};}
+    isPrereqHop=!conceptIds.includes(chosen.conceptId);
   }
 
   if (chosen) {
@@ -252,4 +231,37 @@ export function selectNextConcept(
   }
 
   return { status: 'completed' };
+}
+
+export interface ResumeSession {
+  id:string;journeyNodeId:string;conceptStateAtStart:string;status:string;
+  createdAt?:string|Date;history?:{timestamp?:string|Date}[];rawHistory?:{timestamp?:string|Date}[];
+}
+export function sessionActivity(session:ResumeSession):number {
+  return Math.max(0,...[session.createdAt,...(session.history??[]).map(m=>m.timestamp),...(session.rawHistory??[]).map(m=>m.timestamp)].map(t=>t?new Date(t).getTime():0).filter(Number.isFinite));
+}
+/** A completed or wrong-phase session must never be revived by a resume lookup. */
+export function resumableSession<T extends ResumeSession>(sessions:T[],node:{id:string;state:string}):T|undefined {
+  if(!isTransitionState(node.state as ConceptState))return undefined;
+  return sessions.filter(s=>s.journeyNodeId===node.id&&s.conceptStateAtStart===node.state&&s.status==='started').sort((a,b)=>sessionActivity(b)-sessionActivity(a)||b.id.localeCompare(a.id))[0];
+}
+export function followPrerequisite<T extends NodeSummary>(node:T,nodes:T[]):T {
+  const seen=new Set<string>();
+  while(node.state===CS.LEARN_PRE_REQ_BEFORE){
+    if(seen.has(node.conceptId))throw new Error('Prerequisite cycle detected');
+    seen.add(node.conceptId);
+    const next=nodes.find(n=>n.conceptId===node.preReqToLearn);
+    if(!next)throw new Error('Prerequisite progress could not be found');
+    node=next;
+  }
+  return node;
+}
+/** Older nodes have no lastActivity. Session history supplies it without DB writes. */
+export function withSessionActivity<T extends NodeSummary & {id:string}>(nodes:T[],sessions:ResumeSession[]):T[] {
+  const result=nodes.map(n=>({...n,lastActivity:new Date(Math.max(new Date(n.lastActivity??0).getTime()||0,...sessions.filter(s=>s.journeyNodeId===n.id).map(sessionActivity)))}));
+  // Activity on a prerequisite also counts as work on its waiting origin.
+  for(const n of result){
+    try{const target=followPrerequisite(n,result);if(new Date(target.lastActivity).getTime()>new Date(n.lastActivity).getTime())n.lastActivity=target.lastActivity;}catch{/* resolver reports broken paths */}
+  }
+  return result;
 }

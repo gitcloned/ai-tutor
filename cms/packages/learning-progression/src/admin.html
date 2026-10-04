@@ -211,6 +211,16 @@
   </div>
 </header>
 
+<dialog id="delete-student-dialog" style="max-width:460px;border:1px solid #d9d4cb;border-radius:12px;padding:24px">
+  <h2>Delete student permanently?</h2>
+  <p id="delete-student-name"></p>
+  <p>This deletes their profile, class memberships, assignments, personal class, learning journeys, sessions and memories. This cannot be undone.</p>
+  <p style="color:var(--muted)">Shared classes and other students are kept. Uploaded files and saved notebook files are outside the CLI deletion scope and are not removed.</p>
+  <label for="delete-student-confirm">Type DELETE to confirm</label>
+  <input id="delete-student-confirm" autocomplete="off" style="display:block;margin:12px 0;width:100%">
+  <p id="delete-student-error" role="alert" style="color:var(--red)"></p>
+  <div style="display:flex;gap:12px;justify-content:flex-end"><button id="delete-student-cancel">Cancel</button><button id="delete-student-submit" disabled style="background:#a32d2d;color:white">Delete permanently</button></div>
+</dialog>
 <main id="main"><p class="loading">Loading…</p></main>
 
 <script>
@@ -221,6 +231,41 @@ const PG  = 30;
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
 const C = { students: null, conceptMap: null, subjectMap: null };
+
+let deletingStudent=null,deleteBusy=false;
+const deleteDialog=document.getElementById('delete-student-dialog');
+const deleteConfirm=document.getElementById('delete-student-confirm');
+const deleteSubmit=document.getElementById('delete-student-submit');
+function confirmStudentDeletion(studentId,name){
+  deletingStudent=studentId;
+  document.getElementById('delete-student-name').textContent=name+' ('+studentId+')';
+  document.getElementById('delete-student-error').textContent='';
+  deleteConfirm.value='';deleteSubmit.disabled=true;deleteDialog.showModal();deleteConfirm.focus();
+}
+deleteConfirm.addEventListener('input',()=>{deleteSubmit.disabled=deleteBusy||deleteConfirm.value!=='DELETE';});
+document.getElementById('delete-student-cancel').onclick=()=>{if(!deleteBusy)deleteDialog.close();};
+deleteDialog.addEventListener('cancel',event=>{if(deleteBusy)event.preventDefault();});
+deleteSubmit.onclick=async()=>{
+  if(deleteBusy||deleteConfirm.value!=='DELETE'||!deletingStudent)return;
+  deleteBusy=true;deleteSubmit.disabled=true;deleteSubmit.textContent='Deleting…';
+  document.getElementById('delete-student-error').textContent='';
+  try{
+    const path='/students/'+encodeURIComponent(deletingStudent);
+    const erp=await fetch(ERP+path,{method:'DELETE'});
+    const result=await erp.json().catch(()=>({}));
+    if(!erp.ok&&erp.status!==404)throw new Error(result.error||'Could not delete the student profile.');
+    // ERP cleanup is best-effort. Explicitly retry LP if it did not complete,
+    // including LP-only students and retries after partially completed deletion.
+    if(erp.status===404||!result.deleted?.lp){
+      const lp=await fetch(path+'/all',{method:'DELETE'});
+      if(!lp.ok)throw new Error('The profile was removed or was already absent, but learning data could not be deleted. Please retry.');
+    }
+    C.students=null;deleteDialog.close();navigate(null);
+  }catch(error){
+    C.students=null;
+    document.getElementById('delete-student-error').textContent='Deletion did not fully complete. '+error.message+' You can retry safely.';
+  }finally{deleteBusy=false;deleteSubmit.disabled=deleteConfirm.value!=='DELETE';deleteSubmit.textContent='Delete permanently';}
+};
 
 // ── Router ────────────────────────────────────────────────────────────────────
 function route() {
@@ -246,6 +291,7 @@ async function api(base, path) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function navArgs(params) { return esc(JSON.stringify(params)).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function setMain(h) { document.getElementById('main').innerHTML = h; }
 function shortDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function relDate(iso) {
@@ -263,7 +309,7 @@ function relDate(iso) {
 function setBreadcrumb(crumbs) {
   document.getElementById('breadcrumb').innerHTML = crumbs.map((c,i) =>
     i < crumbs.length-1
-      ? `<span class="crumb" onclick="navigate(${JSON.stringify(c.params)})">${esc(c.label)}</span><span class="sep">/</span>`
+      ? `<span class="crumb" onclick="navigate(${navArgs(c.params)})">${esc(c.label)}</span><span class="sep">/</span>`
       : `<span>${esc(c.label)}</span>`
   ).join('');
   document.title = [...crumbs].reverse().map(c=>c.label).join(' · ') + ' — Prodigy Admin';
@@ -283,7 +329,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 async function loadStudents() {
   if (C.students) return C.students;
   const [erp, lp] = await Promise.all([
-    api(ERP, '/students/all').catch(() => []),
+    api(ERP, '/students/all?includeCodes=1').catch(() => []),
     api('', '/students').catch(() => []),
   ]);
   const lpMap = new Map(lp.map(s => [s.studentId, s]));
@@ -367,7 +413,7 @@ async function renderStudents(p) {
     const slice = list.slice((page-1)*PG, page*PG);
 
     const mp = ov => { const n=new URLSearchParams(p); Object.entries(ov).forEach(([k,v])=>v?n.set(k,v):n.delete(k)); return Object.fromEntries(n); };
-    const sortBtn = (val,lbl) => `<button class="sort-btn${sort===val?' active':''}" onclick="navigate(${JSON.stringify(mp({sort:val,page:1}))})">${lbl}${sort===val?' ↓':''}</button>`;
+    const sortBtn = (val,lbl) => `<button class="sort-btn${sort===val?' active':''}" onclick="navigate(${navArgs(mp({sort:val,page:1}))})">${lbl}${sort===val?' ↓':''}</button>`;
     const classChips = (cls=[]) => {
       if (!cls.length) return '<span style="color:var(--muted)">No classes yet</span>';
       return cls.slice(0,2).map(c=>`<span class="pill">${esc(c.name)}</span>`).join(' ')
@@ -389,24 +435,25 @@ async function renderStudents(p) {
       </div>
       <div class="card">
         <table>
-          <thead><tr><th>Name</th><th>Grade</th><th>Classes</th><th>Sessions</th><th>Last active</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Access code</th><th>Grade</th><th>Classes</th><th>Sessions</th><th>Last active</th><th></th></tr></thead>
           <tbody>
             ${slice.map(s=>`
-              <tr class="row" onclick="navigate({student:'${s.studentId}'})">
+              <tr class="row" onclick="navigate(${navArgs({student:s.studentId})})">
                 <td style="font-weight:600">${esc(s.name??s.studentId)}</td>
+                <td style="font-family:monospace;letter-spacing:2px;user-select:all" onclick="event.stopPropagation()">${s.accessCode?esc(s.accessCode):'<span style="font-family:inherit;letter-spacing:normal;color:var(--muted)">Unavailable</span>'}</td>
                 <td style="color:var(--muted)">${s.grade?'Grade '+s.grade:'—'}</td>
                 <td>${classChips(s.classes??[])}</td>
                 <td style="color:var(--muted)">${s.sessionCount}</td>
                 <td style="color:var(--muted)">${relDate(s.lastActivityAt)}</td>
-                <td style="color:var(--accent);font-weight:500">View →</td>
+                <td style="white-space:nowrap"><button onclick="event.stopPropagation();navigate(${navArgs({student:s.studentId})})">View →</button> <button style="color:var(--red)" onclick="event.stopPropagation();confirmStudentDeletion(${navArgs(s.studentId)},${navArgs(s.name??s.studentId)})">Delete</button></td>
               </tr>`).join('')}
-            ${!slice.length?'<tr><td colspan="6" class="empty">No students match these filters</td></tr>':''}
+            ${!slice.length?'<tr><td colspan="7" class="empty">No students match these filters</td></tr>':''}
           </tbody>
         </table>
         ${pages>1?`<div class="pagination">
-          ${page>1?`<button class="pg-btn" onclick="navigate(${JSON.stringify(mp({page:page-1}))})">‹</button>`:''}
-          ${Array.from({length:pages},(_,i)=>i+1).map(pg=>`<button class="pg-btn${pg===page?' active':''}" onclick="navigate(${JSON.stringify(mp({page:pg}))})">${pg}</button>`).join('')}
-          ${page<pages?`<button class="pg-btn" onclick="navigate(${JSON.stringify(mp({page:page+1}))})">›</button>`:''}
+          ${page>1?`<button class="pg-btn" onclick="navigate(${navArgs(mp({page:page-1}))})">‹</button>`:''}
+          ${Array.from({length:pages},(_,i)=>i+1).map(pg=>`<button class="pg-btn${pg===page?' active':''}" onclick="navigate(${navArgs(mp({page:pg}))})">${pg}</button>`).join('')}
+          ${page<pages?`<button class="pg-btn" onclick="navigate(${navArgs(mp({page:page+1}))})">›</button>`:''}
         </div>`:''}
       </div>`);
 
@@ -474,14 +521,15 @@ async function renderStudent(studentId, p) {
             </div>
           </div>
           <div style="display:flex;gap:20px;flex-shrink:0;text-align:center;padding-top:4px">
+            <button style="color:var(--red)" onclick="confirmStudentDeletion(${navArgs(studentId)},${navArgs(sname)})">Delete student</button>
             <div><div style="font-size:18px;font-weight:700">${sessions.length}</div><div style="font-size:11px;color:var(--muted)">Sessions</div></div>
             <div><div style="font-size:18px;font-weight:700">${allNodes.length}</div><div style="font-size:11px;color:var(--muted)">Concepts</div></div>
           </div>
         </div>
         <div class="tab-bar" style="border-bottom:none;margin:0 -24px;padding:0 24px">
-          <button class="tab${tab==='learning'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'learning'}))})">Learning</button>
-          <button class="tab${tab==='sessions'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'sessions'}))})">Sessions (${sessions.length})</button>
-          <button class="tab${tab==='memories'?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'memories'}))})">Memories (${memories.length})</button>
+          <button class="tab${tab==='learning'?' active':''}" onclick="navigate(${navArgs(mp({tab:'learning'}))})">Learning</button>
+          <button class="tab${tab==='sessions'?' active':''}" onclick="navigate(${navArgs(mp({tab:'sessions'}))})">Sessions (${sessions.length})</button>
+          <button class="tab${tab==='memories'?' active':''}" onclick="navigate(${navArgs(mp({tab:'memories'}))})">Memories (${memories.length})</button>
         </div>
       </div>
       <div id="tab-content" style="padding-top:16px"></div>`);
@@ -502,7 +550,7 @@ function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMa
 
   let html = '<div class="subj-tabs">';
   for (const s of subjList) {
-    html += `<button class="subj-tab${s.id===activeSubj?' active':''}" onclick="navigate(${JSON.stringify(mp({tab:'learning',subject:s.id}))})">${esc(s.name)}</button>`;
+    html += `<button class="subj-tab${s.id===activeSubj?' active':''}" onclick="navigate(${navArgs(mp({tab:'learning',subject:s.id}))})">${esc(s.name)}</button>`;
   }
   html += '</div><div style="margin-top:16px" id="subj-content"></div>';
   tc.innerHTML = html;
@@ -532,7 +580,7 @@ function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMa
       const node    = nodeMap.get(c.id);
       const sessCnt = (sesByConc.get(c.id)??[]).length;
       const sessHtml = sessCnt>0
-        ? `<span class="ses-link" onclick="navigate(${JSON.stringify({student:studentId,tab:'sessions',concept:c.id})})">View ${sessCnt}</span>`
+        ? `<button type="button" class="ses-link" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:c.id})})">View ${sessCnt}</button>`
         : `<span style="color:var(--muted)">No sessions</span>`;
       let detour = '';
       if (node?.preReqToLearn) {
@@ -563,7 +611,7 @@ function renderLearningTab(tc, studentId, activeSubj, subjList, allNodes, nodeMa
         <div class="con-title">${esc(cm?.title??n.conceptId)}</div>
         <div>${stateBadge(n.state)}</div>
         <div class="con-date">${relDate(n.lastActivity)}</div>
-        <div class="con-sessions">${sessCnt>0?`<span class="ses-link" onclick="navigate(${JSON.stringify({student:studentId,tab:'sessions',concept:n.conceptId})})">View ${sessCnt}</span>`:'<span style="color:var(--muted)">No sessions</span>'}</div>
+        <div class="con-sessions">${sessCnt>0?`<button type="button" class="ses-link" onclick="navigate(${navArgs({student:studentId,tab:'sessions',concept:n.conceptId})})">View ${sessCnt}</button>`:'<span style="color:var(--muted)">No sessions</span>'}</div>
       </div>`;
     }
     thtml += '</div></details>';
@@ -581,7 +629,7 @@ function renderSessionsTab(tc, studentId, concFilter, sessions, mp) {
   if (concFilter) {
     html = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
       <span style="font-size:12px;color:var(--muted)">Concept:</span>
-      <span class="filter-chip">${esc(ct?.title??concFilter)}<button onclick="navigate(${JSON.stringify(mp({tab:'sessions'}))})">×</button></span>
+      <span class="filter-chip">${esc(ct?.title??concFilter)}<button onclick="navigate(${navArgs(mp({tab:'sessions'}))})">×</button></span>
     </div>`;
   }
   if (!filtered.length) { tc.innerHTML = html + '<p class="empty">No sessions yet.</p>'; return; }
@@ -596,7 +644,7 @@ function renderSessionsTab(tc, studentId, concFilter, sessions, mp) {
           <td>${stateBadge(s.conceptStateAtStart)}</td>
           <td>${statusBadge(s.status)}</td>
           <td style="color:var(--muted)">${(s.history??[]).length}</td>
-          <td style="color:var(--accent);font-weight:500">View →</td>
+          <td style="white-space:nowrap"><button onclick="event.stopPropagation();navigate(${navArgs({student:s.studentId})})">View →</button> <button style="color:var(--red)" onclick="event.stopPropagation();confirmStudentDeletion(${navArgs(s.studentId)},${navArgs(s.name??s.studentId)})">Delete</button></td>
         </tr>`;
       }).join('')}
     </tbody>

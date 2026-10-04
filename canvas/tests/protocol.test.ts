@@ -27,7 +27,7 @@ describe('the backend canvas stream', () => {
     };
     expect(lessonMetadata(event)).toEqual({sessionId:'session-1',conceptId:'linear-equations',title:'Linear equations'});
     expect(new BlockAdapter().accept(event)).toEqual([{
-      kind:'session',content:'Linear equations',attrs:{sessionId:'session-1',conceptId:'linear-equations'},
+      kind:'session',content:'Linear equations',attrs:{sessionId:'session-1',conceptId:'linear-equations',notebookId:'session-1'},
     }]);
     expect(lessonMetadata({type:'session',title:''})).toBeNull();
   });

@@ -55,3 +55,49 @@ body{margin:0}
 @keyframes j-art-rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.j-art.j-savanna{animation:none}.j-code-boxes>span{transition:none}}
 @media(max-width:600px){.j-code-boxes{gap:7px}.j-code-boxes>span{height:54px;font-size:23px}}
+
+.j-student-learning{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
+.j-continue{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#eaf0e6;border-radius:18px;padding:18px 24px}
+.j-continue h2{margin:5px 0 0;font-size:22px}.j-continue small{color:#60705b}
+.j-subject-tabs{display:flex;gap:8px;overflow-x:auto;flex-shrink:0;border-bottom:1px solid #dce3d6;padding-bottom:0}
+.j-subject-tabs button{border:0;background:transparent;padding:14px 20px;border-radius:0;border-bottom:3px solid transparent;white-space:nowrap;color:#52654e;font:inherit;cursor:pointer}
+.j-subject-tabs button[aria-selected=true]{background:transparent;color:#294d38;border-bottom-color:#355d47;font-weight:700}.j-subject-tabs button:hover{background:#eef2ea}.j-subject-tabs button:focus-visible{outline:2px solid #789271;outline-offset:-3px}
+.j-topic-list{overflow:auto;min-height:0;padding:0 4px 12px}.j-topic-group{color:#73816b;font-size:13px;margin:18px 0 10px}
+.j-topic-row{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#fff;border:1px solid #e0e6da;border-radius:14px;padding:18px 22px;margin-bottom:10px}
+.j-topic-row h3{margin:0 0 8px;font-size:18px}.j-topic-row small{color:#708069}.j-complete{display:flex;gap:6px;color:#355d47;font-size:14px}
+.j-topic-picker{border-top:1px solid #dce3d6;padding-top:12px}.j-topic-picker h3{margin:0 0 8px}.j-topic-picker p{font-size:13px;margin:0 0 12px}
+.j-topic-picker details{margin:10px 0}.j-topic-picker summary{cursor:pointer;font-weight:600}.j-topic-picker h4{font-size:13px;color:#6a7b61;margin:14px 0 8px}
+.j-topic-picker fieldset{border:1px solid #e0e6da;border-radius:10px;margin:8px 0;padding:10px}.j-topic-picker legend{font-size:13px;padding:0 5px}.j-topic-picker .j-check{font-size:14px;padding:5px 0}.j-topic-picker small{color:#6a7b61}
+@media(max-width:600px){.j-continue{align-items:flex-start;flex-direction:column;padding:16px}.j-topic-row{padding:14px;gap:12px}.j-topic-row h3{font-size:16px}.j-topic-row .j-secondary{padding:10px;white-space:nowrap}.j-student-learning{min-height:320px}.j-topic-list{overflow:visible}}
+.j-learning-filter:empty{display:none}.j-learning-filter label{display:flex;align-items:center;gap:12px;color:#6a7b61;font-size:14px}.j-learning-filter select{max-width:260px;border:1px solid #dce3d6;border-radius:10px;background:#fff;padding:8px 12px;color:#355d47;font:inherit}
+
+/* Compact setup; large curricula scroll inside the picker. */
+.j-child-setup{gap:14px}.journey-dialog .j-child-setup>p{margin:0;font-size:13px}.journey-dialog:has(.j-topic-picker){max-width:760px}
+.journey-dialog .j-topic-picker{padding-top:0;border-top:0;min-width:0}
+.journey-dialog .j-topic-picker>p{margin:4px 0 12px;font-size:13px;line-height:1.5}
+.j-topic-picker .j-topic-search{font-size:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:5px}
+.j-topic-search input{width:100%;min-height:42px;border:1px solid #cfd9c9;border-radius:9px;background:white;padding:9px 12px}
+.j-topic-filters{display:flex;align-items:center;flex-wrap:wrap;gap:6px 20px;padding:8px 0}
+.j-topic-picker .j-check{display:flex;flex-direction:row;align-items:center;gap:10px;margin:0}
+.j-topic-picker input[type=checkbox]{appearance:auto;accent-color:#355d47;flex:0 0 18px;width:18px;height:18px;min-height:18px;padding:0;margin:0}
+.j-topic-tools{display:flex;align-items:center;gap:14px;border-bottom:1px solid #e0e6da;padding:6px 0 10px;font-size:12px;color:#61715b}
+.j-topic-tools>span{margin-right:auto}.j-topic-tools button{text-decoration:underline;text-underline-offset:3px;padding:4px 0}
+.j-picker-results{max-height:clamp(180px,35dvh,380px);overflow:auto;overscroll-behavior:contain;padding:0 5px 0 0;scrollbar-gutter:stable}
+.j-topic-picker .j-picker-results fieldset{border:0;border-radius:0;padding:0;margin:12px 0}
+.j-topic-picker .j-picker-results legend{font-size:12px;font-weight:600;color:#718267;padding:0;margin-bottom:6px}
+.j-topic-picker .j-topic-choice{padding:10px 12px;min-height:44px;border:1px solid #e0e6da;border-radius:8px;margin:5px 0;background:white;cursor:pointer;font-size:14px}
+.j-topic-picker .j-topic-choice:hover{border-color:#8b9e82}.j-topic-picker .j-topic-choice.is-selected{background:#edf3e8;border-color:#b5c7ad}
+.j-topic-choice>span{display:flex;justify-content:space-between;align-items:center;gap:12px;flex:1}.j-topic-choice small{font-size:11px;font-weight:400;white-space:nowrap}
+.j-picker-summary{border-top:1px solid #dce3d6;padding-top:10px;display:flex;gap:8px;align-items:center;font-size:13px;color:#355d47}.j-picker-summary>span{color:#75816f;font-size:12px}
+@media(max-width:600px){.journey-dialog:has(.j-topic-picker){padding:18px}.j-topic-tools{gap:12px}.j-topic-choice>span{flex-wrap:wrap;gap:2px}.j-picker-results{max-height:32dvh}}
+.journey-dialog:has(.j-child-setup .j-topic-picker){height:min(820px,92dvh);display:flex;flex-direction:column;overflow:hidden}
+.journey-dialog:has(.j-child-setup .j-topic-picker)>header{flex-shrink:0;margin-bottom:10px}
+.j-child-setup:has(.j-topic-picker){flex:1;min-height:0;gap:10px}
+.j-child-setup>.j-link{align-self:flex-start;flex-shrink:0;padding:0;font-size:13px}
+.j-child-setup .j-topic-picker{display:flex;flex-direction:column;flex:1;min-height:0;gap:0}
+.j-child-setup .j-topic-picker>h3{display:none}
+.j-child-setup .j-topic-picker>*{flex-shrink:0}
+.j-child-setup .j-topic-picker .j-picker-results{flex:1;min-height:80px;max-height:none;flex-shrink:1}
+.j-child-setup>.j-primary{flex-shrink:0;margin-top:0}
+.j-child-setup .j-picker-summary{margin-top:8px}
+@media(max-width:600px){.j-child-setup .j-topic-picker>p{font-size:12px;margin-bottom:8px}.j-child-setup .j-topic-filters{gap:0 12px}.j-child-setup .j-topic-tools{padding:4px 0}.j-child-setup .j-topic-choice{padding:8px 10px}}

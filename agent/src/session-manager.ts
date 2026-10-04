@@ -12,14 +12,16 @@ import { CS } from './types.js';
 type Agent = Awaited<ReturnType<typeof newAgent>>;
 
 async function persistSession(ctx: import('./context.js').AgentContext): Promise<void> {
-  if (ctx.session.status === 'initialised') return;
+
   await lp.patch(`/sessions/${ctx.session.id}`, {
+    notebookId:   ctx.session.notebookId,
+    status:       ctx.session.status,
     history:      ctx.session.history,
     rawHistory:   ctx.session.rawHistory,
     systemPrompt: ctx.session.systemPrompt,
     planHistory:  ctx.session.planHistory,
     teachingPlan: ctx.session.teachingPlan,
-  }).catch(() => { });
+  }).catch(error => { console.error('Could not persist session',ctx.session.id,error instanceof Error?error.message:String(error)); });
 }
 
 interface ActiveSession {
@@ -113,6 +115,18 @@ export class SessionManager {
 
     const agent   = await newAgent(studentId, conceptId, node.id, resolvedTopicId);
     const resumed = agent.ctx.session.history.length > 0;
+    if (!agent.ctx.session.notebookId) {
+      agent.ctx.session.notebookId = agent.ctx.session.id;
+      // Recover the old notebook association for sessions created before notebookId.
+      const origin=agent.ctx.journeyNode.cameFrom;
+      if(origin&&agent.ctx.session.teachingPlan?.content?.startsWith('Redirected to prereq:')) {
+        const previous=await lp.get<Session[]>(`/students/${studentId}/sessions?conceptId=${encodeURIComponent(origin)}`);
+        const parent=previous.filter(s=>s.originTopicId===agent.ctx.session.originTopicId&&new Date(s.createdAt??'').getTime()<=new Date(agent.ctx.session.createdAt??'').getTime())
+          .sort((a,b)=>new Date(b.createdAt??'').getTime()-new Date(a.createdAt??'').getTime())[0];
+        if(parent){agent.ctx.session.notebookId=parent.notebookId??parent.id;await lp.patch(`/sessions/${parent.id}`,{notebookId:agent.ctx.session.notebookId});}
+      }
+      await lp.patch(`/sessions/${agent.ctx.session.id}`, { notebookId: agent.ctx.session.notebookId });
+    }
 
     this.sessions.set(agent.ctx.session.id, { agent, resumed });
     return { sessionId: agent.ctx.session.id, resumed };
@@ -136,19 +150,28 @@ export class SessionManager {
       agent.ctx.outputPrompt = medium.promptTemplate();
     }
 
-    const outputParser = new OutputParser(medium);
+    let outputParser = new OutputParser(medium);
     const inputParser  = new InputParser(medium);
 
     const OUTPUT_TYPES = new Set(['audio', 'audio_chunk', 'text_chunk', 'svg', 'model', 'model3d', 'play', 'ask', 'question', 'annotate']);
     let turnStart: number | null = null;
     let ttfrEmitted = false;
 
+    let announcedSession = agent.ctx.session.id;
+    const notebookId = agent.ctx.session.notebookId ?? agent.ctx.session.id;
     const pipe = async (event: TurnEvent): Promise<void> => {
+      if (announcedSession !== agent.ctx.session.id) {
+        agent.ctx.session.notebookId = notebookId;
+        await lp.patch(`/sessions/${agent.ctx.session.id}`, { notebookId });
+        announcedSession = agent.ctx.session.id;
+        transport.handle(makeSessionEvent(agent.ctx));
+      }
       if (event.type === 'event' && event.event.type === 'tutor-started') {
         turnStart = Date.now();
         ttfrEmitted = false;
       }
 
+      if(event.type==='event'&&event.event.type==='tutor-ended')turnStart=null;
       const enriched: TurnEvent = { ...event, sessionId: agent.ctx.session.id, nodeId: agent.ctx.journeyNode.id };
       for await (const result of outputParser.parse(enriched)) {
         if (turnStart && !ttfrEmitted && OUTPUT_TYPES.has(result.type)) {
@@ -159,6 +182,21 @@ export class SessionManager {
         }
         transport.handle(result);
       }
+    };
+
+    const failTurn = async (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      agent.ctx.session.rawHistory.push({role:'error',name:'turn-failed',content:{message},timestamp:new Date().toISOString()});
+      // The student's input is already in history. Keep this session resumable,
+      // including an opening turn that failed before producing its first token.
+      if(agent.ctx.session.status==='initialised')agent.ctx.session.status='started';
+      transport.onLog({level:'error',message:`Turn failed (${sessionId}): ${message}`});
+      medium.outputModalities.reset();
+      outputParser = new OutputParser(medium);
+      transport.handle({type:'error',message:'Your tutor could not finish responding. Your work is saved. Try again.',sessionId:agent.ctx.session.id});
+      if(turnStart!==null)transport.handle({type:'event',event:{type:'tutor-ended'},sessionId:agent.ctx.session.id});
+      turnStart=null;
+      await persistSession(agent.ctx);
     };
 
     transport.on('disconnected', () => {
@@ -174,7 +212,7 @@ export class SessionManager {
         }
         persistSession(agent.ctx).catch(() => { });
       } catch (err) {
-        transport.handle({ type: 'error', message: String(err) });
+        await failTurn(err);
       }
     });
 
@@ -187,7 +225,7 @@ export class SessionManager {
         }
         persistSession(agent.ctx).catch(() => { });
       } catch (err) {
-        transport.handle({ type: 'error', message: String(err) });
+        await failTurn(err);
       }
     });
   }

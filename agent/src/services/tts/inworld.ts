@@ -1,3 +1,4 @@
+import {requestBeforeOutput,serviceError} from '../../network.js';
 import type { TTSProvider } from './base.js';
 
 const INWORLD_TTS_URL = 'https://api.inworld.ai/tts/v1/voice:stream';
@@ -14,7 +15,7 @@ async function sleep(ms: number): Promise<void> {
 
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const res = await fetch(url, init);
+    const res = await requestBeforeOutput('Inworld TTS',()=>fetch(url, {...init,signal:AbortSignal.timeout(30000)}));
     if (res.ok) return res;
 
     if (!RETRYABLE.has(res.status) || attempt === MAX_ATTEMPTS - 1) {
@@ -81,7 +82,7 @@ export function createInworldTTS(): TTSProvider {
     };
     try {
       while (true) {
-        const { value, done } = await reader.read();
+        const { value, done } = await reader.read().catch(error=>{throw serviceError('Inworld audio stream',error);});
         if (done) break;
         pending += decoder.decode(value, { stream: true });
         const lines = pending.split('\n');

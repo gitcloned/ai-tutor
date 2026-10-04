@@ -7,7 +7,8 @@
     "build": "rm -rf dist && tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prebuild": "npm --prefix ../cms/packages/progression run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

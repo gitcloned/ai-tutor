@@ -123,3 +123,12 @@ it('disconnect cancels the question pause and discards the old next question',as
   p.cancel();p.add([{kind:'write',content:'new connection',attrs:{}}]);
   await new Promise(r=>setTimeout(r,0));expect(seen).toEqual(['end','new connection']);
 });
+
+it('saves once at a completed turn boundary, after parallel rendering, not after intermediate idle',async()=>{
+  let finish!:()=>void;let saves=0;
+  const player=new Playback(async block=>{if(block.kind==='write')await new Promise<void>(r=>finish=r);},()=>{},()=>{},async()=>{},()=>false,()=>saves++);
+  player.add([{kind:'action',content:'',attrs:{},action:{type:'parallel-start'}},{kind:'write',content:'Equation',attrs:{}},{kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}}]);
+  await new Promise(r=>setTimeout(r,0));expect(saves).toBe(0);
+  finish();await new Promise(r=>setTimeout(r,0));expect(saves).toBe(1);
+  player.add([{kind:'speech',content:'repeat',attrs:{}}]);await new Promise(r=>setTimeout(r,0));expect(saves).toBe(1);
+});

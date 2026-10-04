@@ -5,6 +5,7 @@ import { BaseOutputModality } from './base.js';
 export class Model extends BaseOutputModality {
   readonly key = 'model';
   private buffer = '';
+  reset(): void { this.buffer = ''; }
   async *handle(chunk: string): AsyncGenerator<TurnEvent> { this.buffer += chunk; }
   async *end(attrs: Record<string, string>): AsyncGenerator<TurnEvent> {
     const content = this.buffer.trim();

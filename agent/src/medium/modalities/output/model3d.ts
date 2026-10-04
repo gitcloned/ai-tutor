@@ -5,6 +5,7 @@ import { BaseOutputModality } from './base.js';
 export class Model3d extends BaseOutputModality {
   readonly key = 'model3d';
   private buffer = '';
+  reset(): void { this.buffer = ''; }
 
   async *handle(chunk: string): AsyncGenerator<TurnEvent> {
     this.buffer += chunk;

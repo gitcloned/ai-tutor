@@ -104,3 +104,7 @@
   .tutor-space .orb-label{font-size:9px}
   .follow-button{bottom:calc(var(--tutor-space-height) + 12px);left:50%;transform:translateX(-50%)}
 }
+
+.notebook-resume { position:absolute; z-index:450; right:34px; bottom:180px; display:flex; flex-direction:column; gap:10px; align-items:center; max-width:300px; padding:16px 20px; border:1px solid #d6dfd0; border-radius:20px; background:#fffefa; box-shadow:0 8px 32px #29443315; color:#416653; font-size:15px; }
+.notebook-resume .primary { min-height:46px; }
+@media(max-width:600px){.notebook-resume{right:16px;bottom:150px;max-width:250px;}}

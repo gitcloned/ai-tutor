@@ -1,9 +1,10 @@
+import type {Assignment} from './learning';
 import {adultToken} from './google';
 export type Role = 'parent'|'teacher';
 export type Student = {token?:string;studentId:string;name:string;grade:string;age?:number};
 export type Adult = {token?:string;userId:string;name:string;email:string;roles:Role[]};
 export type Identity = ({type:'student'}&Student)|({type:'adult'}&Adult);
-export type Classroom = {id:string;name:string;subject:string;grade:string;createdByUserId:string;status:string;kind?:'teacher'|'personal'};
+export type Classroom = {id:string;name:string;subject:string;grade:string;createdByUserId:string;status:string;kind?:'teacher'|'personal';topics?:Assignment[]};
 export type Concept = {id:string;title:string;description?:string};
 export type LessonSession = {sessionId:string;resumed:boolean;wsUrl:string;concept:{id:string;title:string}};
 export const preview = new URLSearchParams(location.search).get('preview')==='1';
@@ -27,7 +28,7 @@ function apiBase(service:Service){
   if(location.protocol==='https:')throw new Error('This service is not connected yet. Please try again once setup is complete.');
   return `http://${location.hostname.includes(':')?'['+location.hostname+']':location.hostname}:${{erp:32005,agent:32004,cms:32001,learning:32002}[service]}`;
 }
-export async function request<T>(path:string,body?:unknown,service:Service='erp',method?:'PUT'|'POST'|'PATCH'):Promise<T>{
+export async function request<T>(path:string,body?:unknown,service:Service='erp',method?:'PUT'|'POST'|'PATCH',options?:{keepalive?:boolean}):Promise<T>{
   if(preview)return demoRequest(path,body) as T;
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
   try{
@@ -39,7 +40,8 @@ export async function request<T>(path:string,body?:unknown,service:Service='erp'
     }else {
       const identity=readIdentity();if(identity?.token)headers.Authorization=`Bearer ${identity.token}`;
     }
-    const response=await fetch(apiBase(service)+path,{method:method??(body===undefined?'GET':path==='/me'?'PATCH':'POST'),headers,body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});
+    const serialized=body===undefined?undefined:JSON.stringify(body);
+    const response=await fetch(apiBase(service)+path,{keepalive:!!options?.keepalive&&new Blob([serialized??'']).size<60000,method:method??(body===undefined?'GET':path==='/me'?'PATCH':'POST'),headers,body:serialized,signal:controller.signal});
     const data=await response.json().catch(()=>({}));
     if(response.status===401&&path!=='/auth/student'&&path!=='/auth/google'){rememberIdentity(null);location.assign('/login');}
     if(!response.ok)throw new Error(data.error||'That did not work. Please try again.');
@@ -61,12 +63,21 @@ const concepts:Concept[]=[
 ];
 function demoData():DemoData{
   try{const saved=localStorage.getItem(demoKey);if(saved)return JSON.parse(saved);}catch{}
-  return {students:[{studentId:'preview-student',name:'Aarav',grade:'Grade 7',userId:'preview-adult',code:'K7M9R2'}],adults:[{userId:'preview-adult',name:'Meera',email:'meera@example.com',roles:[]}],classes:[{id:'preview-class',name:'Grade 7 Maths',subject:'Mathematics',grade:'Grade 7',createdByUserId:'preview-adult',status:'active',code:'B3MN8P'}],enrollments:[]};
+  return {students:[{studentId:'preview-student',name:'Aarav',grade:'Grade 7',userId:'preview-adult',code:'K7M9R2'}],adults:[{userId:'preview-adult',name:'Meera',email:'meera@example.com',roles:[]}],classes:[{id:'preview-class',name:'Grade 7 Maths',subject:'Mathematics',grade:'Grade 7',createdByUserId:'preview-adult',status:'active',code:'B3MN8P'}],enrollments:[{studentId:'preview-student',classroomId:'preview-class'}]};
 }
 function code(data:DemoData){let value='';do{value=Array.from(crypto.getRandomValues(new Uint8Array(6)),n=>alphabet[n%alphabet.length]).join('');}while([...data.students,...data.classes].some(item=>item.code===value));return value;}
 function demoRequest(path:string,body:any):unknown{
   const data=demoData(),url=new URL(path,'http://preview'),p=url.pathname,q=url.searchParams;
   const save=()=>localStorage.setItem(demoKey,JSON.stringify(data));
+  const curriculum=[{subjectId:'mathematics',title:'Mathematics',strands:[{id:'algebra',title:'Algebra',units:[{id:'equations',title:'Equations and graphs',topics:concepts.map((c,i)=>({id:c.id,title:c.title,recommended:i<2,recommendedGrades:[7],concepts:[c]}))}]}]},{subjectId:'science',title:'Science',strands:[{id:'living',title:'Living things',units:[{id:'plants',title:'Plants',topics:[{id:'plant-growth',title:'How plants grow',recommended:false,recommendedGrades:[6],concepts:[]}]}]}]}];
+  if(p==='/curriculum')return curriculum;
+  if(p.endsWith('/home')){
+    const studentId=p.split('/')[2];
+    const assigned=data.classes.filter(c=>data.enrollments.some(e=>e.studentId===studentId&&e.classroomId===c.id)).flatMap(c=>c.topics??concepts.slice(0,2).map(t=>({subjectId:'mathematics',topicId:t.id})));
+    return {subjects:curriculum.map(s=>({subjectId:s.subjectId,title:s.title,topics:s.strands.flatMap(st=>st.units.flatMap(u=>u.topics.filter(t=>assigned.some(a=>a.subjectId===s.subjectId&&a.topicId===t.id)).map(t=>({topicId:t.id,title:t.title,strandTitle:st.title,unitTitle:u.title,status:'not_started'}))))})).filter(s=>s.topics.length),continueWith:null};
+  }
+  if(p.endsWith('/topics')&&!body){const c=data.classes.find(c=>c.id===p.split('/')[p.startsWith('/students/')?4:2]);return {topics:c?.topics??concepts.slice(0,2).map(t=>({subjectId:'mathematics',topicId:t.id}))};}
+  if(p.endsWith('/topics')&&body){const c=data.classes.find(c=>c.id===p.split('/')[2]);if(c)c.topics=body.topics;save();return {status:'ready'};}
   if(p==='/auth/google')return data.adults[0];
   if(p==='/auth/student'){
     const student=data.students.find(s=>s.code===normalizeCode(body.code));
@@ -76,7 +87,7 @@ function demoRequest(path:string,body:any):unknown{
   if(p==='/me'){
     const adult=data.adults.find(a=>a.userId===body.userId)!;Object.assign(adult,body);save();return adult;
   }
-  if(p==='/students'&&body){const student={...body,studentId:crypto.randomUUID(),code:code(data)};data.students.push(student);save();return student;}
+  if(p==='/students'&&body){const student={...body,studentId:crypto.randomUUID(),code:code(data)};data.students.push(student);if(body.setupContext==='parent'){const id=crypto.randomUUID();data.classes.push({id,name:student.name+'’s learning',subject:'',grade:student.grade,createdByUserId:body.userId,status:'active',kind:'personal',code:'',topics:body.topics??[]});data.enrollments.push({studentId:student.studentId,classroomId:id});}save();return {...student,setupStatus:'ready'};}
   if(p==='/students')return data.students.filter(s=>s.userId===q.get('userId')).map(({code:_,...s})=>s);
   if(p.startsWith('/students/')&&p.endsWith('/code')){const student=data.students.find(s=>s.studentId===p.split('/')[2]);if(!student)throw new Error('Student not found.');return {code:student.code};}
   if(p.startsWith('/students/')&&p.endsWith('/reset-code')){
@@ -87,7 +98,7 @@ function demoRequest(path:string,body:any):unknown{
     const exists=data.enrollments.some(e=>e.studentId===body.studentId&&e.classroomId===classroom.id);
     if(!exists)data.enrollments.push({studentId:body.studentId,classroomId:classroom.id});save();return {status:exists?'already_joined':'joined',classroomId:classroom.id,name:classroom.name};
   }
-  if(p==='/classrooms'&&body){const classroom={id:crypto.randomUUID(),name:body.name,subject:body.subject,grade:body.grade,createdByUserId:body.userId,status:'active',code:code(data)};data.classes.push(classroom);save();return {...classroom,classroomId:classroom.id,classCode:classroom.code};}
+  if(p==='/classrooms'&&body){const classroom={id:crypto.randomUUID(),name:body.name,subject:body.subject??'',topics:body.topics??[],kind:'teacher' as const,grade:body.grade,createdByUserId:body.userId,status:'active',code:code(data)};data.classes.push(classroom);save();return {...classroom,classroomId:classroom.id,classCode:classroom.code};}
   if(p==='/classrooms')return data.classes.filter(c=>q.has('userId')?c.createdByUserId===q.get('userId'):data.enrollments.some(e=>e.studentId===q.get('studentId')&&e.classroomId===c.id)).map(({code:_,...c})=>c);
   if(p.startsWith('/classrooms/')&&p.endsWith('/reset-code')){const classroom=data.classes.find(c=>c.id===p.split('/')[2])!;classroom.code=code(data);save();return {code:classroom.code};}
   if(p.startsWith('/classrooms/')&&p.endsWith('/students')){
@@ -98,4 +109,16 @@ function demoRequest(path:string,body:any):unknown{
   if(p==='/concepts')return concepts;
   if(p==='/sessions')throw new Error('Preview lessons do not connect to a live tutor. Exit preview to start a real lesson.');
   throw new Error('This preview action is not available.');
+}
+
+// Keep the same creation key after a timeout or refresh, so retrying cannot
+// accidentally create a second child/class. The successful caller clears it.
+export function creationAttempt(scope:string,payload:unknown){
+  const storageKey=`prodigy-create-${readIdentity()?.type==='adult'?(readIdentity() as Adult).userId:'student'}-${scope}`;
+  const fingerprint=JSON.stringify(payload);
+  let saved:{fingerprint:string;key:string}|null=null;
+  try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch{}
+  const key=saved?.fingerprint===fingerprint?saved.key:crypto.randomUUID();
+  sessionStorage.setItem(storageKey,JSON.stringify({fingerprint,key}));
+  return {key,done:()=>sessionStorage.removeItem(storageKey)};
 }

@@ -23,6 +23,7 @@ export class Playback {
     private idle:()=>void=()=>{},
     private waitBefore:(ms:number,signal:AbortSignal)=>Promise<void> = (ms, signal) => delay(ms, signal, () => this.paused),
     private hasActiveQuestion:()=>boolean = ()=>false,
+    private turnComplete:()=>void = ()=>{},
   ) {}
   add(blocks:Block[]) { this.queue.push(...blocks); void this.drain(); }
   setPaused(value:boolean) { this.paused=value; if(!value) void this.drain(); }
@@ -73,6 +74,7 @@ export class Playback {
             this.parallelDepth=0;
             for(const video of videos){if(signal.aborted)break;await this.run(video);}
             if(camera&&!signal.aborted)await this.run(camera);
+            if(!signal.aborted)this.turnComplete();
             continue;
           }
           if (action.type === 'parallel-start') { this.parallelDepth++; continue; }

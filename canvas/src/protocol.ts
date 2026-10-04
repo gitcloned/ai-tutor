@@ -1,6 +1,6 @@
 import type { PcmStream } from './audio-stream';
 export type Attrs = Record<string, string>;
-export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; event?:{type:string}; sessionId?: string; conceptId?: string; title?: string };
+export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; event?:{type:string}; notebookId?: string; sessionId?: string; conceptId?: string; title?: string };
 export type LessonMetadata = { sessionId: string; conceptId: string; title: string };
 export type Block = { kind: 'session' | 'model' | 'model3d' | 'question' | 'annotate' | 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown; audioStream?: PcmStream };
 export class BlockAdapter {
@@ -34,7 +34,7 @@ export class BlockAdapter {
     if (event.type === 'session') {
       flush();
       const metadata=lessonMetadata(event);
-      if(metadata) result.push({kind:'session',content:metadata.title,attrs:{sessionId:metadata.sessionId,conceptId:metadata.conceptId}});
+      if(metadata) result.push({kind:'session',content:metadata.title,attrs:{sessionId:metadata.sessionId,conceptId:metadata.conceptId,notebookId:event.notebookId??metadata.sessionId}});
       return result;
     }
     if (['model','model3d','question','annotate','svg','ask','play','audio_chunk','error','action'].includes(event.type)) flush();

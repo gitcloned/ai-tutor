@@ -5,17 +5,28 @@
  * Commands:
  *   node student.mjs list
  *   node student.mjs details --student <id>
+ *   node student.mjs setup   --student <id> --concept <slug> --state <state>
+ *                            [--flush-sessions]
  *   node student.mjs flushAll --student <id>   LP data only
  *   node student.mjs delete --student <id>     ERP + LP
  *   node student.mjs deleteAll                 ERP + LP for every student
  *   node student.mjs flushOthers --keep <id>   LP only, keep one
  *
+ * setup: plants a journey node at the given concept+state so the "Continue"
+ * button on the home screen points there. Use --flush-sessions to also wipe
+ * in-flight sessions for that concept (forces a fresh start instead of resume).
+ *
+ * Valid states: not_assessed | assessing | learning | clarity |
+ *               mastering | getting_exam_ready | mastered | exam_ready
+ *
  * Env:
  *   LP_URL   (default: http://localhost:32002)
- *   ERP_URL  (default: http://localhost:32003)
+ *   CMS_URL  (default: http://localhost:32001)
+ *   ERP_URL  (default: http://localhost:32005)
  */
 
 const LP  = process.env.LP_URL  ?? 'http://localhost:32002';
+const CMS = process.env.CMS_URL ?? 'http://localhost:32001';
 const ERP = process.env.ERP_URL ?? 'http://localhost:32005';
 
 const args   = process.argv.slice(2);
@@ -52,6 +63,24 @@ async function get(path) {
 async function del(path) {
   const r = await fetch(`${LP}${path}`, { method: 'DELETE' });
   if (!r.ok) throw new Error(`DELETE ${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function post(path, body) {
+  const r = await fetch(`${LP}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`POST ${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function patch(path, body) {
+  const r = await fetch(`${LP}${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`PATCH ${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function cmsGet(path) {
+  const r = await fetch(`${CMS}${path}`);
+  if (!r.ok) throw new Error(`GET CMS ${path} → ${r.status} ${r.statusText}`);
   return r.json();
 }
 
@@ -262,6 +291,146 @@ async function cmdSessionDetails() {
   console.log();
 }
 
+// ── How "Continue" works ──────────────────────────────────────────────────────
+//
+// LP /home ranks in_progress topics by most recent activity (node.lastActivity
+// augmented with session timestamps). For the top-ranked topic it calls
+// selectNextConcept → picks the most recently active unfinished concept →
+// returns { conceptId, state, resumeSessionId }.
+//
+// resumeSessionId is set only when the node is in a transition state
+// (assessing/learning/mastering/getting_exam_ready) AND a session exists with
+// status=started, journeyNodeId=node.id, conceptStateAtStart=node.state.
+//
+// This command:
+//   1. Resolves concept → topic → subjectId from CMS
+//   2. Finds or creates the subject journey in LP
+//   3. Finds or creates the journey node for the concept
+//   4. Patches the node to the requested state + bumps lastActivity to now
+//   5. If --flush-sessions: marks all started sessions for this concept
+//      as completed (so the agent creates a fresh one, not a resume)
+//   6. Prints what "Continue" will show
+
+async function cmdSetup() {
+  const studentId     = flag('student');
+  const conceptId     = flag('concept');
+  const state         = flag('state');
+  const flushSessions = args.includes('--flush-sessions');
+
+  const VALID_STATES = [
+    'not_assessed', 'assessing', 'learning', 'clarity',
+    'mastering', 'getting_exam_ready', 'mastered', 'exam_ready',
+  ];
+
+  if (!studentId || !conceptId || !state) {
+    console.error(c.red('  --student <id>, --concept <slug>, and --state <state> are all required'));
+    process.exit(1);
+  }
+  if (!VALID_STATES.includes(state)) {
+    console.error(c.red(`  Invalid state "${state}". Valid: ${VALID_STATES.join(' | ')}`));
+    process.exit(1);
+  }
+
+  console.log();
+  console.log(`  Setting up ${c.cyan(studentId)} → ${c.bold(conceptId)} @ ${stateColour(state)}`);
+  console.log(`  ${HR}`);
+
+  // 1. Resolve concept from CMS
+  let concept;
+  try {
+    concept = await cmsGet(`/concepts/${conceptId}`);
+  } catch (e) {
+    console.error(c.red(`  Concept not found in CMS: ${e.message}`));
+    process.exit(1);
+  }
+  const topicId = concept.topic ?? null;
+  if (!topicId) {
+    console.error(c.red(`  Concept "${conceptId}" has no topic set in CMS. Cannot resolve subject journey.`));
+    process.exit(1);
+  }
+  console.log(`  concept   ${c.dim(concept.title ?? conceptId)}`);
+  console.log(`  topic     ${c.dim(topicId)}`);
+
+  // 2. Resolve subjectId from topic
+  let subjectId;
+  try {
+    const info = await cmsGet(`/topics/${topicId}/subject`);
+    subjectId = info.subjectId;
+  } catch (e) {
+    console.error(c.red(`  Cannot resolve subject for topic "${topicId}": ${e.message}`));
+    process.exit(1);
+  }
+  console.log(`  subject   ${c.dim(subjectId)}`);
+
+  // 3. Find or create the subject journey in LP
+  let journeys = await get(`/students/${studentId}/journeys`).catch(() => []);
+  let journey  = journeys.find(j => j.subjectId === subjectId);
+  if (!journey) {
+    journey = await post(`/students/${studentId}/journeys`, { objective: 'Learn subject', subjectId });
+    console.log(`  journey   ${c.green('created')} ${c.dim(journey.id)}`);
+  } else {
+    console.log(`  journey   ${c.dim('existing')} ${c.dim(journey.id)}`);
+  }
+
+  // 4. Find or create the journey node
+  const nodes = await get(`/journey-nodes?journeyId=${journey.id}&conceptId=${conceptId}`).catch(() => []);
+  let node = nodes[0];
+  if (!node) {
+    const goTo = concept.nextConcepts?.[0] ?? null;
+    node = await post('/journey-nodes', {
+      journeyId: journey.id,
+      conceptId,
+      order:         1,
+      state,
+      masteryLevel:  null,
+      goTo,
+      cameFrom:      null,
+      preReqToLearn: null,
+      topicId,
+      lastActivity:  new Date().toISOString(),
+    });
+    console.log(`  node      ${c.green('created')} ${c.dim(node.id)}`);
+  } else {
+    // Patch to requested state and bump lastActivity so it ranks first in /home
+    await patch(`/journey-nodes/${node.id}`, { state, lastActivity: new Date().toISOString() });
+    node.state = state;
+    console.log(`  node      ${c.dim('patched')}  ${c.dim(node.id)}`);
+  }
+
+  // 5. Optionally flush started sessions
+  if (flushSessions) {
+    const sessions = await get(`/students/${studentId}/sessions?conceptId=${encodeURIComponent(conceptId)}&status=started`).catch(() => []);
+    let flushed = 0;
+    for (const s of sessions) {
+      await patch(`/sessions/${s.id}`, { status: 'completed', endedAt: new Date().toISOString() }).catch(() => {});
+      flushed++;
+    }
+    if (flushed > 0) {
+      console.log(`  sessions  ${c.yellow(`flushed ${flushed} started session(s)`)}`);
+    } else {
+      console.log(`  sessions  ${c.dim('none to flush')}`);
+    }
+  } else {
+    // Show whether a resumable session exists
+    const TRANSITION_STATES = new Set(['assessing', 'learning', 'mastering', 'getting_exam_ready']);
+    if (TRANSITION_STATES.has(state)) {
+      const sessions = await get(`/students/${studentId}/sessions?conceptId=${encodeURIComponent(conceptId)}&status=started`).catch(() => []);
+      const resumable = sessions.find(s => s.journeyNodeId === node.id && s.conceptStateAtStart === state);
+      if (resumable) {
+        console.log(`  resume    ${c.cyan('yes')} — session ${c.dim(resumable.id)} will be resumed`);
+      } else {
+        console.log(`  resume    ${c.dim('no started session — agent will create a fresh one')}`);
+      }
+    }
+  }
+
+  console.log();
+  console.log(`  ${c.green('✓ Done.')} Open the home screen and click ${c.bold('Continue')} — it will land on:`);
+  console.log(`    concept   ${c.bold(conceptId)}`);
+  console.log(`    state     ${stateColour(state)}`);
+  console.log();
+}
+
 async function cmdFlushAll() {
   const studentId = flag('student');
   if (!studentId) { console.error(c.red('  --student <id> required')); process.exit(1); }
@@ -442,13 +611,19 @@ function usage() {
     node student.mjs list
     node student.mjs details         --student <id>
     node student.mjs session-details --session <id>
+    node student.mjs setup           --student <id> --concept <slug> --state <state>
+                                     [--flush-sessions]
     node student.mjs flushAll        --student <id>   (LP only)
     node student.mjs flushOthers     --keep <id>      (LP only)
     node student.mjs delete          --student <id>   (ERP + LP)
     node student.mjs deleteAll                        (ERP + LP, all students)
 
+  setup states: not_assessed | assessing | learning | clarity |
+                mastering | getting_exam_ready | mastered | exam_ready
+
   Env:
     LP_URL   (default: http://localhost:32002)
+    CMS_URL  (default: http://localhost:32001)
     ERP_URL  (default: http://localhost:32005)
   `);
   process.exit(0);
@@ -461,6 +636,7 @@ try {
     case 'list':            await cmdList();            break;
     case 'details':         await cmdDetails();         break;
     case 'session-details': await cmdSessionDetails();  break;
+    case 'setup':           await cmdSetup();           break;
     case 'flushAll':        await cmdFlushAll();        break;
     case 'flushOthers':     await cmdFlushOthers();     break;
     case 'delete':          await cmdDelete();          break;

@@ -1,6 +1,6 @@
 import type { PcmStream } from './audio-stream';
 export type Attrs = Record<string, string>;
-export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; event?:{type:string}; notebookId?: string; sessionId?: string; conceptId?: string; title?: string };
+export type WireEvent = { type: string; content?: string; attrs?: Attrs; message?: string; action?: unknown; event?:{type:string;[key:string]:unknown}; notebookId?: string; sessionId?: string; conceptId?: string; title?: string };
 export type LessonMetadata = { sessionId: string; conceptId: string; title: string };
 export type Block = { kind: 'session' | 'model' | 'model3d' | 'question' | 'annotate' | 'write' | 'svg' | 'ask' | 'play' | 'speech' | 'audio' | 'error' | 'action'; content: string; attrs: Attrs; action?: unknown; audioStream?: PcmStream };
 export class BlockAdapter {
@@ -27,6 +27,7 @@ export class BlockAdapter {
     }
     if (event.type === 'text') { flush(); return result; }
     if (event.type === 'error') this.finishStreams(event.message ?? 'Speech was interrupted.');
+    if(event.type==='event'&&event.event?.type==='step-changed'){flush();return [...result,{kind:'action',content:'',attrs:{},action:event.event}];}
     if(event.type==='event'&&event.event?.type==='tutor-ended'){
       this.finishStreams('Tutor audio ended before all chunks arrived.');
       flush();result.push({kind:'action',content:'',attrs:{},action:{type:'tutor-ended'}});return result;

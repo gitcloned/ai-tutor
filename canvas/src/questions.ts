@@ -64,7 +64,7 @@ export class Questions {
     const shapes=this.editor.getCurrentPageShapes();
     const model=shapes.filter(s=>s.type==='model3d'||s.type==='function-graph').find(s=>s.meta.unpinned!==true);
     const bounds=shapes.filter(s=>s.meta.unpinned===true||(s.type!=='model3d'&&s.type!=='function-graph')).map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
-    const x=model?model.x+model.props.w+40:140,y=bounds.length?Math.max(...bounds.map(b=>b.maxY))+80:100;
+    const x=model?model.x+Math.max(...shapes.filter(s=>(s.type==='function-graph'||s.type==='model3d')&&s.meta.unpinned!==true).map(s=>'w' in s.props?Number(s.props.w):0))+40:140,y=bounds.length?Math.max(...bounds.map(b=>b.maxY))+80:100;
     const id=createShapeId();
     this.editor.createShape({id,type:'frame',x,y,meta:{author:'tutor',kind:'question',questionId:key,questionActive:true},props:{w:1132,h:140,name:'Question',color:'green'}});
     if(mcq){

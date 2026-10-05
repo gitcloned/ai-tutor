@@ -1,3 +1,4 @@
+import {PracticeQuestionUtil,PracticeHeader} from './PracticeQuestion';
 import {request} from './journey/api';
 import {getNext,type NextLearning} from './journey/learning';
 import {NotebookSync,type LessonBinding} from './notebookStorage';
@@ -25,7 +26,7 @@ import {initialTutorUrl,successfulTutors} from './tutorUrl';
 import {StudentWork,type MediaInput} from './studentWork';
 import { ModelShapeUtil } from './models/ModelShape';
 import {FunctionGraphShapeUtil,GraphActivityContext} from './models/FunctionGraphShape';
-const modelShapeUtils=[PageStackUtil,LessonEmbedUtil,LessonVideoUtil,McqShapeUtil,ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
+const modelShapeUtils=[PracticeQuestionUtil,PageStackUtil,LessonEmbedUtil,LessonVideoUtil,McqShapeUtil,ModelShapeUtil,FunctionGraphShapeUtil,QuestionFrameUtil.configure({getCustomDisplayValues:(_editor,shape)=>shape.meta.kind==='question'?{fillColor:'transparent',strokeColor:'transparent',headingFillColor:'transparent',headingStrokeColor:'transparent',headingTextColor:'transparent',showColorsFillColor:'transparent',showColorsStrokeColor:'transparent',showColorsHeadingFillColor:'transparent',showColorsHeadingStrokeColor:'transparent',showColorsHeadingTextColor:'transparent'}:{}})];
 function applyCanvasTheme(editor:Editor) {
   const theme=editor.getTheme('default');
   if(theme)editor.updateTheme({...theme,fontSize:18,colors:{...theme.colors,light:{...theme.colors.light,green:{...theme.colors.light.green,solid:'#416653',fill:'#416653'}}}});
@@ -178,6 +179,7 @@ export default function App() {
       </VideoCardContext.Provider>
       </PageStackContext.Provider>
     </section>
+    {editor&&<PracticeHeader editor={editor}/>}
     {!hasContent && !lesson.connected && !openingNotebook && !reviewNotebook && !notebookError && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={connectTutor}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}

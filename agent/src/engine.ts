@@ -8,6 +8,7 @@
  */
 
 import { requestBeforeOutput, serviceError } from './network.js';
+import {stepPresentation} from './learning/stepPresentation.js';
 import { GoogleGenAI } from '@google/genai';
 import type { AgentContext } from './context.js';
 import type { ToolRegistry } from './tools/index.js';
@@ -15,6 +16,7 @@ import type { Skill } from './skills.js';
 
 /** Typed lifecycle events emitted by the agent (not actions, not output). */
 export type AgentEvent =
+  | ReturnType<typeof stepPresentation>
   | { type: 'tutor-started' }
   | { type: 'session-completed'; topicId?: string | null }
   | { type: 'tutor-ended' };
@@ -74,6 +76,7 @@ export class TurnEngine {
 
   async *run(skill: Skill, ctx: AgentContext, options: { resumed?: boolean } = {}): AsyncGenerator<TurnEvent> {
     yield { type: 'event', event: { type: 'tutor-started' } };
+    yield {type:'event',event:stepPresentation(ctx)};
 
     try { if(ctx.session.status!=='completed')yield* this.#run(skill, ctx, options); }
     finally {
@@ -108,6 +111,7 @@ export class TurnEngine {
       skill.prompt(ctx),
       ctx.outputPrompt || null,
       ctx.modelPrompt || null,
+      stepPresentation(ctx).step?.type==='practice'?'Practice UI: the frontend displays the question once in the notebook, followed by blank working space. The fixed header shows its number, points and optional timer. Do not write the question stem again or invent points, numbering, or time limits. For a new question, introduce it briefly with speak only, then wait for the child’s independent attempt. The frontend labels the blank space below the question "Your working". Do not fill that space by repeating or paraphrasing the stem, copying its equation, defining its terms, adding examples, or supplying answer blanks. Instructions to display or write the question are already fulfilled by the displayed question. After an attempt, provide feedback and use write/annotate for help when needed. Scaffold before an attempt only if the child requests help or the plan explicitly requires a worked demonstration. The backend records outcomes and awards configured points only on pass; do not claim an award before get_next_question records it. Timer expiry does not imply an incorrect answer.':null,
       ctx.session.observationToStartWith?.trim()
         ? `Session opening observation (context about the student's work): ${JSON.stringify(ctx.session.observationToStartWith)}\nWhen starting this session, briefly acknowledge this observation, then introduce the lesson naturally. Do not invent praise or ask for confirmation. If it has already been acknowledged in the conversation, continue without repeating it.`
         : null,
@@ -179,6 +183,7 @@ export class TurnEngine {
           : { error: `unknown tool: ${call.name}` };
 
         yield { type: 'tool_result', name: call.name!, result };
+        if(call.name==='get_next_question'||call.name==='update_step')yield {type:'event',event:stepPresentation(ctx)};
 
         // If the tool result carries an action signal, emit it for the transport
         if ((result as any)?.action) {

@@ -41,6 +41,7 @@ export interface Question {
   type:         string;
   difficulty?:  string | null;
   score?:       number | null;
+  timeSeconds?: number | null;
   order?:       number | null;
   stepsToSolve?: string[] | null;
   hints?:        string[] | null;

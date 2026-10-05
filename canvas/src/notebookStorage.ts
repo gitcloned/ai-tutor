@@ -42,28 +42,29 @@ export function notebookContent(snapshot:Snapshot):string {
 /** Restore the current discussion, never shrink a whole notebook to fit. */
 export function focusNotebookEnd(editor:Editor):TLShapeId|null {
   const shapes=editor.getCurrentPageShapes();
+  const models=shapes.filter(s=>(s.type==='function-graph'||s.type==='model3d')&&s.meta.unpinned!==true).sort((a,b)=>Number(b.type==='practice-question')-Number(a.type==='practice-question'));
   const candidates=shapes.filter(s=>s.type!=='frame'&&s.type!=='group'&&s.type!=='model3d'&&s.type!=='function-graph');
   const saved=editor.getCurrentPage().meta.lessonFocusId;
   const target=candidates.find(s=>s.id===saved)??candidates
     .map(shape=>({shape,bounds:editor.getShapePageBounds(shape.id)}))
-    .filter(item=>!!item.bounds).sort((a,b)=>b.bounds!.maxY-a.bounds!.maxY)[0]?.shape;
+    .filter(item=>!!item.bounds).sort((a,b)=>b.bounds!.maxY-a.bounds!.maxY)[0]?.shape??models[0];
   if(!target)return null;
   const bounds=editor.getShapePageBounds(target.id);if(!bounds)return null;
   const screen=editor.getViewportScreenBounds();
   const toolbar=editor.getContainer().closest('.app')?.querySelector('.toolbar')?.getBoundingClientRect();
   const left=Math.max(24,toolbar?toolbar.right-screen.x+24:100);
   const area={x:left,y:40,w:Math.max(100,screen.w-left-32),h:Math.max(100,screen.h-240)};
-  const model=shapes.find(s=>(s.type==='function-graph'||s.type==='model3d')&&s.meta.unpinned!==true);
+  const model=models[0];
   let content={x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h};
   if(model){
-    const modelBounds=editor.getShapePageBounds(model.id);
-    if(modelBounds){
-      // Keep the active model alongside the latest work, including on the
-      // review screen before the tutor reconnects. Archived models stay put.
-      editor.updateShape({id:model.id,type:model.type,y:model.y+bounds.y-modelBounds.y});
-      const x=Math.min(bounds.x,modelBounds.x);
-      content={x,y:bounds.y,w:Math.max(bounds.x+bounds.w,modelBounds.x+modelBounds.w)-x,h:Math.max(bounds.h,modelBounds.h)};
+    let y=bounds.y;
+    const x=Math.min(bounds.x,model.x);let right=bounds.x+bounds.w;
+    for(const item of models){
+      const box=editor.getShapePageBounds(item.id);if(!box)continue;
+      editor.updateShape({id:item.id,type:item.type,x:model.x,y:item.y+y-box.y});
+      right=Math.max(right,model.x+box.w);y+=box.h+24;
     }
+    content={x,y:bounds.y,w:right-x,h:Math.max(bounds.h,y-bounds.y-24)};
   }
   const z=Math.min(1,area.w/content.w,area.h/content.h);
   const camera=model?{x:area.x/z-content.x,y:area.y/z-content.y,z}:activityCamera(area,content,1);

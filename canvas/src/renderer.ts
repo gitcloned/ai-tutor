@@ -1,3 +1,4 @@
+import {renderPractice,type PracticeShape,type PracticePresentation} from './PracticeQuestion';
 import {cleanNotebookCache,focusNotebookEnd} from './notebookStorage';
 import {appreciate,isPraise} from './appreciation';
 import { Box, Editor, DefaultFontFaces, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
@@ -11,7 +12,7 @@ import type {TLShape} from 'tldraw';
 import {Questions} from './questions';
 import { activityCamera, cameraShift, resolvePlacement, textStyle, questionText, writingFrames, WRITE_CHARACTER_DELAY_MS } from './layout';
 
-const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape=>(s.type==='model3d'||s.type==='function-graph')&&s.meta.unpinned!==true;
+const isTeachingModel=(s:TLShape):s is ModelShape|FunctionGraphShape|PracticeShape=>(s.type==='model3d'||s.type==='function-graph')&&s.meta.unpinned!==true;
 
 export class CanvasRenderer {
   follow=true;
@@ -23,12 +24,30 @@ export class CanvasRenderer {
   private layoutTail:Promise<void>=Promise.resolve();
   constructor(readonly editor:Editor,private paused:()=>boolean) {this.questions=new Questions(editor);editor.on('tick',this.keepModelVisible);}
   dispose() {this.editor.off('tick',this.keepModelVisible);}
+  private teachingModels(){return this.editor.getCurrentPageShapes().filter(isTeachingModel).sort((a,b)=>Number(b.type==='practice-question')-Number(a.type==='practice-question'));}
+  practiceStep(event:PracticePresentation){
+    const page=this.editor.getCurrentPage();
+    this.editor.updatePage({id:page.id,meta:{...page.meta,practiceSummary:event.step?.type==='practice'&&event.practice?{earnedPoints:event.practice.earnedPoints}:null}});
+    const before=this.editor.getCurrentPageShapes().find(s=>s.type==='practice-question'&&s.meta.unpinned!==true)?.id;
+    const id=renderPractice(this.editor,event,()=>{
+      for(const model of this.teachingModels())this.editor.updateShape({id:model.id,type:model.type,meta:{...model.meta,unpinned:true}});
+      this.questions.start('end');
+      const bounds=this.editor.getCurrentPageBounds();this.cursor=bounds?bounds.maxY+80:100;
+      return {x:140,y:this.cursor};
+    });
+    if(id&&id!==before){
+      const card=this.editor.getShape(id)!;
+      const workId=createShapeId();
+      this.editor.createShape({id:workId,type:'text',x:card.x,y:card.y+('h' in card.props?Number(card.props.h):100)+40,meta:{author:'tutor',kind:'practice-working'},props:{richText:toRichText('Your working'),size:'s',font:'sans',color:'grey',w:500,autoSize:false}});
+      this.focused=null;this.focus(workId);
+    }
+  }
   private keepModelVisible=()=>{
     if(!this.follow)return;
-    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
+    const model=this.teachingModels()[0];
     if(!model)return;
-    const y=this.editor.getViewportPageBounds().y+80/this.editor.getZoomLevel();
-    if(Math.abs(model.y-y)>.01)this.editor.updateShape({id:model.id,type:model.type,y});
+    let y=this.editor.getViewportPageBounds().y+80/this.editor.getZoomLevel();
+    for(const item of this.teachingModels()){if(Math.abs(item.y-y)>.01||item.x!==model.x)this.editor.updateShape({id:item.id,type:item.type,x:model.x,y});y+=item.props.h+24;}
   };
   newLesson(title:string) {
     // Each replay scenario becomes a notebook page; student work is never cleared.
@@ -59,10 +78,10 @@ export class CanvasRenderer {
     this.cursor=bounds?bounds.maxY+60:100;
     this.focused=focusNotebookEnd(this.editor);
     // Restore the same graph-and-discussion layout used during live teaching.
-    if(this.focused&&this.editor.getCurrentPageShapes().some(isTeachingModel))this.focus(this.focused);
+    if(this.teachingModels().length)this.focus(this.focused??this.teachingModels()[0].id);
   }
   private locate(block:Block,w:number,h:number) {
-    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
+    const model=this.teachingModels()[0];
     const obstacles=this.editor.getCurrentPageShapes()
       .filter(shape=>!isTeachingModel(shape))
       .map(shape=>this.editor.getShapePageBounds(shape.id))
@@ -70,13 +89,14 @@ export class CanvasRenderer {
       .map(bounds=>({x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h}));
     const isModel=block.kind==='model3d'||block.kind==='model';
     if(isModel){
+      if(model?.type==='practice-question')return {x:model.x,y:model.y+model.props.h+24};
       const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
       // A pinned model travels vertically with the camera. Reserve its entire
       // column, including space beside content written before it was loaded.
       if(obstacles.length)point.x=Math.min(point.x,...obstacles.map(bounds=>bounds.x-w-40));
       return point;
     }
-    const right=model?model.x+model.props.w+40:260;
+    const right=model?model.x+Math.max(...this.teachingModels().map(s=>s.props.w))+40:260;
     const point=resolvePlacement(block.attrs,w,h,{x:right,y:this.cursor},obstacles);
     if(block.attrs.position) point.y+=this.origin;
     if(model){point.x=right;point.y=Math.max(point.y,this.cursor);}
@@ -87,8 +107,8 @@ export class CanvasRenderer {
     const page=this.editor.getCurrentPage();
     if(page.meta.lessonFocusId!==id)this.editor.updatePage({id:page.id,meta:{...page.meta,lessonFocusId:id}});
     if(!this.follow) return;
-    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
-    if(id===model?.id&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
+    const model=this.teachingModels()[0];
+    if(this.teachingModels().some(s=>s.id===id)&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
     // A question frame reserves an annotation column; focus the actual MCQ
     // children instead of including that empty space in the camera bounds.
     const children=this.editor.getCurrentPageShapes().filter(s=>s.parentId===id);
@@ -117,7 +137,7 @@ export class CanvasRenderer {
     const tabletInset=matchMedia('(pointer: coarse)').matches&&screenBounds.w>=600?60:0;
     if(model) {
       const screen=this.editor.getViewportScreenBounds();
-      const zoom=Math.min(1,(screen.w-140-tabletInset)/(model.props.w+40+Math.max(560,id===model.id?0:bounds.w)),(screen.h-180)/Math.max(model.props.h,bounds.h));
+      const zoom=Math.min(1,(screen.w-140-tabletInset)/(Math.max(...this.teachingModels().map(s=>s.props.w))+40+Math.max(560,id===model.id?0:bounds.w)),(screen.h-180)/Math.max(this.teachingModels().reduce((sum,s)=>sum+s.props.h+24,0)-24,bounds.h));
       const z=Math.max(.1,zoom),view=this.editor.getViewportPageBounds();
       let top=view.y;
       if(id===model.id)top=model.y-80/z;
@@ -164,6 +184,8 @@ export class CanvasRenderer {
   private async renderBlock(block:Block,signal:AbortSignal) {
     if(signal.aborted) return;
     if(block.kind==='model'){
+      const question=this.editor.getCurrentPageShapes().find((s):s is PracticeShape=>s.type==='practice-question'&&s.meta.unpinned!==true);
+      if(question&&block.attrs.action!=='remove')this.editor.updateShape<PracticeShape>({id:question.id,type:question.type,props:{w:560}});
       this.questions.start('end');
       renderFunctionGraph(this.editor,block,(w,h)=>this.locate(block,w,h),id=>this.focus(id));
       if(block.attrs.action==='remove')this.releaseModelLayout();
@@ -229,7 +251,7 @@ export class CanvasRenderer {
     }
   }
   fit() {
-    const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
+    const model=this.teachingModels()[0];
     if(model){const following=this.follow;this.follow=true;this.focus(model.id);this.follow=following;return;}
     const bounds=this.editor.getCurrentPageShapes().map(s=>this.editor.getShapePageBounds(s.id)).filter((b):b is Box=>!!b);
     if(!bounds.length)return;

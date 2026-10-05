@@ -48,6 +48,16 @@ export class PracticeExercise {
   }
 
   get total(): number { return this.questions.length; }
+  get progress(): QuestionResult[] { return [...this.results]; }
+  get presentation() {
+    const points=(q:Question|undefined)=>typeof q?.score==='number'&&Number.isFinite(q.score)&&q.score>=0?q.score:undefined;
+    const earnedPoints=this.results.reduce((sum,r)=>sum+(r.outcome==='pass'?(points(this.questions.find(q=>q.id===r.questionId)!)??0):0),0);
+    const question=this.currentQuestion;
+    return {index:this.results.length+1,total:this.total,earnedPoints,question:question?{
+      id:question.id,stem:question.stem??'',points:points(question),
+      timeSeconds:typeof question.timeSeconds==='number'&&Number.isFinite(question.timeSeconds)&&question.timeSeconds>0?question.timeSeconds:undefined,
+    }:null,results:this.results.map(r=>({questionId:r.questionId,outcome:r.outcome,awardedPoints:r.outcome==='pass'?(points(this.questions.find(q=>q.id===r.questionId)!)??0):0}))};
+  }
 
   /**
    * Mark the current question with `outcome` (if provided), then advance and
@@ -59,12 +69,12 @@ export class PracticeExercise {
   async next(outcome?: QuestionOutcome): Promise<PracticeResult> {
     if (outcome && this.currentQuestion) {
       this.results.push({ questionId: this.currentQuestion.id, outcome });
-      // Persist to session (fire-and-forget is intentional — don't block the agent)
-      lp.patch(`/sessions/${this.sessionId}`, { questionProgress: this.results }).catch(() => {});
+      try { await lp.patch(`/sessions/${this.sessionId}`, { questionProgress: this.results }); }
+      catch(error) { this.results.pop(); throw error; }
     }
 
     if (this.isDone) {
-      const passed = this.results.filter(r => r.outcome !== 'fail').length;
+      const passed = this.results.filter(r => r.outcome === 'pass').length;
       return {
         done:    true,
         summary: { total: this.questions.length, passed, failed: this.questions.length - passed },

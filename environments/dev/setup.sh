@@ -66,8 +66,36 @@ server {
 
     # LP Admin UI  →  /lp-admin
     location /lp-admin {
-        rewrite ^/lp-admin(/.*)?$ /admin$1 break;
+        rewrite ^/lp-admin(/.*)?$ /admin\$1 break;
         proxy_pass         http://localhost:32002;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+
+    # API proxies — used by LP Admin when accessed via domain
+    location /api/lp/ {
+        proxy_pass         http://localhost:32002/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+
+    location /api/cms/ {
+        proxy_pass         http://localhost:32001/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+
+    location /api/erp/ {
+        proxy_pass         http://localhost:32005/;
         proxy_http_version 1.1;
         proxy_set_header   Host \$host;
         proxy_set_header   X-Real-IP \$remote_addr;

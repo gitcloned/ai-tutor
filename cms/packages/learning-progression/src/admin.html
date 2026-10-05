@@ -261,8 +261,13 @@
 
 <script>
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ERP = 'http://localhost:32005';
-const CMS = 'http://localhost:32001';
+// When served via nginx (non-localhost), route through /api/* proxies.
+// When running locally on port 32002, use direct localhost ports.
+const _LOCAL = window.location.hostname === 'localhost';
+const _BASE  = _LOCAL ? '' : window.location.origin;
+const LP  = _LOCAL ? ''                          : _BASE + '/api/lp';
+const ERP = _LOCAL ? 'http://localhost:32005'    : _BASE + '/api/erp';
+const CMS = _LOCAL ? 'http://localhost:32001'    : _BASE + '/api/cms';
 const PG  = 30;
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
@@ -400,7 +405,7 @@ async function loadStudents() {
   if (C.students) return C.students;
   const [erp, lp] = await Promise.all([
     api(ERP, '/students/all?includeCodes=1').catch(() => []),
-    api('', '/students').catch(() => []),
+    api(LP, '/students').catch(() => []),
   ]);
   const lpMap = new Map(lp.map(s => [s.studentId, s]));
   C.students = erp.map(s => ({
@@ -549,11 +554,11 @@ async function renderStudent(studentId, p) {
     const stu = students.find(s=>s.studentId===studentId) ?? { studentId, name: studentId, grade: null, classes: [] };
 
     const [journeys, sessions, memories] = await Promise.all([
-      api('',`/students/${studentId}/journeys`).catch(()=>[]),
-      api('',`/students/${studentId}/sessions`).catch(()=>[]),
-      api('',`/students/${studentId}/memories`).catch(()=>[]),
+      api(LP,`/students/${studentId}/journeys`).catch(()=>[]),
+      api(LP,`/students/${studentId}/sessions`).catch(()=>[]),
+      api(LP,`/students/${studentId}/memories`).catch(()=>[]),
     ]);
-    const nodeArrays = await Promise.all(journeys.map(j=>api('',`/journeys/${j.id}/nodes`).catch(()=>[])));
+    const nodeArrays = await Promise.all(journeys.map(j=>api(LP,`/journeys/${j.id}/nodes`).catch(()=>[])));
     const allNodes   = nodeArrays.flat();
     const nodeMap    = new Map(allNodes.map(n=>[n.conceptId,n]));
 
@@ -712,7 +717,7 @@ async function renderSession(sessionId) {
   setMain('<p class="loading">Loading session…</p>');
   try {
     await loadCms();
-    const s = await api('', `/sessions/${sessionId}`);
+    const s = await api(LP, `/sessions/${sessionId}`);
     const students = await loadStudents().catch(()=>[]);
     const stu  = students.find(st=>st.studentId===s.studentId);
     const sname = stu?.name ?? s.studentId;

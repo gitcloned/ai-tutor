@@ -33,6 +33,7 @@ export const get_next_question: Tool = {
     }
     const outcome = args['outcome'] as QuestionOutcome | undefined;
     const result  = await ctx.practice.next(outcome);
+    ctx.session.questionProgress=ctx.practice.progress;
 
     if (result.done) {
       const { total, passed, failed } = result.summary;

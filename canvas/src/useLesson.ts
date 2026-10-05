@@ -1,3 +1,4 @@
+import {startPracticeTimer,type PracticePresentation,type PracticeShape} from './PracticeQuestion';
 import {normalizeTutorUrl,rememberTutor} from './tutorUrl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from 'tldraw';
@@ -23,6 +24,7 @@ export function useLesson(editor:Editor|null) {
   const [tutorBusy,setTutorBusy]=useState(false);
   const [endedTurns,setEndedTurns]=useState(0);
   const [savedTurn,setSavedTurn]=useState(0);
+  const pendingPractice=useRef<PracticePresentation|null>(null);
   const [completed,setCompleted]=useState(false);
   const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
@@ -143,7 +145,14 @@ export function useLesson(editor:Editor|null) {
       }
       if(block.kind==='action') {
         if(block.action && typeof block.action==='object' && 'type' in block.action) {
-          if(block.action.type==='send-ok') {
+          if(block.action.type==='step-changed'){
+            const event=block.action as unknown as PracticePresentation;
+            const current=editor.getCurrentPageShapes().find((s):s is PracticeShape=>s.type==='practice-question'&&s.meta.unpinned!==true);
+            const key=event.practice?.question?`${event.sessionId}:${event.step?.id}:${event.practice.question.id}`:null;
+            if(pendingPractice.current||(current&&current.props.key!==key))pendingPractice.current=event;
+            else renderer.current?.practiceStep(event);
+          }
+          else if(block.action.type==='send-ok') {
             if(socket.current?.readyState===WebSocket.OPEN){pendingReply.current=true;setBusy(true);socket.current.send(JSON.stringify({type:'message',text:'Ok'}));}
           } else if(block.action.type==='open-camera') {
             setOpenCamera(true);
@@ -161,6 +170,8 @@ export function useLesson(editor:Editor|null) {
       setBusy(active);
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
     },undefined,()=>renderer.current?.hasActiveQuestion??false,()=>{
+      if(pendingPractice.current){renderer.current?.practiceStep(pendingPractice.current);pendingPractice.current=null;}
+      startPracticeTimer(editor);
       // Choose the appropriate input tool after presentation, including when a
       // resumed tutor only speaks and does not re-create the saved question.
       const shapes=editor.getCurrentPageShapes();
@@ -175,7 +186,7 @@ export function useLesson(editor:Editor|null) {
     return ()=>{clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
-    setConnectionError('');setCompleted(false);
+    setConnectionError('');setCompleted(false);pendingPractice.current=null;
     try{url=normalizeTutorUrl(url);}catch(error){setConnectionError((error as Error).message);return false;}
     if(!player.current) return false;
     clearConnectTimer();setConnected(false);

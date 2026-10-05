@@ -1,0 +1,22 @@
+import {test,expect} from '@playwright/test';
+test('launches an isolated concept at the selected stage',async({page})=>{
+  await page.addInitScript(()=>sessionStorage.setItem('prodigy-journey-live-identity',JSON.stringify({type:'student',studentId:'child',token:'test',name:'Child'})));
+  await page.route('**/me',r=>r.fulfill({json:{type:'student',studentId:'child',name:'Child'}}));
+  await page.route('**/students/child/home',r=>r.fulfill({json:{subjects:[],continueWith:null}}));
+  await page.route('**/classrooms?*',r=>r.fulfill({json:[]}));
+  await page.route('**/curriculum',r=>r.fulfill({json:[{subjectId:'math',title:'Mathematics',strands:[{id:'algebra',title:'Algebra',units:[{id:'equations',title:'Equations',topics:[{id:'linear',title:'Linear equations'}]}]}]}]}));
+  await page.route('**/test-concepts?*',r=>r.fulfill({json:[{id:'graph',title:'Graphing solutions',stages:['Assess','Learn']},{id:'pairs',title:'Ordered pairs',stages:['Master']}]}));
+  let payload:unknown;
+  await page.route('**/test-sessions',r=>{payload=r.request().postDataJSON();return r.fulfill({status:400,json:{error:'Test launch captured'}});});
+  await page.goto('/home');await page.getByRole('button',{name:'Test a concept',exact:true}).click();
+  await page.getByRole('combobox',{name:'Topic',exact:true}).selectOption('linear');
+  await page.getByRole('button',{name:'Graphing solutions',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Master',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Learn',exact:true}).click();
+  await page.getByRole('button',{name:'Start test session',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Test launch captured');
+  expect(payload).toEqual({conceptId:'graph',stage:'Learn'});
+  await page.getByRole('button',{name:'Ordered pairs',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Start test session',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Master',exact:true})).toBeEnabled();
+});

@@ -26,6 +26,10 @@ Let them describe it before revealing anything.
 ## 3 (Reveal the curve — connect dots to line)
 Reveal the curve without clearing the student's points.
 
+## 4 (Ask one last question)
+
+First remove the graph
+
 Ask: "Give me two pairs that satisfy  y = 3x − 2."
 
 Let them work freely. They should choose x, compute y, and state the pair.

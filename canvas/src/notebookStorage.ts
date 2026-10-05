@@ -2,7 +2,7 @@ import type {Editor, TLRecord, TLPageId, TLShapeId} from 'tldraw';
 import {request} from './journey/api';
 import {activityCamera} from './layout';
 
-export type LessonBinding={sessionId:string;studentId:string;notebookId?:string;resumed?:boolean;completed?:boolean;topicId?:string;wsUrl:string};
+export type LessonBinding={test?:{conceptId:string;stage:string};sessionId:string;studentId:string;notebookId?:string;resumed?:boolean;completed?:boolean;topicId?:string;wsUrl:string};
 type Snapshot=ReturnType<Editor['store']['getStoreSnapshot']>;
 type Saved={revision:number;updatedAt:string;snapshot:Snapshot;saveId?:string};
 export function cleanNotebookCache(editor:Editor) {

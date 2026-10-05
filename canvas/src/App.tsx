@@ -1,3 +1,4 @@
+import {launchTest} from './journey/TestConcept';
 import {PracticeQuestionUtil,PracticeHeader} from './PracticeQuestion';
 import {request} from './journey/api';
 import {getNext,type NextLearning} from './journey/learning';
@@ -75,7 +76,7 @@ export default function App() {
   const [finished,setFinished]=useState(!!binding?.completed),[nextLearning,setNextLearning]=useState<NextLearning|null>(null),[completionError,setCompletionError]=useState(''),[startingNext,setStartingNext]=useState(false),[completionRetry,setCompletionRetry]=useState(0);
   const isComplete=finished||lesson.completed;
   useEffect(()=>{
-    if(!isComplete||!binding)return;
+    if(!isComplete||!binding||binding.test)return;
     let cancelled=false;
     setCompletionError('');
     void (async()=>{
@@ -179,12 +180,13 @@ export default function App() {
       </VideoCardContext.Provider>
       </PageStackContext.Provider>
     </section>
+    {binding?.test&&<div style={{position:'absolute',bottom:110,left:120,zIndex:210,background:'#fffef9',border:'1px solid #dce4d3',borderRadius:20,padding:'8px 16px',display:'flex',gap:16}}><span>Test · {binding.test.stage}</span><button disabled={startingNext} onClick={async()=>{setStartingNext(true);try{await launchTest(binding.test!.conceptId,binding.test!.stage);}catch(e){lesson.notify((e as Error).message);setStartingNext(false);}}}>Restart</button></div>}
     {editor&&<PracticeHeader editor={editor}/>}
     {!hasContent && !lesson.connected && !openingNotebook && !reviewNotebook && !notebookError && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={connectTutor}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}
 
-    {isComplete&&!openingNotebook&&<div className="notebook-resume" role="status"><span>Lesson complete.</span><p>{nextLearning?.status==='completed'?'You’ve completed this topic.':nextLearning?.status==='continue'?'Ready for your next step?':'Finding your next step…'}</p>{nextLearning?.status==='continue'&&<button className="primary" disabled={startingNext} onClick={()=>void continueLearning()}>{startingNext?'Opening…':['clarity','mastering'].includes(nextLearning.state)?(nextLearning.resumeSessionId?'Resume practice':'Start practice'):'Continue'} <ArrowUpRight size={18}/></button>}{(completionError||nextLearning?.status==='unavailable')&&<p role="alert">{completionError||(nextLearning?.status==='unavailable'?nextLearning.reason:'')} <button onClick={()=>setCompletionRetry(v=>v+1)}>Try again</button></p>}<button disabled={startingNext} onClick={()=>void leaveLesson()}>Back to Home</button></div>}
+    {isComplete&&!openingNotebook&&<div className="notebook-resume" role="status"><span>Lesson complete.</span><p>{binding?.test?'Test session complete. Restart or choose another concept from Home.':nextLearning?.status==='completed'?'You’ve completed this topic.':nextLearning?.status==='continue'?'Ready for your next step?':'Finding your next step…'}</p>{nextLearning?.status==='continue'&&<button className="primary" disabled={startingNext} onClick={()=>void continueLearning()}>{startingNext?'Opening…':['clarity','mastering'].includes(nextLearning.state)?(nextLearning.resumeSessionId?'Resume practice':'Start practice'):'Continue'} <ArrowUpRight size={18}/></button>}{(completionError||nextLearning?.status==='unavailable')&&<p role="alert">{completionError||(nextLearning?.status==='unavailable'?nextLearning.reason:'')} <button onClick={()=>setCompletionRetry(v=>v+1)}>Try again</button></p>}<button disabled={startingNext} onClick={()=>void leaveLesson()}>Back to Home</button></div>}
     {!isComplete&&(openingNotebook||reviewNotebook||notebookError)&&<div className="notebook-resume" role="status">
       {openingNotebook?<span>Opening your notebook…</span>:notebookError?<><span>{notebookError}</span><button className="primary" onClick={()=>location.reload()}>Try again</button></>:<><span>Take a moment to look back.</span><button className="primary" onClick={()=>{setReviewNotebook(false);if(binding)tryConnect(binding.wsUrl);}}>Let’s start <ArrowUpRight size={18}/></button></>}
     </div>}

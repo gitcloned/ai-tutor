@@ -1,5 +1,7 @@
 import {NotebookFiles, NotebookConflict} from '../notebooks.js';
-import {lp} from '../api.js';
+import {lp,cms} from '../api.js';
+import {testStates,testStages,testLearner,testOwner,type TestStage} from '../test-sessions.js';
+import type {Concept} from '../types.js';
 import type {Session} from '../types.js';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import { createServer }              from 'http';
@@ -81,7 +83,16 @@ export class MultiSessionServer {
   start(sm: SessionManager): void {
     const notebooks = new NotebookFiles();
     const access = new Map<string,{studentId:string;ticket:string}>();
+    async function testIdentity(req:IncomingMessage){
+      const response=await fetch(`${process.env.ERP_URL??'http://localhost:32005'}/me`,{headers:{Authorization:req.headers.authorization??''},signal:AbortSignal.timeout(10000)});
+      if(!response.ok)throw new Error('Please sign in to test a concept.');
+      const user=await response.json() as {studentId?:string;userId?:string};
+      const id=user.studentId??user.userId;if(!id)throw new Error('Missing test owner');return id;
+    }
     async function authenticate(req:IncomingMessage,studentId:string){
+      const owner=testOwner(studentId);
+      if(owner){if(await testIdentity(req)!==owner)throw new Error('This test belongs to another user.');return;}
+
       const base=process.env.ERP_URL??'http://localhost:32005';
       const response=await fetch(`${base}/me?studentId=${encodeURIComponent(studentId)}`,{headers:{Authorization:req.headers.authorization??''},signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error('Please sign in with access to this student.');
@@ -95,6 +106,30 @@ export class MultiSessionServer {
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
       if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+      if(req.method==='GET'&&req.url?.startsWith('/test-concepts?')){
+        try{
+          await testIdentity(req);
+          const topicId=new URL(req.url,'http://local').searchParams.get('topicId');
+          if(!topicId)throw new Error('Choose a topic.');
+          const concepts=await cms.get<Concept[]>(`/topics/${encodeURIComponent(topicId)}/concepts`);
+          res.setHeader('Content-Type','application/json');
+          res.end(JSON.stringify(concepts.map(c=>({id:c.id,title:c.title,stages:testStages(c)}))));
+        }catch(e){res.writeHead(400,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}return;
+      }
+      if(req.method==='POST'&&req.url==='/test-sessions'){
+        try{
+          const owner=await testIdentity(req);
+          const {conceptId,stage}=JSON.parse(await readBody(req)) as {conceptId:string;stage:TestStage};
+          const concept=await cms.get<Concept>(`/concepts/${encodeURIComponent(conceptId)}`);
+          if(!testStages(concept).includes(stage))throw new Error('This stage is not available for this concept.');
+          const studentId=testLearner(owner);
+          const result=await sm.create({studentId,conceptId,forceState:testStates[stage]});
+          const ticket=randomBytes(24).toString('base64url');access.set(result.sessionId,{studentId,ticket});
+          res.writeHead(201,{'Content-Type':'application/json'});
+          res.end(JSON.stringify({...result,studentId,notebookId:result.sessionId,wsUrl:address(req,result.sessionId,ticket),test:{conceptId,stage},concept:{id:concept.id,title:concept.title}}));
+        }catch(e){res.writeHead(400,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}return;
+      }
 
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -129,9 +164,10 @@ export class MultiSessionServer {
         try {
           const stored=await lp.get<Session>(`/sessions/${encodeURIComponent(id)}`);
           await authenticate(req,stored.studentId);
+          const test=testOwner(stored.studentId)?{conceptId:stored.conceptId,stage:Object.entries(testStates).find(([,state])=>state===stored.conceptStateAtStart)?.[0]??'Learn'}:undefined;
           if(stored.status==='completed'){
             res.setHeader('Content-Type','application/json');
-            res.end(JSON.stringify({sessionId:id,studentId:stored.studentId,notebookId:stored.notebookId??id,resumed:true,completed:true,topicId:stored.originTopicId,wsUrl:''}));
+            res.end(JSON.stringify({sessionId:id,test,studentId:stored.studentId,notebookId:stored.notebookId??id,resumed:true,completed:true,topicId:stored.originTopicId,wsUrl:''}));
             return;
           }
           let activeId=id;
@@ -142,7 +178,7 @@ export class MultiSessionServer {
           let allowed=access.get(activeId);
           if(!allowed){allowed={studentId:stored.studentId,ticket:randomBytes(24).toString('base64url')};access.set(activeId,allowed);}
           res.setHeader('Content-Type','application/json');
-          res.end(JSON.stringify({sessionId:activeId,studentId:stored.studentId,topicId:stored.originTopicId,notebookId:sm.getAgent(activeId)?.ctx.session.notebookId??activeId,resumed:(sm.getAgent(activeId)?.ctx.session.history.length??0)>0,wsUrl:address(req,activeId,allowed.ticket)}));
+          res.end(JSON.stringify({sessionId:activeId,test,studentId:stored.studentId,topicId:stored.originTopicId,notebookId:sm.getAgent(activeId)?.ctx.session.notebookId??activeId,resumed:(sm.getAgent(activeId)?.ctx.session.history.length??0)>0,wsUrl:address(req,activeId,allowed.ticket)}));
         } catch(e){res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}
         return;
       }

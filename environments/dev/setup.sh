@@ -539,7 +539,10 @@ module.exports = {
       interpreter: 'none',
       env: {
         NODE_ENV: 'development',
-        VITE_TUTOR_WS_URL: 'wss://$DOMAIN/ws',
+        VITE_TUTOR_WS_URL:    'wss://$DOMAIN/ws',
+        VITE_ERP_API_URL:     'https://$DOMAIN/api/erp',
+        VITE_CMS_API_URL:     'https://$DOMAIN/api/cms',
+        VITE_LEARNING_API_URL:'https://$DOMAIN/api/lp',
       },
     },
   ],

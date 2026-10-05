@@ -36,8 +36,11 @@ test('flows practice questions below feedback, preserves retry numbering, awards
  await expect(page.getByRole('region',{name:'Practice question 2'})).toBeInViewport();await expect(page.getByLabel('Practice points earned')).toContainText('3 points');await expect(card).toContainText('+3 points awarded');
  announce();end();await expect(page.locator('.practice-card')).toHaveCount(2);
  const question2=page.getByRole('region',{name:'Practice question 2'});
- const feedback=page.locator('.tl-shape[data-shape-type="text"]').filter({hasText:'Good work on the first question.'});
- expect((await question2.boundingBox())!.y).toBeGreaterThan((await feedback.boundingBox())!.y+(await feedback.boundingBox())!.height);
+ const questionBounds=(await question2.boundingBox())!;
+ const headerBounds=(await page.getByLabel('Practice progress').boundingBox())!;
+ expect(Math.abs(questionBounds.x-headerBounds.x)).toBeLessThan(5);
+ expect(questionBounds.y).toBeGreaterThan(headerBounds.y+headerBounds.height);
+ expect(questionBounds.y-headerBounds.y-headerBounds.height).toBeLessThan(80);
  await page.screenshot({path:'test-results/practice-flow.png'});
  send({type:'model',content:'function-graph',attrs:{equation:'y = x - 2',action:'ask'}});end();
  await expect(page.locator('.function-graph')).toHaveAttribute('data-ready','true');

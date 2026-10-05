@@ -38,8 +38,8 @@ export class CanvasRenderer {
     if(id&&id!==before){
       const card=this.editor.getShape(id)!;
       const workId=createShapeId();
-      this.editor.createShape({id:workId,type:'text',x:card.x,y:card.y+('h' in card.props?Number(card.props.h):100)+40,meta:{author:'tutor',kind:'practice-working'},props:{richText:toRichText('Your working'),size:'s',font:'sans',color:'grey',w:500,autoSize:false}});
-      this.focused=null;this.focus(workId);
+      this.editor.createShape({id:workId,type:'text',x:card.x,y:card.y+('h' in card.props?Number(card.props.h):100)+32,meta:{author:'tutor',kind:'practice-working',practiceQuestionId:id},props:{richText:toRichText('Your working'),size:'s',font:'sans',color:'grey',w:500,autoSize:false}});
+      this.focused=null;this.focus(id);
     }
   }
   private keepModelVisible=()=>{
@@ -108,6 +108,16 @@ export class CanvasRenderer {
     if(page.meta.lessonFocusId!==id)this.editor.updatePage({id:page.id,meta:{...page.meta,lessonFocusId:id}});
     if(!this.follow) return;
     const model=this.teachingModels()[0];
+    const question=this.editor.getShape(id);
+    if(!model&&question?.type==='practice-question'){
+      const screen=this.editor.getViewportScreenBounds();
+      const toolbar=this.editor.getContainer().closest('.app')?.querySelector('.toolbar')?.getBoundingClientRect();
+      const left=Math.max(120,toolbar?toolbar.right-screen.x+24:0);
+      const z=Math.min(1,Math.max(.1,(screen.w-left-40)/question.props.w));
+      this.focused=id;
+      this.editor.setCamera({x:left/z-question.x,y:110/z-question.y,z},{animation:{duration:350}});
+      return;
+    }
     if(this.teachingModels().some(s=>s.id===id)&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;
     // A question frame reserves an annotation column; focus the actual MCQ
     // children instead of including that empty space in the camera bounds.

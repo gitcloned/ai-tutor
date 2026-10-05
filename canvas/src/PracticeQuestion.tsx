@@ -16,7 +16,14 @@ function PracticeCard({shape}:{shape:PracticeShape}){
  const editor=useEditor(),card=useRef<HTMLElement>(null);
  useLayoutEffect(()=>{
   const el=card.current;if(!el)return;
-  const measure=()=>{const h=Math.ceil(el.offsetHeight),current=editor.getShape<PracticeShape>(shape.id);if(current&&h>0&&Math.abs(current.props.h-h)>1)editor.updateShape<PracticeShape>({id:shape.id,type:'practice-question',props:{h}});};
+  const measure=()=>{
+   const h=Math.ceil(el.offsetHeight),current=editor.getShape<PracticeShape>(shape.id);
+   if(current&&h>0&&Math.abs(current.props.h-h)>1){
+    editor.updateShape<PracticeShape>({id:shape.id,type:'practice-question',props:{h}});
+    const working=editor.getCurrentPageShapes().find(s=>s.meta.practiceQuestionId===shape.id);
+    if(working&&current.props.awarded<0)editor.updateShape({id:working.id,type:working.type,y:current.y+h+32});
+   }
+  };
   const observer=new ResizeObserver(measure);observer.observe(el);measure();return()=>observer.disconnect();
  },[editor,shape.id]);
  const data=JSON.parse(shape.props.data) as NonNullable<PracticePresentation['practice']>;

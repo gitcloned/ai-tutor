@@ -100,8 +100,11 @@ check_http "HTTP→HTTPS redirect" "http://$DOMAIN"
 # HTTPS should serve canvas (follow redirects to final 200)
 check_http_follow "Canvas  " "https://$DOMAIN"
 
-# API health endpoints (go through nginx → Vite proxy → services)
-check_http_follow "CMS API " "https://$DOMAIN/api/content/health"
+# API health endpoints via nginx proxy routes
+check_http_follow "CMS API " "https://$DOMAIN/api/cms/health"
+check_http_follow "LP API  " "https://$DOMAIN/api/lp/health"
+check_http_follow "ERP API " "https://$DOMAIN/api/erp/health"
+check_http_follow "LP Admin" "https://$DOMAIN/lp-admin"
 
 echo ""
 
@@ -141,6 +144,7 @@ if [ "$FAILED" -eq 0 ]; then
   echo -e "${GREEN}All checks passed.${NC}"
   echo ""
   echo -e "  Canvas:    ${CYAN}https://$DOMAIN${NC}"
+  echo -e "  LP Admin:  ${CYAN}https://$DOMAIN/lp-admin${NC}"
   echo -e "  Agent WS:  ${CYAN}wss://$DOMAIN/ws${NC}"
 else
   echo -e "${RED}Some checks failed — see above.${NC}"

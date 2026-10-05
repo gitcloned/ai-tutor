@@ -3,7 +3,7 @@ import {BaseBoxShapeUtil,DefaultFontFaces,HTMLContainer,T,createShapeId,useEdito
 import {createContext,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import type {Board} from 'jsxgraph';
 import type {Block} from '../protocol';
-import {assessPoint,compileEquation,graphConfig,snapped,type GraphAttempt,type GraphConfig,type GraphPoint} from './functionGraph';
+import {assessPoint,compileEquation,graphConfig,graphBounds,snapped,type GraphAttempt,type GraphConfig,type GraphPoint} from './functionGraph';
 import './functionGraph.css';
 
 type Props={w:number;h:number;activityId:string;config:string;points:string};
@@ -35,13 +35,17 @@ export class FunctionGraphShapeUtil extends BaseBoxShapeUtil<FunctionGraphShape>
 export function renderFunctionGraph(editor:Editor,block:Block,locate:(w:number,h:number)=>{x:number;y:number},focus:(id:TLShapeId)=>void){
   if(block.content!=='function-graph')throw new Error(`Unknown activity: ${block.content}`);
   const activityId=block.attrs.id??'function-graph';
-  const shape=editor.getCurrentPageShapes().find((s):s is FunctionGraphShape=>s.type==='function-graph'&&s.props.activityId===activityId);
+  // Unpinned graphs are notebook history. Never reuse them for a new activity.
+  const graphs=editor.getCurrentPageShapes().filter((s):s is FunctionGraphShape=>s.type==='function-graph'&&s.meta.unpinned!==true);
+  const shape=graphs.find(s=>block.attrs.id===undefined||s.props.activityId===activityId);
   if(block.attrs.action==='remove'){if(shape)editor.updateShape({id:shape.id,type:shape.type,meta:{...shape.meta,unpinned:true}});return;}
   const previous=shape?JSON.parse(shape.props.config) as GraphConfig:undefined;
   const changedEquation=block.attrs.equation!==undefined&&block.attrs.equation!==previous?.equation;
   const config=graphConfig(block.attrs,changedEquation?undefined:previous);
   const reset=changedEquation||block.attrs.action==='reset'||(block.attrs.targets!==undefined&&JSON.stringify(config.targets)!==JSON.stringify(previous?.targets));
   const id=shape?.id??createShapeId();
+  // Only the current graph follows the discussion and accepts student answers.
+  for(const other of graphs)if(other.id!==id)editor.updateShape({id:other.id,type:other.type,meta:{...other.meta,unpinned:true}});
   if(shape)editor.updateShape<FunctionGraphShape>({id,type:'function-graph',props:{config:JSON.stringify(config),...(reset?{points:'[]'}:{})}});
   else editor.createShape<FunctionGraphShape>({id,type:'function-graph',...locate(560,660),meta:{author:'tutor',kind:'model'},props:{activityId,config:JSON.stringify(config)}});
   focus(id);
@@ -49,6 +53,7 @@ export function renderFunctionGraph(editor:Editor,block:Block,locate:(w:number,h
 
 function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
   const editor=useEditor(),activity=useContext(GraphActivityContext);
+  const active=shape.meta.unpinned!==true;
   const host=useRef<HTMLDivElement>(null),board=useRef<Board|null>(null);
   const config=useMemo(()=>JSON.parse(shape.props.config) as GraphConfig,[shape.props.config]);
   const points=useMemo(()=>JSON.parse(shape.props.points) as GraphPoint[],[shape.props.points]);
@@ -70,18 +75,19 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
         // or use screen bounds, which include the canvas zoom transform.
         const width=element.clientWidth,height=element.clientHeight;
         if(!width||!height)return;
+        const fitted=graphBounds(config,width,height);
         if(current){
           current.resizeContainer(width,height,true);
-          current.setBoundingBox([config.xRange[0],config.yRange[1],config.xRange[1],config.yRange[0]],true);
+          current.setBoundingBox(fitted,false);
           setBounds(current.getBoundingBox());
           return;
         }
-      const b=JXG.JSXGraph.initBoard(element,{boundingbox:[config.xRange[0],config.yRange[1],config.xRange[1],config.yRange[0]],
+      const b=JXG.JSXGraph.initBoard(element,{boundingbox:fitted,
         axis:true,grid:true,keepaspectratio:true,showCopyright:false,showNavigation:false,registerEvents:false,resize:{enabled:false,throttle:10},
         pan:{enabled:false},defaultAxes:{x:{name:'x',withLabel:true,ticks:{label:{fontSize:16,offset:[0,-16]}},label:{fontSize:16,position:'rt',offset:[-16,20]}},y:{name:'y',withLabel:true,ticks:{label:{fontSize:16,offset:[-12,0]}},label:{fontSize:16,position:'rt',offset:[16,-16]}}}});
       current=b;board.current=b;
       b.resizeContainer(width,height,true);
-      b.setBoundingBox([config.xRange[0],config.yRange[1],config.xRange[1],config.yRange[0]],true);
+      b.setBoundingBox(fitted,false);
       if(config.mode!=='ask'){
         const curve=b.create('functiongraph',[fn],{strokeColor:'#356aca',strokeWidth:3.5,fixed:true,highlight:false});
         curve.rendNode.classList.add('graph-line');
@@ -105,7 +111,7 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
     setCursor(point);return point;
   }
   function commit(point:{x:number;y:number}|null){
-    if(!point||config.mode!=='ask'||!activity.enabled||complete)return;
+    if(!point||!active||config.mode!=='ask'||!activity.enabled||complete)return;
     if(points.some(p=>p.correct&&Math.abs(p.x-point.x)<1e-7)){setFeedback('You have already plotted that x-value. Try another.');return;}
     const result=assessPoint(config,points,point.x,point.y);
     const attempt:GraphAttempt={type:'graph-point',model:'function-graph',activityId:shape.props.activityId,equation:config.equation,...point,...result};
@@ -116,7 +122,7 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
       config.targets.length&&!config.targets.some(x=>Math.abs(x-point.x)<1e-7)?'Use one of the requested x-values shown below.':
       'Not quite. Substitute your x-value into the equation and try again.');
   }
-  return <div className="function-graph" data-model="function-graph" data-mode={config.mode} data-ready={ready} data-points={points.length} data-complete={complete}
+  return <div className="function-graph" data-model="function-graph" data-active={active} data-mode={config.mode} data-ready={ready} data-points={points.length} data-complete={complete}
     onPointerDown={e=>e.stopPropagation()} onPointerMove={e=>e.stopPropagation()} onPointerUp={e=>e.stopPropagation()} onWheel={e=>e.stopPropagation()}>
     <header><span>{config.mode==='ask'?'Your turn to plot':'Explore the function'}</span><strong>{config.equation.replace(/\b(\d+(?:\.\d+)?)\s*\*\s*x\b/g,'$1x').replaceAll('*',' × ')}</strong></header>
     <div className="graph-readout" aria-live="polite">{cursor?`(${cursor.x}, ${cursor.y})`:'Move across the grid to explore'}</div>
@@ -134,15 +140,15 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
           if(Number.isFinite(y))setCursor({x,y});
         }}>
         {points.map((p,i)=><g key={i} data-result={p.correct?'correct':'incorrect'}><circle cx={sx(p.x)} cy={sy(p.y)} r={14} fill={p.correct?'#356aca':'#b26b51'} stroke="#fffef9" strokeWidth={3}/><text x={sx(p.x)+18} y={sy(p.y)-18} fontSize={32} fill={p.correct?'#356aca':'#96573f'}>{`(${p.x}, ${p.y})`}</text></g>)}
-        {cursor&&<g className="graph-crosshair"><path d={`M${sx(cursor.x)},0V1000 M0,${sy(cursor.y)}H1000`} stroke="#6c8d74" strokeWidth={2} strokeDasharray="7 7"/>
-          <circle cx={sx(cursor.x)} cy={sy(cursor.y)} r={14} fill="#356aca" stroke="#fffef9" strokeWidth={3}/>
-          <text x={Math.min(920,Math.max(20,sx(cursor.x)+12))} y={Math.min(970,Math.max(30,sy(0)+30))} fontSize={34} fill="#416653">{cursor.x}</text>
-          <text x={Math.min(900,Math.max(10,sx(0)+12))} y={Math.min(980,Math.max(30,sy(cursor.y)-12))} fontSize={34} fill="#416653">{cursor.y}</text>
+        {cursor&&<g className="graph-crosshair"><path d={`M${sx(cursor.x)},0V1000 M0,${sy(cursor.y)}H1000`} stroke="#2d7851" strokeWidth={2} strokeDasharray="7 7"/>
+          <circle cx={sx(cursor.x)} cy={sy(cursor.y)} r={14} fill="#2d7851" stroke="#fffef9" strokeWidth={3}/>
+          <text x={Math.min(920,Math.max(20,sx(cursor.x)+12))} y={Math.min(970,Math.max(30,sy(0)+30))} className="graph-coordinate-label" fontSize={46} fontWeight={700} fill="#2d7851">{cursor.x}</text>
+          <text x={Math.min(900,Math.max(10,sx(0)+12))} y={Math.min(980,Math.max(30,sy(cursor.y)-12))} className="graph-coordinate-label" fontSize={46} fontWeight={700} fill="#2d7851">{cursor.y}</text>
         </g>}
       </svg>}
     </div>
     <footer>{config.mode==='ask'&&config.targets.length>0&&<div className="graph-targets">{config.targets.map(x=><span key={x} className={remaining.includes(x)?'':'solved'}>{remaining.includes(x)?'':'✓ '}x = {x}</span>)}</div>}
-      <p role="status">{error||feedback||(config.mode==='ask'?(activity.enabled?'Tap to plot · Drag to aim · Points snap to the grid':'Your tutor is explaining. You can explore the grid.'): 'Move or touch to trace the curve and read its coordinates.')}</p>
+      <p role="status">{error||(!active?'Saved graph · You can explore the grid.':feedback||(config.mode==='ask'?(activity.enabled?'Tap to plot · Drag to aim · Points snap to the grid':'Your tutor is explaining. You can explore the grid.'): 'Move or touch to trace the curve and read its coordinates.'))}</p>
     </footer>
   </div>;
 }

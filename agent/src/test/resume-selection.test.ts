@@ -15,6 +15,13 @@ it('rejects completed sessions, wrong phases and wrong nodes',()=>{
  expect(resumableSession(candidates,nodes[1])?.id).toBe('practice');
  expect(resumableSession(candidates,{id:'prereq-node',state:'clarity'})).toBeUndefined();
 });
+it('resumes an open session in its latest phase after assessment becomes teaching',()=>{
+ const session={...sessions[1],conceptStateAtStart:'assessing',conceptStateAtEnd:'learning'};
+ expect(resumableSession([session],nodes[1])).toBe(session);
+ expect(resumableSession([session],{...nodes[1],state:'assessing'})).toBeUndefined();
+ expect(resumableSession([{...session,status:'completed'}],nodes[1])).toBeUndefined();
+ expect(resumableSession([{...sessions[1],conceptStateAtEnd:null}],nodes[1])).toBeDefined();
+});
 it('reports missing prerequisites and cycles instead of restarting at the origin',()=>{
  expect(()=>followPrerequisite(nodes[0],[nodes[0]])).toThrow('could not be found');
  expect(()=>followPrerequisite(nodes[0],[nodes[0],{...nodes[1],state:'learn-pre-req-before',preReqToLearn:'origin'}])).toThrow('cycle');

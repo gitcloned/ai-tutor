@@ -5,6 +5,18 @@ export type GraphPoint={x:number;y:number;correct:boolean};
 export type GraphAttempt=GraphPoint&{type:'graph-point';model:'function-graph';activityId:string;equation:string;complete:boolean;remaining:number[]};
 type Fn=(x:number)=>number;
 
+/** Fit the requested range and both axes without cropping when the board resizes. */
+export function graphBounds(config:GraphConfig,width:number,height:number):[number,number,number,number]{
+  const padX=Math.max(1,(config.xRange[1]-config.xRange[0])*.1);
+  const padY=Math.max(1,(config.yRange[1]-config.yRange[0])*.1);
+  let left=Math.min(config.xRange[0],-padX),right=Math.max(config.xRange[1],padX);
+  let bottom=Math.min(config.yRange[0],-padY),top=Math.max(config.yRange[1],padY);
+  const ratio=width/height;
+  if((right-left)/(top-bottom)<ratio){const extra=((top-bottom)*ratio-(right-left))/2;left-=extra;right+=extra;}
+  else {const extra=((right-left)/ratio-(top-bottom))/2;bottom-=extra;top+=extra;}
+  return [left,top,right,bottom];
+}
+
 /** Small arithmetic grammar. Model output is never evaluated as JavaScript. */
 export function compileEquation(equation:string):Fn {
   if(equation.length>200)throw new Error('Please use a shorter function.');

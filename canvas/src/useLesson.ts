@@ -23,6 +23,7 @@ export function useLesson(editor:Editor|null) {
   const [tutorBusy,setTutorBusy]=useState(false);
   const [endedTurns,setEndedTurns]=useState(0);
   const [savedTurn,setSavedTurn]=useState(0);
+  const [completed,setCompleted]=useState(false);
   const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
   const rewatching=useRef(false);
@@ -174,7 +175,7 @@ export function useLesson(editor:Editor|null) {
     return ()=>{clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
-    setConnectionError('');
+    setConnectionError('');setCompleted(false);
     try{url=normalizeTutorUrl(url);}catch(error){setConnectionError((error as Error).message);return false;}
     if(!player.current) return false;
     clearConnectTimer();setConnected(false);
@@ -201,6 +202,7 @@ export function useLesson(editor:Editor|null) {
         lastReceivedAt=Date.now();
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
         if(event.type==='error'){player.current?.cancel();adapter.current.reset();clearSubmission();setPhase('ready');notify(event.message||'Your tutor could not respond. Please try again.','tutor-retry');return;}
+        if(event.type==='event'&&event.event?.type==='session-completed'){setCompleted(true);clearSubmission();setSavedTurn(count=>count+1);return;}
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
         if(event.type==='event'&&event.event?.type==='tutor-ended'){turnActive.current=false;setEndedTurns(count=>count+1);}
@@ -277,5 +279,5 @@ export function useLesson(editor:Editor|null) {
     const media=safeMedia(url);if(!media||media.kind==='link')return;
     rewatching.current=true;paused.current=true;player.current?.setPaused(true);setVideo(media);setBusy(true);
   }
-  return {savedTurn,beforeDeletePage,connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
+  return {completed,savedTurn,beforeDeletePage,connectionError,successfulUrl,rewatch,rewatching:rewatching.current,canRepeat,repeatNarration,enableSound:()=>audio.current.unlock().catch(()=>notify("Sound is still blocked. Check this site’s sound permission in your browser, then try again.",'sound')),warnings,clearWarnings:()=>setWarnings([]),issue,dismissIssue:()=>setIssue(null),endedTurns,tutorBusy,phase,connected,caption,question,title,notify,entries,follow,simulated,video,doneWatching,submission,connect,disconnect,send,togglePause,recording,connectionVersion,stopFollowing,resumeFollowing,fit:()=>{if(renderer.current){renderer.current.follow=true;renderer.current.fit();}setFollow(true);},openCamera,resetOpenCamera:()=>setOpenCamera(false)};
 }

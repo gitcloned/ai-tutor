@@ -12,3 +12,12 @@ it('restores the saved learning steps and skips a newer session from the wrong p
  const ctx=await buildContext('student',concept.id,'node');
  expect(ctx.session.id).toBe('resume-me');expect(ctx.plan).toEqual(plan);expect(ctx.plan[0].status).toBe('done');expect(post).not.toHaveBeenCalled();
 });
+it('starts mastery in the completed teaching notebook',async()=>{
+ const concept=CONCEPT_COMPLETING_SOLUTIONS;
+ cmsGet.mockResolvedValue(concept);
+ get.mockImplementation(async(path:string)=>path.startsWith('/journey-nodes/')?{id:'node',journeyId:'journey',conceptId:concept.id,state:'clarity'}:path.includes('/sessions?')?[{...makeSession(),id:'teaching',journeyNodeId:'node',status:'completed',notebookId:'original-notebook'}]:[]);
+ post.mockResolvedValue({...makeSession(),id:'practice',conceptStateAtStart:'mastering',planHistory:[]});
+ const ctx=await buildContext('student',concept.id,'node');
+ expect(ctx.journeyNode.state).toBe('mastering');
+ expect(ctx.session.notebookId).toBe('original-notebook');
+});

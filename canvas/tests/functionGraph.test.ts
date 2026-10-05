@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {compileEquation,graphConfig,assessPoint,snapped} from '../src/models/functionGraph';
+import {compileEquation,graphConfig,graphBounds,assessPoint,snapped} from '../src/models/functionGraph';
 
 it('evaluates arithmetic without executing code, including exponent precedence',()=>{
   expect(compileEquation('y = 2*x - 3')(4)).toBe(5);
@@ -29,4 +29,15 @@ it('keeps configuration when revealing an activity and allows open practice',()=
   const c=graphConfig({action:'ask',targets:'2,3'});
   expect(graphConfig({action:'plot'},c)).toEqual({...c,mode:'plot'});
   expect(assessPoint(graphConfig({action:'ask'}),[],4,5)).toEqual({correct:true,remaining:[],complete:false});
+});
+
+it('fits both axes and the full requested range on wide and tall boards',()=>{
+  for(const [width,height] of [[500,400],[400,700]])for(const ranges of [ {'x-range':'-2,6','y-range':'-2,10'}, {'x-range':'2,6','y-range':'3,10'} ]){
+    const config=graphConfig(ranges),[left,top,right,bottom]=graphBounds(config,width,height);
+    expect(left).toBeLessThan(0);expect(bottom).toBeLessThan(0);
+    expect(right).toBeGreaterThan(0);expect(top).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(config.xRange[0]);expect(right).toBeGreaterThanOrEqual(config.xRange[1]);
+    expect(bottom).toBeLessThanOrEqual(config.yRange[0]);expect(top).toBeGreaterThanOrEqual(config.yRange[1]);
+    expect((right-left)/(top-bottom)).toBeCloseTo(width/height);
+  }
 });

@@ -1,4 +1,5 @@
 import {request} from './journey/api';
+import {getNext,type NextLearning} from './journey/learning';
 import {NotebookSync,type LessonBinding} from './notebookStorage';
 import {ConnectionOptions} from './ConnectionOptions';
 import {CameraCapture,PagePreview} from './CameraCapture';
@@ -56,6 +57,7 @@ export default function App() {
       reconnecting.current=true;
       try {
         const fresh=await request<LessonBinding>('/sessions/'+encodeURIComponent(binding.sessionId),undefined,'agent');
+        if(fresh.completed){Object.assign(binding,fresh);setFinished(true);setReviewNotebook(false);setSheet(null);lesson.disconnect();return;}
         sessionStorage.setItem('prodigy-journey-lesson',JSON.stringify(fresh));
         binding.sessionId=fresh.sessionId;binding.wsUrl=fresh.wsUrl;
         window.history.replaceState(null,'','/sessions/'+encodeURIComponent(fresh.sessionId));
@@ -67,19 +69,45 @@ export default function App() {
     }
     setUrl(address);lesson.connect(address);
   }
-  function connectTutor(){if(reviewNotebook||openingNotebook||notebookError)return;if(lesson.connected||lesson.phase==='connecting'){setSheet('connect');return;}const last=successfulTutors()[0];if(last)tryConnect(last);else setSheet('connect');}
+  function connectTutor(){if(isComplete||reviewNotebook||openingNotebook||notebookError)return;if(lesson.connected||lesson.phase==='connecting'){setSheet('connect');return;}const last=successfulTutors()[0];if(last)tryConnect(last);else setSheet('connect');}
   const [binding]=useState<LessonBinding|null>(()=>location.pathname==='/test-session'?null:JSON.parse(sessionStorage.getItem('prodigy-journey-lesson')||'null'));
+  const [finished,setFinished]=useState(!!binding?.completed),[nextLearning,setNextLearning]=useState<NextLearning|null>(null),[completionError,setCompletionError]=useState(''),[startingNext,setStartingNext]=useState(false),[completionRetry,setCompletionRetry]=useState(0);
+  const isComplete=finished||lesson.completed;
+  useEffect(()=>{
+    if(!isComplete||!binding)return;
+    let cancelled=false;
+    setCompletionError('');
+    void (async()=>{
+      const fresh=await request<LessonBinding>('/sessions/'+encodeURIComponent(binding.sessionId),undefined,'agent');
+      const topicId=fresh.topicId??binding.topicId;
+      if(!topicId)throw new Error('Open Home to choose your next lesson.');
+      const next=await getNext(binding.studentId,topicId);
+      if(!cancelled)setNextLearning(next);
+    })().catch(e=>{if(!cancelled)setCompletionError(e.message);});
+    return()=>{cancelled=true;};
+  },[isComplete,binding,completionRetry]);
+  async function continueLearning(){
+    if(!binding||nextLearning?.status!=='continue'||startingNext)return;
+    setStartingNext(true);setCompletionError('');
+    try{
+      await notebookSync.current?.save();
+      const next=await getNext(binding.studentId,nextLearning.topicId);
+      if(next.status!=='continue'){setNextLearning(next);return;}
+      const session=await request<{sessionId:string}>('/sessions',{studentId:binding.studentId,topicId:next.topicId,conceptId:next.conceptId,resumeSessionId:next.resumeSessionId},'agent');
+      lesson.disconnect();location.assign('/sessions/'+encodeURIComponent(session.sessionId));
+    }catch(e){setCompletionError((e as Error).message);}finally{setStartingNext(false);}
+  }
   const notebookSync=useRef<NotebookSync|null>(null);
   const [reviewNotebook,setReviewNotebook]=useState(false),[openingNotebook,setOpeningNotebook]=useState(false),[notebookError,setNotebookError]=useState('');
   useEffect(()=>{
-    if(!editor||!binding?.wsUrl||!location.pathname.startsWith('/sessions/'))return;
+    if(!editor||!binding||(!binding.wsUrl&&!binding.completed)||!location.pathname.startsWith('/sessions/'))return;
     let cancelled=false;
     const sync=new NotebookSync(editor,binding,lesson.notify);notebookSync.current=sync;
     setOpeningNotebook(true);
     void sync.restore().then(restored=>{
       if(cancelled)return;
       setOpeningNotebook(false);
-      if(restored){editor.setCurrentTool('hand');setReviewNotebook(true);}else tryConnect(binding.wsUrl);
+      if(binding.completed){editor.setCurrentTool('hand');setFinished(true);}else if(restored&&binding.resumed!==false){editor.setCurrentTool('hand');setReviewNotebook(true);}else tryConnect(binding.wsUrl);
     }).catch(()=>{if(!cancelled){setOpeningNotebook(false);setNotebookError('We couldn’t open your notebook. Try again to keep your previous work.');}});
     const save=()=>{void sync.save(true);};
     const hidden=()=>{if(document.visibilityState==='hidden')save();};
@@ -116,7 +144,7 @@ export default function App() {
   async function sendWork(audio?:MediaInput,activity?:ChoiceAttempt):Promise<boolean>{
     if(audio)pendingAudio.current=audio;
     if(!lesson.connected){setSheet('connect');return false;}
-    if(sending.current||(lesson.submission!=='idle'||lesson.tutorBusy)||!work.current||!editor)return false;
+    if(isComplete||sending.current||(lesson.submission!=='idle'||lesson.tutorBusy)||!work.current||!editor)return false;
     sending.current=true;setPreparing(true);const version=lesson.connectionVersion.current,page=editor.getCurrentPageId(),draft=replyRef.current.trim(),voice=pendingAudio.current,photos=cameraPagesRef.current;
     try{
       editor.complete();
@@ -133,7 +161,7 @@ export default function App() {
     }catch{lesson.notify('Could not prepare your work. It is still pending. Try sending it again.','retry');}finally{sending.current=false;setPreparing(false);}
     return false;
   }
-  function tapOrb(){if(reviewNotebook||openingNotebook||notebookError)return;if(!lesson.connected){setSheet('connect');return;}void sendWork();}
+  function tapOrb(){if(isComplete||reviewNotebook||openingNotebook||notebookError)return;if(!lesson.connected){setSheet('connect');return;}void sendWork();}
   async function exportPage(){
     if(!editor)return;const ids=[...editor.getCurrentPageShapeIds()];if(!ids.length){lesson.notify('Write or draw something first, then export your page.');return;}
     try{const result=await editor.toImageDataUrl(ids,{format:'png',background:true,padding:40});const link=document.createElement('a');link.href=result.url;link.download='prodigy-notebook.png';link.click();}catch{lesson.notify('This page could not be exported. Some embedded media may not support export.');}
@@ -142,8 +170,8 @@ export default function App() {
     <section className="canvas-area" aria-label="Shared learning canvas" onPointerDown={e=>{canvasPointer.current=(e.target as HTMLElement).closest('.tl-canvas')?{x:e.clientX,y:e.clientY}:null;}} onPointerMove={e=>{const start=canvasPointer.current;if(start&&e.buttons&&(editor?.inputs.isPanning||editor?.getCurrentToolId()==='hand'||e.buttons===4)&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>8){lesson.stopFollowing();canvasPointer.current=null;}}} onPointerUp={()=>{canvasPointer.current=null;}} onPointerCancel={()=>{canvasPointer.current=null;}} onWheel={()=>lesson.stopFollowing()}>
       <PageStackContext.Provider value={setPagePreview}>
       <VideoCardContext.Provider value={{enabled:!lesson.tutorBusy&&!preparing&&!lesson.video,open:lesson.rewatch}}>
-      <McqContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
-      <GraphActivityContext.Provider value={{enabled:lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
+      <McqContext.Provider value={{enabled:!isComplete&&lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing,submit:choice=>sendWork(undefined,choice)}}>
+      <GraphActivityContext.Provider value={{enabled:!isComplete&&lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle',submit:activity=>lesson.send({activity})}}>
         <Tldraw options={{maxPages:1000}} hideUi shapeUtils={modelShapeUtils} persistenceKey={location.pathname==='/test-session'?'prodigy-canvas-test-sessions':'prodigy-canvas-student-'+binding?.studentId} onMount={ed=>{applyCanvasTheme(ed);ed.user.updateUserPreferences({colorScheme:'light'});ed.updateInstanceState({isGridMode:true});upgradeQuestionLayout(ed);ed.setCurrentTool('draw');ed.setStyleForNextShapes(DefaultColorStyle,'blue');setEditor(ed);}}><Toolbar/></Tldraw>
       </GraphActivityContext.Provider>
       </McqContext.Provider>
@@ -154,7 +182,8 @@ export default function App() {
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
     {!lesson.follow&&hasContent&&<button className="follow-button" onClick={lesson.resumeFollowing}><Focus size={16}/>Back to the lesson</button>}
 
-    {(openingNotebook||reviewNotebook||notebookError)&&<div className="notebook-resume" role="status">
+    {isComplete&&!openingNotebook&&<div className="notebook-resume" role="status"><span>Lesson complete.</span><p>{nextLearning?.status==='completed'?'You’ve completed this topic.':nextLearning?.status==='continue'?'Ready for your next step?':'Finding your next step…'}</p>{nextLearning?.status==='continue'&&<button className="primary" disabled={startingNext} onClick={()=>void continueLearning()}>{startingNext?'Opening…':['clarity','mastering'].includes(nextLearning.state)?(nextLearning.resumeSessionId?'Resume practice':'Start practice'):'Continue'} <ArrowUpRight size={18}/></button>}{(completionError||nextLearning?.status==='unavailable')&&<p role="alert">{completionError||(nextLearning?.status==='unavailable'?nextLearning.reason:'')} <button onClick={()=>setCompletionRetry(v=>v+1)}>Try again</button></p>}<button disabled={startingNext} onClick={()=>void leaveLesson()}>Back to Home</button></div>}
+    {!isComplete&&(openingNotebook||reviewNotebook||notebookError)&&<div className="notebook-resume" role="status">
       {openingNotebook?<span>Opening your notebook…</span>:notebookError?<><span>{notebookError}</span><button className="primary" onClick={()=>location.reload()}>Try again</button></>:<><span>Take a moment to look back.</span><button className="primary" onClick={()=>{setReviewNotebook(false);if(binding)tryConnect(binding.wsUrl);}}>Let’s start <ArrowUpRight size={18}/></button></>}
     </div>}
     <footer className="tutor-space" aria-label="Tutor and responses">

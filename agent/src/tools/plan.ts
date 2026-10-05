@@ -162,6 +162,8 @@ export const update_step: Tool = {
           const { plan, models } = buildConceptPlan(ctx.concept, targetState);
           ctx.plan        = plan;
           ctx.modelPrompt = buildModelPrompt(models);
+          ctx.session.planHistory.push({ conceptId: ctx.concept.id, conceptTitle: ctx.concept.title, plan, startedAt: new Date().toISOString() });
+          await lp.patch(`/sessions/${ctx.session.id}`, { planHistory: ctx.session.planHistory });
           const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                          ?? ctx.plan.find(s => s.status === 'pending');
           if (firstStep) firstStep.status = 'in_progress';
@@ -169,6 +171,7 @@ export const update_step: Tool = {
             ok:       true,
             state:    targetState,
             concept:  ctx.concept.title,
+            action:   { type: 'send-ok' },
             nextStep: firstStep ? formatStep(firstStep) : null,
             message:  `State updated to "${targetState}". Now moving to ${stateAction(targetState)} phase for "${ctx.concept.title}". Follow nextStep.`,
             reminder: 'Follow the plan. Do exactly what the next step says.',
@@ -178,6 +181,8 @@ export const update_step: Tool = {
         // If so, advance immediately and continue in the same session.
         const hasPlan = await transitionState(ctx);
         if (hasPlan) {
+          const redirected = await resolvePendingRedirect(ctx);
+          if (redirected) return redirected;
           const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                          ?? ctx.plan.find(s => s.status === 'pending');
           if (firstStep) firstStep.status = 'in_progress';
@@ -185,6 +190,7 @@ export const update_step: Tool = {
             ok:       true,
             state:    ctx.journeyNode.state,
             concept:  ctx.concept.title,
+            action:   { type: 'send-ok' },
             nextStep: firstStep ? formatStep(firstStep) : null,
             message:  `State updated to "${targetState}". Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
             reminder: 'Follow the plan. Do exactly what the next step says.',
@@ -197,6 +203,8 @@ export const update_step: Tool = {
       // ── plan exhausted naturally — let whatIsNext decide ───────────────────
       const hasPlan = await transitionState(ctx);
       if (hasPlan) {
+        const redirected = await resolvePendingRedirect(ctx);
+        if (redirected) return redirected;
         const firstStep = ctx.plan.find(s => s.status === 'in_progress')
                        ?? ctx.plan.find(s => s.status === 'pending');
         if (firstStep) firstStep.status = 'in_progress';
@@ -204,6 +212,7 @@ export const update_step: Tool = {
           ok:       true,
           state:    ctx.journeyNode.state,
           concept:  ctx.concept.title,
+          action:   { type: 'send-ok' },
           nextStep: firstStep ? formatStep(firstStep) : null,
           message:  `Plan complete. Now moving to ${stateAction(ctx.journeyNode.state)} phase for "${ctx.concept.title}". Follow nextStep.`,
           reminder: 'Follow the plan. Do exactly what the next step says.',
@@ -243,4 +252,11 @@ function stepLabel(step: import('../types.js').PlanStep): string {
     case 'store_memory': return 'store_memory';
     default:              return step.type;
   }
+}
+
+/** Execute an authored continuation rather than asking the tutor to narrate it. */
+export async function resolvePendingRedirect(ctx: AgentContext): Promise<unknown> {
+  const step = ctx.plan.find(s => s.status === 'in_progress') ?? ctx.plan.find(s => s.status === 'pending');
+  if (step?.type !== 'redirect') return undefined;
+  return update_step.run({ id: step.id, outcome: 'done', nextStep: step.id }, ctx);
 }

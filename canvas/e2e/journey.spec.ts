@@ -73,11 +73,11 @@ test('session creation opens the returned WebSocket and canvas back returns home
   await page.route(/http:\/\/(localhost|127\.0\.0\.1):32004\/sessions\/session-test$/,route=>route.fulfill({json:{studentId:'s-test',sessionId:'session-test',wsUrl:'ws://localhost:32004/journey-test?sessionId=session-test'}}));
   let connected=false;let failTurn=()=>{};const replies:any[]=[];
   await page.routeWebSocket('**/journey-test?sessionId=session-test',ws=>{connected=true;ws.onMessage(data=>replies.push(JSON.parse(String(data))));failTurn=()=>{ws.send(JSON.stringify({type:'event',event:{type:'tutor-started'}}));ws.send(JSON.stringify({type:'error',message:'Your tutor could not finish responding. Try again.'}));};ws.send(JSON.stringify({type:'session',sessionId:'session-test',title:'Algebra',conceptId:'algebra'}));});
-  await page.goto('/home');await studentLogin(page);await page.getByRole('button',{name:'Resume lesson',exact:true}).click();
+  await page.goto('/home');await studentLogin(page);await page.locator('.j-continue').getByRole('button',{name:'Continue',exact:true}).click();
   await expect(page).toHaveURL(/\/sessions\/session-test/);await expect.poll(()=>connected).toBe(true);
   failTurn();await expect(page.getByRole('button',{name:'Lesson warnings (1)'})).toBeVisible();await expect(page.locator('dialog.lesson-issue')).not.toBeVisible();await page.getByRole('button',{name:'Lesson warnings (1)'}).click();await expect(page.getByRole('button',{name:'Try tutor again'})).toBeVisible();await page.getByRole('button',{name:'Try tutor again'}).click();await expect.poll(()=>replies.filter(r=>r.type==='message').length).toBe(1);expect(replies.find(r=>r.type==='message').text).toContain('last response was interrupted');
   expect(calls).toEqual([{studentId:'s-test',conceptId:'algebra',topicId:'equations',resumeSessionId:'session-test'}]);
-  await page.getByRole('button',{name:'Go back',exact:true}).click();await expect(page.getByRole('heading',{name:'Hi, Test.'})).toBeVisible();await expect(page.getByRole('button',{name:'Resume lesson'})).toBeVisible();
+  await page.getByRole('button',{name:'Go back',exact:true}).click();await expect(page.getByRole('heading',{name:'Hi, Test.'})).toBeVisible();await expect(page.locator('.j-continue').getByRole('button',{name:'Continue',exact:true})).toBeVisible();
 });
 
 test('desktop journey fits the viewport and keeps the lesson list scrollable',async({page})=>{
@@ -124,7 +124,7 @@ test('topic statuses come from LP and stale completion never creates a session',
   await page.route('**/topics/new/next',r=>r.fulfill({json:{status:'completed'}}));
   await page.route('**/sessions',r=>{starts++;return r.fulfill({status:500,json:{error:'Should not start'}});});
   await page.goto('/login');await studentLogin(page);
-  await expect(page.getByRole('button',{name:'Resume lesson'})).toHaveCount(0);
+  await expect(page.locator('.j-continue').getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
   await expect(page.getByText('x2f8bb11595b61c86:linear-equations-graphs',{exact:false})).toHaveCount(0);
   await expect(page.locator('.j-topic-row').filter({hasText:'Numbers'})).toContainText('Complete');
   await expect(page.locator('.j-topic-row').filter({hasText:'Graphs'}).getByRole('button')).toBeDisabled();

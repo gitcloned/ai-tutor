@@ -16,6 +16,7 @@ import type { Skill } from './skills.js';
 /** Typed lifecycle events emitted by the agent (not actions, not output). */
 export type AgentEvent =
   | { type: 'tutor-started' }
+  | { type: 'session-completed'; topicId?: string | null }
   | { type: 'tutor-ended' };
 
 type TurnEventPayload =
@@ -74,8 +75,11 @@ export class TurnEngine {
   async *run(skill: Skill, ctx: AgentContext, options: { resumed?: boolean } = {}): AsyncGenerator<TurnEvent> {
     yield { type: 'event', event: { type: 'tutor-started' } };
 
-    try { yield* this.#run(skill, ctx, options); }
-    finally { yield { type: 'event', event: { type: 'tutor-ended' } }; }
+    try { if(ctx.session.status!=='completed')yield* this.#run(skill, ctx, options); }
+    finally {
+      if(ctx.session.status==='completed')yield {type:'event',event:{type:'session-completed',topicId:ctx.session.originTopicId}};
+      yield { type: 'event', event: { type: 'tutor-ended' } };
+    }
   }
 
   async *#run(skill: Skill, ctx: AgentContext, options: { resumed?: boolean }): AsyncGenerator<TurnEvent> {
@@ -135,8 +139,9 @@ export class TurnEngine {
       message = lastMessage;
     }
 
+    let closing=false;
     while (true) {
-      const stream = await requestBeforeOutput('Gemini', () => chat.sendMessageStream({ message }));
+      const stream = await requestBeforeOutput('Gemini', () => chat.sendMessageStream({ message, ...(closing?{config:{tools:[]}}:{}) }));
 
       let accText = '';
       let calls: any[] = [];
@@ -155,7 +160,7 @@ export class TurnEngine {
 
       } catch (error) { throw serviceError('Gemini response stream', error); }
 
-      if (calls.length === 0) {
+      if (calls.length === 0 || closing) {
         // No tool calls — streaming is done, emit full text for history accumulation
         if (accText) yield { type: 'text', content: accText };
         break;
@@ -195,15 +200,12 @@ export class TurnEngine {
       // would duplicate what the next turn will say.
       if (sendOk) break;
 
-      // allDone means: session is complete. Stop immediately — do not feed
-      // responses back to the LLM or it will produce a final turn that the
-      // student cannot reply to (the concept is already mastered/completed).
+      // Allow one closing acknowledgement, without tools or another question.
       const allDone = functionResponses.some(
         r => (r as any).functionResponse?.response?.allDone === true,
       );
-      if (allDone) break;
-
-      message = functionResponses;
+      closing=allDone;
+      message = closing?[...functionResponses,{text:'The session is complete. Briefly acknowledge the student’s final work and close the lesson using the required output format. Do not ask a question, introduce an exercise, or call tools. The interface will offer the next learning action.'}]:functionResponses;
     }
   }
 }

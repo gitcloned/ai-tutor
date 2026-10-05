@@ -234,7 +234,7 @@ export function selectNextConcept(
 }
 
 export interface ResumeSession {
-  id:string;journeyNodeId:string;conceptStateAtStart:string;status:string;
+  id:string;journeyNodeId:string;conceptStateAtStart:string;conceptStateAtEnd?:string|null;status:string;
   createdAt?:string|Date;history?:{timestamp?:string|Date}[];rawHistory?:{timestamp?:string|Date}[];
 }
 export function sessionActivity(session:ResumeSession):number {
@@ -243,7 +243,9 @@ export function sessionActivity(session:ResumeSession):number {
 /** A completed or wrong-phase session must never be revived by a resume lookup. */
 export function resumableSession<T extends ResumeSession>(sessions:T[],node:{id:string;state:string}):T|undefined {
   if(!isTransitionState(node.state as ConceptState))return undefined;
-  return sessions.filter(s=>s.journeyNodeId===node.id&&s.conceptStateAtStart===node.state&&s.status==='started').sort((a,b)=>sessionActivity(b)-sessionActivity(a)||b.id.localeCompare(a.id))[0];
+  // A running session can move from assessment into teaching without ending.
+  // State transitions record its latest phase in conceptStateAtEnd.
+  return sessions.filter(s=>s.journeyNodeId===node.id&&(s.conceptStateAtEnd??s.conceptStateAtStart)===node.state&&s.status==='started').sort((a,b)=>sessionActivity(b)-sessionActivity(a)||b.id.localeCompare(a.id))[0];
 }
 export function followPrerequisite<T extends NodeSummary>(node:T,nodes:T[]):T {
   const seen=new Set<string>();

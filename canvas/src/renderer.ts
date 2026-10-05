@@ -1,4 +1,4 @@
-import {cleanNotebookCache} from './notebookStorage';
+import {cleanNotebookCache,focusNotebookEnd} from './notebookStorage';
 import {appreciate,isPraise} from './appreciation';
 import { Box, Editor, DefaultFontFaces, createShapeId, PageRecordType, AssetRecordType, toRichText, type TLShapeId } from 'tldraw';
 import { safeMedia, type Block } from './protocol';
@@ -57,6 +57,9 @@ export class CanvasRenderer {
     this.questions=new Questions(this.editor);
     const bounds=this.editor.getCurrentPageBounds();
     this.cursor=bounds?bounds.maxY+60:100;
+    this.focused=focusNotebookEnd(this.editor);
+    // Restore the same graph-and-discussion layout used during live teaching.
+    if(this.focused&&this.editor.getCurrentPageShapes().some(isTeachingModel))this.focus(this.focused);
   }
   private locate(block:Block,w:number,h:number) {
     const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
@@ -81,6 +84,8 @@ export class CanvasRenderer {
     if(block.kind!=='model3d'&&block.kind!=='model')this.cursor=Math.max(this.cursor,point.y+h+50); return point;
   }
   private focus(id:TLShapeId) {
+    const page=this.editor.getCurrentPage();
+    if(page.meta.lessonFocusId!==id)this.editor.updatePage({id:page.id,meta:{...page.meta,lessonFocusId:id}});
     if(!this.follow) return;
     const model=this.editor.getCurrentPageShapes().find(isTeachingModel);
     if(id===model?.id&&this.focused&&this.editor.getCurrentPageShapeIds().has(this.focused))id=this.focused;

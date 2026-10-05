@@ -4,3 +4,5 @@
 .graph-line{animation:graph-reveal 3s linear both}
 @keyframes graph-reveal{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
 @media(prefers-reduced-motion:reduce){.graph-line{animation:none}}
+
+.graph-coordinate-label{paint-order:stroke;stroke:#fffef9;stroke-width:10px;stroke-linejoin:round;font-variant-numeric:tabular-nums}

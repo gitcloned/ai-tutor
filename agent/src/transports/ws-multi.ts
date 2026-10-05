@@ -129,16 +129,20 @@ export class MultiSessionServer {
         try {
           const stored=await lp.get<Session>(`/sessions/${encodeURIComponent(id)}`);
           await authenticate(req,stored.studentId);
+          if(stored.status==='completed'){
+            res.setHeader('Content-Type','application/json');
+            res.end(JSON.stringify({sessionId:id,studentId:stored.studentId,notebookId:stored.notebookId??id,resumed:true,completed:true,topicId:stored.originTopicId,wsUrl:''}));
+            return;
+          }
           let activeId=id;
           if(!sm.isActive(id)){
-            if(stored.status==='completed')throw new Error('This lesson has finished. Continue your learning from Home.');
             const restored=await restoreActiveSession(sm,stored);
             activeId=restored.sessionId;
           }
           let allowed=access.get(activeId);
           if(!allowed){allowed={studentId:stored.studentId,ticket:randomBytes(24).toString('base64url')};access.set(activeId,allowed);}
           res.setHeader('Content-Type','application/json');
-          res.end(JSON.stringify({sessionId:activeId,studentId:stored.studentId,notebookId:sm.getAgent(activeId)?.ctx.session.notebookId??activeId,resumed:(sm.getAgent(activeId)?.ctx.session.history.length??0)>0,wsUrl:address(req,activeId,allowed.ticket)}));
+          res.end(JSON.stringify({sessionId:activeId,studentId:stored.studentId,topicId:stored.originTopicId,notebookId:sm.getAgent(activeId)?.ctx.session.notebookId??activeId,resumed:(sm.getAgent(activeId)?.ctx.session.history.length??0)>0,wsUrl:address(req,activeId,allowed.ticket)}));
         } catch(e){res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:String(e)}));}
         return;
       }

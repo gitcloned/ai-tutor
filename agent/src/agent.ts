@@ -5,7 +5,7 @@ import { readFileSync }  from 'fs';
 import { SkillLoader }   from './skills.js';
 import { TurnEngine }    from './engine.js';
 import { ToolRegistry }  from './tools/index.js';
-import { read_plan, get_next_step, update_step } from './tools/plan.js';
+import { read_plan, get_next_step, update_step, resolvePendingRedirect } from './tools/plan.js';
 import { store_memory }      from './tools/memory.js';
 import { get_next_question } from './tools/question.js';
 import { buildContext }  from './context.js';
@@ -28,6 +28,9 @@ const engine = new TurnEngine(tools, basePrompt);
 
 export async function newAgent(studentId: string, conceptId: string, journeyNodeId: string, originTopicId?: string | null) {
   const ctx = await buildContext(studentId, conceptId, journeyNodeId, originTopicId);
+
+  // Recover sessions saved at a return redirect before choosing the active skill.
+  await resolvePendingRedirect(ctx);
 
   // Ensure rawHistory array exists (for sessions created before this field was added).
   if (!ctx.session.rawHistory) ctx.session.rawHistory = [];

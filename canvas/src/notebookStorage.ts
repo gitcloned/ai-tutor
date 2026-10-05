@@ -1,7 +1,8 @@
-import type {Editor, TLRecord, TLPageId} from 'tldraw';
+import type {Editor, TLRecord, TLPageId, TLShapeId} from 'tldraw';
 import {request} from './journey/api';
+import {activityCamera} from './layout';
 
-export type LessonBinding={sessionId:string;studentId:string;notebookId?:string;resumed?:boolean;wsUrl:string};
+export type LessonBinding={sessionId:string;studentId:string;notebookId?:string;resumed?:boolean;completed?:boolean;topicId?:string;wsUrl:string};
 type Snapshot=ReturnType<Editor['store']['getStoreSnapshot']>;
 type Saved={revision:number;updatedAt:string;snapshot:Snapshot;saveId?:string};
 export function cleanNotebookCache(editor:Editor) {
@@ -38,6 +39,38 @@ export function notebookContent(snapshot:Snapshot):string {
   }).sort((a,b)=>a.id.localeCompare(b.id));
   return JSON.stringify(canonical(records));
 }
+/** Restore the current discussion, never shrink a whole notebook to fit. */
+export function focusNotebookEnd(editor:Editor):TLShapeId|null {
+  const shapes=editor.getCurrentPageShapes();
+  const candidates=shapes.filter(s=>s.type!=='frame'&&s.type!=='group'&&s.type!=='model3d'&&s.type!=='function-graph');
+  const saved=editor.getCurrentPage().meta.lessonFocusId;
+  const target=candidates.find(s=>s.id===saved)??candidates
+    .map(shape=>({shape,bounds:editor.getShapePageBounds(shape.id)}))
+    .filter(item=>!!item.bounds).sort((a,b)=>b.bounds!.maxY-a.bounds!.maxY)[0]?.shape;
+  if(!target)return null;
+  const bounds=editor.getShapePageBounds(target.id);if(!bounds)return null;
+  const screen=editor.getViewportScreenBounds();
+  const toolbar=editor.getContainer().closest('.app')?.querySelector('.toolbar')?.getBoundingClientRect();
+  const left=Math.max(24,toolbar?toolbar.right-screen.x+24:100);
+  const area={x:left,y:40,w:Math.max(100,screen.w-left-32),h:Math.max(100,screen.h-240)};
+  const model=shapes.find(s=>(s.type==='function-graph'||s.type==='model3d')&&s.meta.unpinned!==true);
+  let content={x:bounds.x,y:bounds.y,w:bounds.w,h:bounds.h};
+  if(model){
+    const modelBounds=editor.getShapePageBounds(model.id);
+    if(modelBounds){
+      // Keep the active model alongside the latest work, including on the
+      // review screen before the tutor reconnects. Archived models stay put.
+      editor.updateShape({id:model.id,type:model.type,y:model.y+bounds.y-modelBounds.y});
+      const x=Math.min(bounds.x,modelBounds.x);
+      content={x,y:bounds.y,w:Math.max(bounds.x+bounds.w,modelBounds.x+modelBounds.w)-x,h:Math.max(bounds.h,modelBounds.h)};
+    }
+  }
+  const z=Math.min(1,area.w/content.w,area.h/content.h);
+  const camera=model?{x:area.x/z-content.x,y:area.y/z-content.y,z}:activityCamera(area,content,1);
+  editor.setCamera(camera,{animation:{duration:0}});
+  return target.id;
+}
+
 export class NotebookSync {
   private tail:Promise<void>=Promise.resolve();
   private stop:()=>void;
@@ -64,6 +97,7 @@ export class NotebookSync {
       this.warn('Could not load the server notebook. Showing the copy saved on this device.');
       this.editor.setCurrentPage(local.id);
       this.editor.updatePage({id:local.id,meta:{...local.meta,notebookId:id,sessionIds:[...new Set([...(Array.isArray(local.meta.sessionIds)?local.meta.sessionIds:[]),this.binding.sessionId])]}});
+      focusNotebookEnd(this.editor);
       return this.editor.getCurrentPageShapes().length>0;
     }
     if(local&&local.meta.notebookDirty===true){
@@ -99,7 +133,7 @@ export class NotebookSync {
     this.editor.updatePage({id:page.id,meta:{...page.meta,notebookId:id,sessionIds:[...new Set([...(Array.isArray(page.meta.sessionIds)?page.meta.sessionIds:[]),this.binding.sessionId])]}});
     const removed=cleanNotebookCache(this.editor);
     if(removed)this.warn(`Freed space by removing ${removed} older local notebooks. Their server copies are saved.`);
-    this.editor.zoomToFit({animation:{duration:0}});
+    focusNotebookEnd(this.editor);
     return this.editor.getCurrentPageShapes().length>0;
   }
   save(keepalive=false):Promise<void>{

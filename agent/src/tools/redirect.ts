@@ -203,6 +203,8 @@ export async function returnToOrigin(ctx: AgentContext, knownOriginId?: string):
   // Mark the prereq session completed
   await lp.patch(`/sessions/${ctx.session.id}`, { status: 'completed', endedAt: new Date().toISOString() });
 
+  originSession.resumeFromStep = null;
+
   // Swap ctx to origin
   originSession.notebookId = ctx.session.notebookId ?? ctx.session.id;
   ctx.session     = originSession;

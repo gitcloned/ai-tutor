@@ -88,7 +88,7 @@ function render(template: string, ctx: AgentContext): string {
     : 'None yet.';
 
   const prereqContext = ctx.journeyNode.cameFrom
-    ? `> **Context:** You are covering this concept as a prerequisite. The student was working on another concept (id: \`${ctx.journeyNode.cameFrom}\`) and could not proceed without understanding this one first. Once the student has a solid grasp of this concept, call \`return_to_origin\` to send them back.\n`
+    ? `> **Context:** You are covering this concept as a prerequisite. The student was working on another concept (id: \`${ctx.journeyNode.cameFrom}\`) and could not proceed without understanding this one first. Once the student has a solid grasp of this concept, complete the lesson steps with \`update_step\`, including its final memory step. Returning to the origin and following its authored continuation are automatic; do not merely announce the return.\n`
     : '';
 
   return template

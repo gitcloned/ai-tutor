@@ -8,10 +8,14 @@ Ask the student to watch the video. Wait for them to confirm they are done befor
 ## 2 (Give them a few more exit question)
 Give them more question depending on their confidence, similar to one below
 
-Do write question:
+Do ask below MCQ question:
 
 which of them is a ordered pair solution of 
    5x + 2 = 10y + 0
+
+   - (2, 1.2)
+   - (2, 1)
+   - (0, 0)
 
 if they can answer good, we are done
 

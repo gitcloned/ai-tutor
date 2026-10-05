@@ -1,4 +1,4 @@
-import {resumableSession,followPrerequisite} from '../../cms/packages/progression/dist/index.js';
+import {resumableSession,followPrerequisite,sessionActivity} from '../../cms/packages/progression/dist/index.js';
 import type { Concept, Session, JourneyNode, Memory, ConceptState, PlanStep, PlanHistoryEntry, LogEntry, Question } from './types.js';
 import type { ImageBlob }   from './medium/modalities/input/types.js';
 import { CS }               from './types.js';
@@ -111,6 +111,13 @@ export async function buildContext(
   const { plan, models } = buildConceptPlan(concept, journeyNode.state);
   const modelPrompt = buildModelPrompt(models);
   const session = await createSession(studentId, conceptId, journeyNodeId, journeyNode.state, undefined, originTopicId);
+  const previous=(await lp.get<Session[]>(`/students/${studentId}/sessions?conceptId=${conceptId}&status=completed`))
+    .filter(s=>s.journeyNodeId===journeyNodeId&&s.status==='completed')
+    .sort((a,b)=>sessionActivity(b)-sessionActivity(a))[0];
+  if(previous){
+    session.notebookId=previous.notebookId??previous.id;
+    await lp.patch(`/sessions/${session.id}`,{notebookId:session.notebookId});
+  }
   session.planHistory.push({ conceptId: concept.id, conceptTitle: concept.title, plan, startedAt: new Date().toISOString() });
   const practice = await loadPractice(journeyNode.state, concept.id, session);
 

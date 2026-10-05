@@ -9,7 +9,7 @@
     "idealAnswer": "4 — (1,4) (2,3) (3,2) (4,1)",
     "stepsToSolve": [
       "Just write stem and let child solve.",
-      "Show a graph. x-span: -2 to 6, y-span: -2 to 6. \n\nAsk child to solve for 2 points, x = 0, y = 0, and put them on the graph. \n\nJUST ASK CHILD TO SOLVE, YOU DONT SOLVE.",
+      "Show a graph for 2x + 2y = 10. x-span: -2 to 6, y-span: -2 to 6. \n\nAsk child to solve for 2 points, x = 0, y = 0, and put them on the graph. \n\nJUST ASK CHILD TO SOLVE, YOU DONT SOLVE.",
       "Ask child to plot points",
       "Draw a line",
       "Observe graph for +ve integer values of x and y and count"

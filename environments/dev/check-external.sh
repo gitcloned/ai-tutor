@@ -104,6 +104,7 @@ check_http_follow "Canvas  " "https://$DOMAIN"
 check_http_follow "CMS API " "https://$DOMAIN/api/cms/health"
 check_http_follow "LP API  " "https://$DOMAIN/api/lp/health"
 check_http_follow "ERP API " "https://$DOMAIN/api/erp/health"
+check_http_follow "Agent API" "https://$DOMAIN/api/agent/health"
 check_http_follow "LP Admin" "https://$DOMAIN/lp-admin"
 
 echo ""
@@ -130,11 +131,11 @@ echo ""
 
 echo "WebSocket:"
 if nc -z -w "$TIMEOUT" "$HOST" 32004 2>/dev/null; then
-  ok "Agent session active  ws://$HOST:32004  open"
+  ok "Tutor server port  ws://$HOST:32004  open"
 else
-  skip "No agent session running  ws://$HOST:32004  closed (normal)"
+  skip "Direct tutor port closed; public /api/agent and /ws are served through nginx."
 fi
-skip "wss://$DOMAIN/ws  — start an agent session to test live"
+skip "wss://$DOMAIN/ws  — use Continue from Home to test an authenticated session"
 
 echo ""
 

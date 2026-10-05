@@ -75,6 +75,17 @@ server {
         proxy_set_header   X-Forwarded-Proto \$scheme;
     }
 
+    # Tutor session HTTP API; session sockets use /ws above.
+    location /api/agent/ {
+        proxy_pass         http://localhost:32004/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+    }
+
     # API proxies — used by LP Admin when accessed via domain
     location /api/lp/ {
         proxy_pass         http://localhost:32002/;
@@ -230,6 +241,7 @@ health() {
     check_pm2 lp-server
     check_pm2 erp-server
     check_pm2 canvas
+    check_pm2 agent-server
   else
     fail "pm2 not installed — run: bash setup.sh"
   fi
@@ -247,6 +259,8 @@ health() {
   check_http "CMS API" "http://localhost:32001/health"
   check_http "LP API " "http://localhost:32002/health"
   check_http "ERP API" "http://localhost:32005/health"
+  check_http "Agent API" "http://localhost:32004/health"
+  check_http "Public agent API" "https://$DOMAIN/api/agent/health"
   check_http "Canvas " "http://localhost:32000"
 
   echo ""
@@ -483,7 +497,12 @@ ENVEOF
   cd "$REPO_DIR/cms/packages/erp" && pnpm build
 
   log "Building canvas..."
-  cd "$REPO_DIR/canvas" && pnpm build
+  cd "$REPO_DIR/canvas"
+  VITE_TUTOR_WS_URL="wss://$DOMAIN/ws" \
+  VITE_AGENT_API_URL="https://$DOMAIN/api/agent" \
+  VITE_ERP_API_URL="https://$DOMAIN/api/erp" \
+  VITE_CMS_API_URL="https://$DOMAIN/api/cms" \
+  VITE_LEARNING_API_URL="https://$DOMAIN/api/lp" pnpm build
 
   echo ""
 
@@ -533,6 +552,21 @@ module.exports = {
       },
     },
     {
+      name: 'agent-server',
+      script: 'scripts/server.mjs',
+      cwd: '$REPO_DIR/agent',
+      env: {
+        NODE_ENV: 'production',
+        SERVER_PORT: 32004,
+        MONGO_URL: '$MONGO_URL_VAL',
+        DB_NAME: '$DB_NAME_VAL',
+        LP_URL: 'http://localhost:32002',
+        CMS_URL: 'http://localhost:32001',
+        ERP_URL: 'http://localhost:32005',
+        PUBLIC_AGENT_URL: 'https://$DOMAIN/ws',
+      },
+    },
+    {
       name: 'canvas',
       script: '$REPO_DIR/canvas/node_modules/.bin/vite',
       cwd: '$REPO_DIR/canvas',
@@ -540,6 +574,7 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         VITE_TUTOR_WS_URL:    'wss://$DOMAIN/ws',
+        VITE_AGENT_API_URL:   'https://$DOMAIN/api/agent',
         VITE_ERP_API_URL:     'https://$DOMAIN/api/erp',
         VITE_CMS_API_URL:     'https://$DOMAIN/api/cms',
         VITE_LEARNING_API_URL:'https://$DOMAIN/api/lp',
@@ -552,7 +587,7 @@ ECOEOF
   log "Starting services with pm2..."
   cd "$REPO_DIR"
   pm2 stop ecosystem.config.cjs 2>/dev/null || true
-  pm2 start ecosystem.config.cjs
+  pm2 startOrRestart ecosystem.config.cjs --update-env
   pm2 save
 
   echo ""
@@ -570,9 +605,7 @@ ECOEOF
   echo ""
   info "After SSL, connect agent at:  wss://$DOMAIN/ws"
   echo ""
-  info "Start an agent session:"
-  info "  cd agent"
-  info "  node scripts/cli.mjs --concept <id> --medium canvas --port 32004"
+  info "Tutor sessions start from Home; agent-server is managed by pm2."
   echo ""
   info "Enable auto-start on reboot:"
   info "  pm2 startup   (run the printed command, then: pm2 save)"

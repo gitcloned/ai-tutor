@@ -35,16 +35,32 @@ bash environments/dev/setup.sh health
 |---|---|---|
 | `cms-backend` | 32001 | CMS content API (Express + MongoDB) |
 | `lp-server` | 32002 | Learning Progression API (Express + MongoDB) |
+| `erp-server` | 32005 | Student and classroom API |
+| `agent-server` | 32004 | Multi-session tutor HTTP API and WebSocket |
 | `canvas` | 32000 | React UI (Vite dev server) |
 
 ## Agent sessions
 
-The agent is not a pm2 process — start it per session:
+Home starts and resumes sessions through `/api/agent`. The agent runs continuously under PM2 and returns public WebSocket URLs using `/ws`.
+
+After updating the repository on the Ubuntu server, apply configuration with:
 
 ```bash
-cd agent
-node scripts/cli.mjs --concept <concept-id> --medium canvas --port 32004
+bash environments/dev/setup.sh
+bash environments/dev/setup.sh health
 ```
+
+Do not run a separate CLI tutor on port 32004 while `agent-server` is running.
+
+## Firebase frontend using the dev backend
+
+From a machine signed into Firebase, run:
+
+```bash
+bash environments/dev/deploy-firebase.sh
+```
+
+This supplies all four public API URLs to Firebase's build hook. A plain build without these variables cannot connect to services when hosted over HTTPS. The Ubuntu backend must already have the updated nginx routes and running tutor server.
 
 ## Useful pm2 commands
 

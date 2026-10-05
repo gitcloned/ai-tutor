@@ -157,6 +157,7 @@ health() {
   [ -f "$REPO_DIR/agent/dist/agent.js" ]                               && ok "agent dist"       || fail "agent dist missing — cd agent && pnpm build"
   [ -f "$REPO_DIR/cms/packages/backend/dist/server.js" ]              && ok "cms-backend dist" || fail "cms-backend dist missing — cd cms && pnpm build"
   [ -f "$REPO_DIR/cms/packages/learning-progression/dist/server.js" ] && ok "lp-server dist"  || fail "lp-server dist missing — cd cms && pnpm build"
+  [ -f "$REPO_DIR/cms/packages/erp/dist/server.js" ]                  && ok "erp dist"         || fail "erp dist missing — cd cms/packages/erp && pnpm build"
   [ -d "$REPO_DIR/canvas/dist" ] && ok "canvas dist" || skip "canvas dist not built (OK — vite dev is used)"
 
   echo ""
@@ -188,6 +189,7 @@ health() {
     }
     check_pm2 cms-backend
     check_pm2 lp-server
+    check_pm2 erp-server
     check_pm2 canvas
   else
     fail "pm2 not installed — run: bash setup.sh"
@@ -205,6 +207,7 @@ health() {
   }
   check_http "CMS API" "http://localhost:32001/health"
   check_http "LP API " "http://localhost:32002/health"
+  check_http "ERP API" "http://localhost:32005/health"
   check_http "Canvas " "http://localhost:32000"
 
   echo ""
@@ -437,6 +440,9 @@ ENVEOF
   log "Building cms packages..."
   cd "$REPO_DIR/cms" && pnpm build
 
+  log "Building erp..."
+  cd "$REPO_DIR/cms/packages/erp" && pnpm build
+
   log "Building canvas..."
   cd "$REPO_DIR/canvas" && pnpm build
 
@@ -475,6 +481,19 @@ module.exports = {
       },
     },
     {
+      name: 'erp-server',
+      script: 'dist/server.js',
+      cwd: '$REPO_DIR/cms/packages/erp',
+      env: {
+        PORT: 32005,
+        NODE_ENV: 'production',
+        MONGO_URL: '$MONGO_URL_VAL',
+        DB_NAME:   '$DB_NAME_VAL',
+        LP_URL:    'http://localhost:32002',
+        CMS_URL:   'http://localhost:32001',
+      },
+    },
+    {
       name: 'canvas',
       script: '$REPO_DIR/canvas/node_modules/.bin/vite',
       cwd: '$REPO_DIR/canvas',
@@ -501,6 +520,7 @@ ECOEOF
   info "  Canvas     http://$DOMAIN  (or http://localhost:32000)"
   info "  CMS API    http://localhost:32001"
   info "  LP API     http://localhost:32002"
+  info "  ERP API    http://localhost:32005"
   echo ""
   info "Next step — enable HTTPS:"
   info "  bash environments/dev/setup.sh ssl"

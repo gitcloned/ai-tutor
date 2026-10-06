@@ -39,11 +39,7 @@
     "stepsToSolve": [
       "Identify that both given points have y-coordinate 5.",
       "Conclude that the line through the two distinct points is horizontal and has equation y = 5.",
-      "Only after the child has solved the question and identified y = 5, replay these blocks in order before fetching the next question:\n\nspeak: Let's see your answer on a graph. Both points have a y-coordinate of five.\nmodel: function-graph\n/id: mastery-q3-y5\n/equation: y = 5\n/action: plot\n/x-range: -1,6\n/y-range: -1,7\n/snap: 1\nwrite: (1, 5) and (4, 5)\nspeak: At x equals one, y is five. At x equals four, y is still five. Both points lie on this horizontal line.\nwrite: y = 5\nspeak: The line is parallel to the x-axis. Wherever we move along it, y stays five, so its equation is y equals five."
-    ],
-    "hints": [
-      "Which coordinate stays the same in both points?",
-      "Is the line joining these points horizontal or vertical? Which variable stays constant?"
+      "Open the graph, and draw y=5 line"
     ],
     "successCriteria": [
       "State y = 5 and connect it to the common y-coordinate and horizontal line through the two distinct points."

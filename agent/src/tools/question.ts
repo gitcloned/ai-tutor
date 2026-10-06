@@ -56,8 +56,7 @@ export const get_next_question: Tool = {
       total: result.total,
       question,
       reminder: [
-        '1) If student is not able to solve, analyse which step they are, consult the "stepsToSolve" and only help with next step',
-        '2) Keep equations and working on the left; short targeted annotations go on the right. Speak explanations instead of writing prose. '].join("\n")
+        'Follow the practice loop. Do always evaluate the step child is at, against the stepsToSolve. Dont invent your steps'].join("\n")
     };
   },
 };

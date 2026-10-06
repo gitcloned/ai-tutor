@@ -484,6 +484,7 @@ async function renderStudents(p) {
       return new Date(b.lastActivityAt)-new Date(a.lastActivityAt);
     });
 
+    window._dlStudents = list;
     const total = list.length, pages = Math.max(1,Math.ceil(total/PG));
     const slice = list.slice((page-1)*PG, page*PG);
 
@@ -507,6 +508,7 @@ async function renderStudents(p) {
         </select>
         ${q||grad||cls?`<button onclick="navigate({})" style="color:var(--red);border-color:var(--red)">Clear filters</button>`:''}
         <span style="margin-left:auto;font-size:12px;color:var(--muted)">${total} student${total===1?'':'s'} &nbsp;·&nbsp; Sort: ${sortBtn('activity','Last active')} &nbsp; ${sortBtn('name','Name')}</span>
+        <button onclick="downloadStudentsCSV()" title="Download filtered list as CSV">↓ CSV</button>
       </div>
       <div class="card">
         <table>
@@ -570,6 +572,7 @@ async function renderStudent(studentId, p) {
     }
 
     const sname = stu.name ?? studentId;
+    window._dlStudent = { stu, journeys, allNodes, sessions, memories };
     setBreadcrumb([{label:'Students',params:null},{label:sname}]);
     document.title = sname + ' — Prodigy Admin';
 
@@ -596,7 +599,8 @@ async function renderStudent(studentId, p) {
             </div>
           </div>
           <div style="display:flex;gap:20px;flex-shrink:0;text-align:center;padding-top:4px">
-            <button style="color:var(--red)" onclick="confirmStudentDeletion(${navArgs(studentId)},${navArgs(sname)})">Delete student</button>
+            <button onclick="downloadStudentJSON()" title="Download full profile as JSON">↓ JSON</button>
+          <button style="color:var(--red)" onclick="confirmStudentDeletion(${navArgs(studentId)},${navArgs(sname)})">Delete student</button>
             <div><div style="font-size:18px;font-weight:700">${sessions.length}</div><div style="font-size:11px;color:var(--muted)">Sessions</div></div>
             <div><div style="font-size:18px;font-weight:700">${allNodes.length}</div><div style="font-size:11px;color:var(--muted)">Concepts</div></div>
           </div>
@@ -728,6 +732,7 @@ async function renderSession(sessionId) {
       {label:sname, params:{student:s.studentId}},
       {label:cm?.title??s.conceptId},
     ]);
+    window._dlSession = s;
 
     setMain(`
       <div class="ctx-bar">
@@ -738,7 +743,8 @@ async function renderSession(sessionId) {
         <div class="ctx-item"><label>Status</label>${statusBadge(s.status)}</div>
         <div class="ctx-item"><label>Started</label><span style="color:var(--muted)">${shortDate(s.createdAt)}</span></div>
         ${s.endedAt?`<div class="ctx-item"><label>Ended</label><span style="color:var(--muted)">${shortDate(s.endedAt)}</span></div>`:''}
-        <details style="margin-left:auto;position:relative">
+        <button style="margin-left:auto" onclick="triggerDownload('session-${esc(sessionId)}.json',JSON.stringify(window._dlSession,null,2),'application/json')" title="Download full session as JSON">↓ JSON</button>
+        <details style="position:relative">
           <summary style="cursor:pointer;font-size:12px;color:var(--muted)">IDs ▾</summary>
           <div style="position:absolute;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;z-index:10;min-width:260px;font-size:11px;font-family:monospace;line-height:2;box-shadow:0 4px 16px rgba(0,0,0,.1)">
             <div><span style="color:var(--muted)">session &nbsp;</span>${esc(sessionId)}</div>
@@ -940,6 +946,48 @@ function parseAgentDSL(raw) {
     if (bm) { flush(); const key=bm[1],rest=line.slice(bm[0].length); cur={key,lines:rest?[rest]:[],attrs:{}}; } else if (cur) cur.lines.push(line);
   }
   flush(); return frag;
+}
+
+// ── Download ──────────────────────────────────────────────────────────────────
+function triggerDownload(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadStudentsCSV() {
+  const students = window._dlStudents ?? [];
+  const headers  = ['Name','ID','Access Code','Grade','Classes','Sessions','Last Active'];
+  const rows = students.map(s => [
+    s.name ?? '',
+    s.studentId,
+    s.accessCode ?? '',
+    s.grade ? 'Grade ' + s.grade : '',
+    (s.classes ?? []).map(c => c.name).join('; '),
+    s.sessionCount,
+    s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleString() : '',
+  ]);
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+    .join('\n');
+  triggerDownload('students.csv', csv, 'text/csv');
+}
+
+function downloadStudentJSON() {
+  const d = window._dlStudent;
+  if (!d) return;
+  const filename = (d.stu?.name ?? d.stu?.studentId ?? 'student').replace(/[^a-z0-9]/gi, '_') + '.json';
+  const data = {
+    student:    d.stu,
+    journeys:   d.journeys,
+    nodes:      d.allNodes,
+    sessions:   d.sessions,
+    memories:   d.memories,
+    exportedAt: new Date().toISOString(),
+  };
+  triggerDownload(filename, JSON.stringify(data, null, 2), 'application/json');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

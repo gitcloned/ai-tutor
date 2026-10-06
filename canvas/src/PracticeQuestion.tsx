@@ -20,8 +20,6 @@ function PracticeCard({shape}:{shape:PracticeShape}){
    const h=Math.ceil(el.offsetHeight),current=editor.getShape<PracticeShape>(shape.id);
    if(current&&h>0&&Math.abs(current.props.h-h)>1){
     editor.updateShape<PracticeShape>({id:shape.id,type:'practice-question',props:{h}});
-    const working=editor.getCurrentPageShapes().find(s=>s.meta.practiceQuestionId===shape.id);
-    if(working&&current.props.awarded<0)editor.updateShape({id:working.id,type:working.type,y:current.y+h+32});
    }
   };
   const observer=new ResizeObserver(measure);observer.observe(el);measure();return()=>observer.disconnect();
@@ -29,12 +27,13 @@ function PracticeCard({shape}:{shape:PracticeShape}){
  const data=JSON.parse(shape.props.data) as NonNullable<PracticePresentation['practice']>;
  const question=data.question!;
  return <section ref={card} className="practice-card" style={{width:shape.props.w}} aria-label={`Practice question ${data.index}`}>
-  <div className="practice-stem">{question.stem}</div>
+  <div className="practice-stem">{question.stem.split(/\n\s*\n/).map((paragraph,i)=><p key={i}>{paragraph}</p>)}</div>
   {shape.props.awarded>=0&&<span className="practice-score">+{shape.props.awarded} points awarded</span>}
  </section>;
 }
 
 export function renderPractice(editor:Editor,event:PracticePresentation,locate:()=>{x:number;y:number}){
+ editor.deleteShapes(editor.getCurrentPageShapes().filter(s=>s.meta.kind==='practice-working'&&s.meta.author==='tutor').map(s=>s.id));
  const cards=editor.getCurrentPageShapes().filter((s):s is PracticeShape=>s.type==='practice-question');
  const practice=event.practice;
  for(const card of cards){
@@ -45,9 +44,9 @@ export function renderPractice(editor:Editor,event:PracticePresentation,locate:(
  for(const card of cards)if(card.props.key!==key&&card.meta.unpinned!==true)editor.updateShape({id:card.id,type:card.type,meta:{...card.meta,unpinned:true},props:{finishedAt:card.props.finishedAt||Date.now()}});
  if(event.step?.type!=='practice'||!practice?.question)return null;
  const existing=cards.find(s=>s.props.key===key);
- if(existing){editor.updateShape<PracticeShape>({id:existing.id,type:existing.type,...(!existing.meta.practiceFlow?locate():{}),meta:{...existing.meta,unpinned:false,practiceFlow:true},props:{data:JSON.stringify(practice),...(!existing.meta.practiceFlow?{w:1120}:{})}});return existing.id;}
- const id=createShapeId(),lines=practice.question.stem.split('\n').reduce((n,line)=>n+Math.max(1,Math.ceil(line.length/32)),0);
- editor.createShape<PracticeShape>({id,type:'practice-question',...locate(),meta:{author:'tutor',kind:'practice',unpinned:false,practiceFlow:true},props:{key:key!,data:JSON.stringify(practice),w:1120,h:Math.max(60,lines*40)}});
+ if(existing){editor.updateShape<PracticeShape>({id:existing.id,type:existing.type,...(!existing.meta.practiceFlow?locate():{}),meta:{...existing.meta,unpinned:false,practiceFlow:true},props:{data:JSON.stringify(practice),w:Math.min(existing.props.w,900)}});return existing.id;}
+ const id=createShapeId(),lines=practice.question.stem.split('\n').reduce((n,line)=>n+Math.max(1,Math.ceil(line.length/60)),0);
+ editor.createShape<PracticeShape>({id,type:'practice-question',...locate(),meta:{author:'tutor',kind:'practice',unpinned:false,practiceFlow:true},props:{key:key!,data:JSON.stringify(practice),w:900,h:Math.max(60,lines*34)}});
  return id;
 }
 export function startPracticeTimer(editor:Editor){
@@ -58,15 +57,29 @@ export function startPracticeTimer(editor:Editor){
 }
 
 export function PracticeHeader({editor}:{editor:Editor}){
- const summary=useValue('practice summary',()=>editor.getCurrentPage().meta.practiceSummary as {earnedPoints:number}|null,[editor]);
+ const summary=useValue('practice summary',()=>editor.getCurrentPage().meta.practiceSummary as {earnedPoints:number;sessionId?:string;stepId?:string}|null,[editor]);
+ const pageId=useValue('practice page',()=>editor.getCurrentPageId(),[editor]);
  const shape=useValue('current practice question',()=>editor.getCurrentPageShapes().find((s):s is PracticeShape=>s.type==='practice-question'&&s.meta.unpinned!==true),[editor]);
  const [now,setNow]=useState(Date.now());
+ const [reward,setReward]=useState<{points:number;key:number}|null>(null);
+ const previous=useRef<{scope:string;points:number}|null>(null);
+ const scope=`${pageId}:${summary?.sessionId??''}:${summary?.stepId??''}`;
+ const earned=summary?.earnedPoints;
+ useEffect(()=>{
+  const last=previous.current;
+  previous.current=earned===undefined?null:{scope,points:earned};
+  if(earned===undefined||!last||last.scope!==scope||earned<=last.points){setReward(null);return;}
+  setReward({points:earned-last.points,key:Date.now()});
+  const timer=setTimeout(()=>setReward(null),3000);
+  return()=>clearTimeout(timer);
+ },[scope,earned]);
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),250);return()=>clearInterval(timer);},[]);
  if(!summary)return null;
  const data=shape?JSON.parse(shape.props.data) as NonNullable<PracticePresentation['practice']>:null;
  const seconds=data?.question?.timeSeconds;
  const remaining=seconds!==undefined&&shape?(shape.props.deadline?Math.min(seconds,Math.max(0,Math.ceil((shape.props.deadline-(shape.props.finishedAt||now))/1000))):seconds):undefined;
- return <><div className="practice-summary" aria-label="Practice progress"><strong>Practice</strong>{data&&<span>Question {data.index} of {data.total}</span>}{data?.question?.points!==undefined&&<span>{data.question.points} {data.question.points===1?'point':'points'}</span>}
+ return <><div className="practice-summary" aria-label="Practice progress"><strong>Practice</strong>{data&&<span>Q{data.index}/{data.total}</span>}{data?.question?.points!==undefined&&<span>{data.question.points} {data.question.points===1?'point':'points'}</span>}
  {remaining!==undefined&&<span className={`practice-countdown${remaining>0&&remaining<=10?' urgent':''}`} role="timer" aria-label="Time remaining" title={!shape?.props.deadline?'Starts after your tutor finishes.':remaining===0?'You can keep working.':'Time remaining'}>{remaining===0?'Time’s up':`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`}</span>}</div>
- <div className="practice-total" aria-label="Practice points earned">{summary.earnedPoints} points</div></>;
+ <div className={`practice-total${reward?' is-awarded':''}`} key={reward?.key??'total'} aria-label="Practice points earned" title={`${summary.earnedPoints} points earned`}><span aria-hidden="true">⭐</span><strong>{summary.earnedPoints}</strong></div>
+ <div className="practice-reward" role="status" aria-live="polite" aria-atomic="true">{reward&&<span key={reward.key}>+{reward.points} <span aria-hidden="true">⭐</span> Well done!</span>}</div></>;
 }

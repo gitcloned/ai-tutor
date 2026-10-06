@@ -14,14 +14,14 @@ import { CS } from '../types.js';
  * retain the full question. Filtering never changes the stored exercise.
  */
 export const get_next_question: Tool = {
-  name:        'get_next_question',
+  name: 'get_next_question',
   description: 'Read the current question. During assessment, idealAnswer is private evaluation material: do not reveal it or use it to coach the student. Teaching aids are included only outside assessment. Omit outcome to reread without advancing. Pass outcome only when the whole attempt is finished or deliberately stopped to record its result and advance.',
   schema: {
     type: 'object',
     properties: {
       outcome: {
-        type:        'string',
-        enum:        ['pass', 'fail', 'not_sure'],
+        type: 'string',
+        enum: ['pass', 'fail', 'not_sure'],
         description: 'Final outcome for the whole current question. Omit when starting, rereading, giving help, or evaluating an intermediate solution step.',
       },
     },
@@ -32,13 +32,13 @@ export const get_next_question: Tool = {
       return { error: 'No practice exercise is loaded for this concept.' };
     }
     const outcome = args['outcome'] as QuestionOutcome | undefined;
-    const result  = await ctx.practice.next(outcome);
-    ctx.session.questionProgress=ctx.practice.progress;
+    const result = await ctx.practice.next(outcome);
+    ctx.session.questionProgress = ctx.practice.progress;
 
     if (result.done) {
       const { total, passed, failed } = result.summary;
       return {
-        done:    true,
+        done: true,
         message: `Practice complete. ${passed}/${total} correct.`,
         summary: { total, passed, failed },
       };
@@ -51,10 +51,13 @@ export const get_next_question: Tool = {
     }
 
     return {
-      done:     false,
-      index:    result.index,
-      total:    result.total,
+      done: false,
+      index: result.index,
+      total: result.total,
       question,
+      reminder: [
+        '1) If student is not able to solve, analyse which step they are, consult the "stepsToSolve" and only help with next step',
+        '2) Keep equations and working on the left; short targeted annotations go on the right. Speak explanations instead of writing prose. '].join("\n")
     };
   },
 };

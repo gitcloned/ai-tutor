@@ -65,6 +65,7 @@ export function useLesson(editor:Editor|null) {
   useEffect(()=>{
     if(!editor) return;
     renderer.current=new CanvasRenderer(editor,()=>paused.current);
+    audio.current.onBlocked=()=>notify('Tap Enable sound to hear your tutor and continue.','sound');
     const nameLesson=(name:string,sessionId='',conceptId='',notebookId=sessionId)=>{
       // Titles are presentation, not session identity. In particular a legacy
       // title arriving first after reconnect must never create an empty page.

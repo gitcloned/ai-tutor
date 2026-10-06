@@ -11,7 +11,7 @@
  *   tools:  <comma-separated tool names>
  *
  * Template variables in the body:
- *   {{concept.title}}   {{probingTree}}   {{plan}}   {{memories}}
+ *   {{concept.title}}   {{probingTree}}   {{plan}}   {{current_question}}   {{memories}}
  */
 
 import { readFileSync, readdirSync } from 'fs';
@@ -83,6 +83,11 @@ function parseFrontmatter(block: string): Record<string, string> {
 
 function render(template: string, ctx: AgentContext): string {
   const planLines = ctx.plan.map(s => `[${s.status}] ${s.id}. ${JSON.stringify(s.content)}`).join('\n');
+  const currentQuestion = ctx.practice && ctx.journeyNode.state !== CS.NOT_ASSESSED && ctx.journeyNode.state !== CS.ASSESSING
+    ? JSON.stringify(ctx.practice.isDone
+      ? { done: true, total: ctx.practice.total, results: ctx.practice.progress }
+      : { done: false, index: ctx.practice.progress.length + 1, total: ctx.practice.total, question: ctx.practice.currentQuestion })
+    : 'No current question. Use get_next_question when the plan calls for question practice.';
   const memLines  = ctx.memories.length > 0
     ? ctx.memories.map(m => `- [${m.type}] ${m.content}`).join('\n')
     : 'None yet.';
@@ -95,6 +100,7 @@ function render(template: string, ctx: AgentContext): string {
     .replace('{{concept.title}}',  ctx.concept.title)
     .replace('{{probingTree}}',    JSON.stringify(ctx.concept.probingTree ?? {}, null, 2))
     .replace('{{plan}}',           planLines)
+    .replace('{{current_question}}', currentQuestion)
     .replace('{{memories}}',       memLines)
     .replace('{{prereq_context}}', prereqContext);
 }

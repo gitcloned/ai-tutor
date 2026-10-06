@@ -38,6 +38,7 @@ export interface Question {
   id:           string;
   stem?:        string | null;
   idealAnswer?: string | null;
+  successCriteria?: string[];
   type:         string;
   difficulty?:  string | null;
   score?:       number | null;

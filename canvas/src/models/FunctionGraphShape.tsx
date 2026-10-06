@@ -117,6 +117,7 @@ function FunctionGraphView({shape}:{shape:FunctionGraphShape}){
     const attempt:GraphAttempt={type:'graph-point',model:'function-graph',activityId:shape.props.activityId,equation:config.equation,...point,...result};
     if(!activity.submit(attempt)){setFeedback('Wait for your tutor, then try this point again.');return;}
     editor.updateShape<FunctionGraphShape>({id:shape.id,type:'function-graph',props:{points:JSON.stringify([...points.slice(-99),{...point,correct:result.correct}])}});
+    setCursor(null);
     if(result.correct)appreciate(editor,`graph:${shape.id}:${config.equation}:${point.x}`,shape.id);
     setFeedback(result.correct?(result.complete?'All points plotted. Well done!':'That point fits. Well done!'):
       config.targets.length&&!config.targets.some(x=>Math.abs(x-point.x)<1e-7)?'Use one of the requested x-values shown below.':

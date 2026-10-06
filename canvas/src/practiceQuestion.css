@@ -1,3 +1,31 @@
 .practice-card{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding:8px 0;color:#293e34;font-family:Inter,system-ui,sans-serif;pointer-events:all}
 .practice-stem{white-space:pre-wrap;font-size:30px;line-height:1.4;overflow-wrap:anywhere}.practice-score{font-size:14px;color:#506b58}
 .practice-summary{position:absolute;top:20px;left:120px;z-index:200;display:flex;align-items:center;gap:14px;padding:10px 18px;border:1px solid #dce4d3;border-radius:24px;background:#fffef9;color:#506b58;font:14px Inter,system-ui,sans-serif;pointer-events:none}.practice-summary strong{font-weight:600}.practice-summary>span{border-left:1px solid #dce4d3;padding-left:14px}.practice-total{position:absolute;right:100px;top:20px;z-index:200;padding:10px 16px;background:#fffef9;border:1px solid #dce4d3;border-radius:24px;color:#416653;font:14px Inter,system-ui,sans-serif;pointer-events:none}.practice-countdown{font-variant-numeric:tabular-nums;font-weight:600}.practice-countdown.urgent{color:#ad6426;animation:practice-tick 1s ease-in-out infinite}@keyframes practice-tick{50%{opacity:.55}}@media(prefers-reduced-motion:reduce){.practice-countdown.urgent{animation:none}}@media(max-width:700px){.practice-summary{left:12px;top:70px;font-size:12px;gap:8px;padding:8px 12px}.practice-summary>span{padding-left:8px}}
+
+.practice-total{display:flex;align-items:center;gap:7px;background:#fff3cd;border-color:#e8c66c;color:#704c0c;box-shadow:0 2px 8px #9a701018;font-size:16px}
+.practice-total>span:first-child{font-size:22px;line-height:1}.practice-total strong{font-size:20px;font-variant-numeric:tabular-nums}.practice-points-label{font-size:12px}
+.practice-total.is-awarded{animation:practice-points-pop .6s ease-out}
+.practice-reward{position:absolute;right:100px;top:78px;z-index:210;pointer-events:none;color:#704c0c;font:600 16px Inter,system-ui,sans-serif}
+.practice-reward>span{display:block;padding:12px 18px;background:#fff3cd;border:1px solid #e8c66c;border-radius:18px;box-shadow:0 4px 16px #9a701026;animation:practice-reward-in .3s ease-out}
+@keyframes practice-points-pop{0%,100%{transform:scale(1)}40%{transform:scale(1.15)}}
+@keyframes practice-reward-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.practice-total.is-awarded,.practice-reward>span{animation:none}}
+@media(max-width:700px){.practice-reward{top:122px;right:16px}}
+
+/* Compact practice chrome leaves the notebook as the main working surface. */
+.practice-stem{font-size:24px;line-height:1.4}
+.practice-stem p{margin:0 0 12px;white-space:pre-wrap}
+.practice-stem p:last-child{margin-bottom:0}
+.practice-summary{top:18px;font-size:13px;gap:10px;padding:6px 12px;border-radius:18px}
+.practice-summary>span{padding-left:10px}
+.practice-total{top:18px;padding:6px 11px;border-radius:18px;font-size:13px;box-shadow:none;background:#fff7dd}
+.practice-total>span:first-child{font-size:21px;line-height:normal}
+.practice-total strong{font-size:13px;font-weight:400}
+.practice-reward{top:62px;font-size:14px}
+.practice-reward>span{padding:8px 12px}
+.practice-test-controls{display:flex;align-items:center;gap:10px;font-size:12px;color:#68786b;white-space:nowrap}
+.practice-test-controls button{font-size:12px;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:700px){.practice-summary{top:66px}.practice-reward{top:110px}.practice-test-controls{gap:6px}}
+.lesson-title-row{display:flex;align-items:center;gap:12px;min-width:0}
+.lesson-title-row .notebook-button{flex:1;min-width:0}
+.practice-test-controls{flex-shrink:0}

@@ -20,6 +20,7 @@ export class CanvasRenderer {
   private origin=0;
   private started=false;
   private focused:TLShapeId|null=null;
+  private resumePracticeFocus=false;
   private questions:Questions;
   private layoutTail:Promise<void>=Promise.resolve();
   constructor(readonly editor:Editor,private paused:()=>boolean) {this.questions=new Questions(editor);editor.on('tick',this.keepModelVisible);}
@@ -27,20 +28,18 @@ export class CanvasRenderer {
   private teachingModels(){return this.editor.getCurrentPageShapes().filter(isTeachingModel).sort((a,b)=>Number(b.type==='practice-question')-Number(a.type==='practice-question'));}
   practiceStep(event:PracticePresentation){
     const page=this.editor.getCurrentPage();
-    this.editor.updatePage({id:page.id,meta:{...page.meta,practiceSummary:event.step?.type==='practice'&&event.practice?{earnedPoints:event.practice.earnedPoints}:null}});
+    this.editor.updatePage({id:page.id,meta:{...page.meta,practiceSummary:event.step?.type==='practice'&&event.practice?{earnedPoints:event.practice.earnedPoints,sessionId:event.sessionId,stepId:event.step.id}:null}});
     const before=this.editor.getCurrentPageShapes().find(s=>s.type==='practice-question'&&s.meta.unpinned!==true)?.id;
     const id=renderPractice(this.editor,event,()=>{
       for(const model of this.teachingModels())this.editor.updateShape({id:model.id,type:model.type,meta:{...model.meta,unpinned:true}});
       this.questions.start('end');
-      const bounds=this.editor.getCurrentPageBounds();this.cursor=bounds?bounds.maxY+80:100;
+      const bounds=this.editor.getCurrentPageBounds();this.cursor=bounds?bounds.maxY+160:100;
       return {x:140,y:this.cursor};
     });
-    if(id&&id!==before){
-      const card=this.editor.getShape(id)!;
-      const workId=createShapeId();
-      this.editor.createShape({id:workId,type:'text',x:card.x,y:card.y+('h' in card.props?Number(card.props.h):100)+32,meta:{author:'tutor',kind:'practice-working',practiceQuestionId:id},props:{richText:toRichText('Your working'),size:'s',font:'sans',color:'grey',w:500,autoSize:false}});
+    if(id&&(id!==before||this.resumePracticeFocus)){
       this.focused=null;this.focus(id);
     }
+    this.resumePracticeFocus=false;
   }
   private keepModelVisible=()=>{
     if(!this.follow)return;
@@ -71,6 +70,7 @@ export class CanvasRenderer {
     return removed;
   }
   resumeLesson(id:ReturnType<typeof PageRecordType.createId>){
+    this.resumePracticeFocus=true;
     this.editor.setCurrentPage(id);
     this.started=true;this.origin=0;this.follow=true;this.focused=null;
     this.questions=new Questions(this.editor);
@@ -91,9 +91,12 @@ export class CanvasRenderer {
     if(isModel){
       if(model?.type==='practice-question')return {x:model.x,y:model.y+model.props.h+24};
       const point=resolvePlacement(block.attrs,w,h,{x:260,y:this.cursor},obstacles);
-      // A pinned model travels vertically with the camera. Reserve its entire
-      // column, including space beside content written before it was loaded.
-      if(obstacles.length)point.x=Math.min(point.x,...obstacles.map(bounds=>bounds.x-w-40));
+      // Anchor to the current discussion, not the leftmost shape in the whole
+      // notebook. Archived graphs otherwise push each new graph farther left.
+      const focused=this.focused?this.editor.getShape(this.focused):undefined;
+      const discussion=focused&&focused.type!=='function-graph'&&focused.type!=='model3d'
+        ?this.questions.rowBounds(focused.id)??this.editor.getShapePageBounds(focused.id):null;
+      point.x=(discussion?.x??260)-w-40;
       return point;
     }
     const right=model?model.x+Math.max(...this.teachingModels().map(s=>s.props.w))+40:260;

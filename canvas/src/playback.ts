@@ -147,6 +147,7 @@ type StreamDiagnostic = {
   underruns: number; gapMs: number; maxGapMs: number;
 };
 export class AudioPlayer {
+  onBlocked?:()=>void;
   private context:AudioContext|null=null;
   private streams:StreamDiagnostic[]=[];
   snapshot() {
@@ -157,9 +158,24 @@ export class AudioPlayer {
   }
   get state(){return this.context?.state??'not-created';}
   unlock() { this.context??=new AudioContext(); return this.context.resume(); }
+  private async ready(signal:AbortSignal) {
+    if(signal.aborted)throw new DOMException('Cancelled','AbortError');
+    let reported=false;
+    const blocked=()=>{if(!reported&&!signal.aborted){reported=true;this.onBlocked?.();}};
+    // Safari can leave resume() pending until a gesture. Keep the narration
+    // queued, but expose recovery and allow disconnect to cancel this wait.
+    void this.unlock().catch(blocked);
+    const context=this.context!;
+    const start=Date.now();
+    while(context.state!=='running'){
+      if(signal.aborted||context.state==='closed')throw new DOMException('Cancelled','AbortError');
+      if(Date.now()-start>=800)blocked();
+      await new Promise(resolve=>setTimeout(resolve,25));
+    }
+  }
   pause(value:boolean) { if(this.context) void (value?this.context.suspend():this.context.resume()); }
   async play(base64:string,signal:AbortSignal,progress?:(elapsed:number,duration:number)=>void) {
-    await this.unlock();
+    await this.ready(signal);
     const bytes=Uint8Array.from(atob(base64),ch=>ch.charCodeAt(0));
     const buffer=await this.context!.decodeAudioData(bytes.buffer);
     if(signal.aborted) return;
@@ -173,7 +189,7 @@ export class AudioPlayer {
     });
   }
   async playStream(stream:PcmStream, signal:AbortSignal, estimatedDuration:number, progress?:(elapsed:number,duration:number)=>void) {
-    await this.unlock();
+    await this.ready(signal);
     if(signal.aborted)throw new DOMException('Cancelled','AbortError');
     const context=this.context!;
     const waitingSince=Date.now();

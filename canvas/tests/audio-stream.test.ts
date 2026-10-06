@@ -119,3 +119,34 @@ it('records a late chunk as a playback gap without speeding up the samples',asyn
   expect(metrics.gapMs).toBeGreaterThan(400);
   expect(starts[1]-starts[0]).toBeGreaterThan(0.7);
 });
+
+it('offers recovery when Safari resume stays pending, then plays the queued audio after a tap',async()=>{
+  const {starts}=mockAudio();
+  let blockedContext:any;
+  const Base=globalThis.AudioContext;
+  class BlockedContext extends Base {
+    state='suspended' as AudioContextState;
+    constructor(){super();blockedContext=this;}
+    resume(){return new Promise<void>(()=>{});}
+  }
+  vi.stubGlobal('AudioContext',BlockedContext);
+  const player=new AudioPlayer();player.onBlocked=vi.fn();
+  const stream={chunks:[new Uint8Array(4800)],byteLength:4800,sampleRate:24000,done:true};
+  let finished=false;
+  const pending=player.playStream(stream as any,new AbortController().signal,0).then(()=>{finished=true;});
+  await vi.advanceTimersByTimeAsync(825);
+  expect(player.onBlocked).toHaveBeenCalledTimes(1);expect(finished).toBe(false);expect(starts).toHaveLength(0);
+  blockedContext.state='running';
+  await vi.advanceTimersByTimeAsync(300);await pending;
+  expect(finished).toBe(true);expect(starts).toHaveLength(1);
+});
+
+it('cancels pending Safari audio permission without blocking the playback queue',async()=>{
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext',class {state='suspended';resume(){return new Promise<void>(()=>{});}});
+  const player=new AudioPlayer(),controller=new AbortController();player.onBlocked=vi.fn();
+  const pending=player.playStream({chunks:[],byteLength:0,sampleRate:24000,done:true} as any,controller.signal,0);
+  const check=expect(pending).rejects.toMatchObject({name:'AbortError'});
+  controller.abort();await vi.advanceTimersByTimeAsync(25);await check;
+  expect(player.onBlocked).not.toHaveBeenCalled();
+});

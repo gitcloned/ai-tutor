@@ -180,7 +180,7 @@ export default function App() {
       </VideoCardContext.Provider>
       </PageStackContext.Provider>
     </section>
-    {binding?.test&&<div style={{position:'absolute',bottom:110,left:120,zIndex:210,background:'#fffef9',border:'1px solid #dce4d3',borderRadius:20,padding:'8px 16px',display:'flex',gap:16}}><span>Test · {binding.test.stage}</span><button disabled={startingNext} onClick={async()=>{setStartingNext(true);try{await launchTest(binding.test!.conceptId,binding.test!.stage);}catch(e){lesson.notify((e as Error).message);setStartingNext(false);}}}>Restart</button></div>}
+
     {editor&&<PracticeHeader editor={editor}/>}
     {!hasContent && !lesson.connected && !openingNotebook && !reviewNotebook && !notebookError && <div className="welcome"><span className="welcome-mark"><Leaf size={28} strokeWidth={1.3}/></span><p className="welcome-kicker">Let curiosity lead.</p><h1>Big ideas start<br/>with a little scribble.</h1><p>A space to wonder, work things out,<br/>and learn together with your tutor.</p><button className="primary" onClick={connectTutor}>Start learning <ArrowUpRight size={17}/></button><span className="welcome-note">Or pick up a pencil and make this space yours.</span></div>}
     {hasContent && <div className="canvas-caption"><span className="tiny-leaf"><Leaf size={14}/></span><span>Your thinking belongs here.</span></div>}
@@ -193,8 +193,9 @@ export default function App() {
     <footer className="tutor-space" aria-label="Tutor and responses">
     <button className="canvas-back" aria-label="Go back" title="Go back" onClick={()=>{if(location.pathname.startsWith('/sessions/')){void leaveLesson();}else if(location.pathname==='/test-session'){lesson.disconnect();window.location.assign('/home');}else if(window.history.length>1)window.history.back();else window.location.assign('/home');}}><ArrowLeft size={18}/></button>
     <div className="lesson-tools">
-      <button className="notebook-button lesson-breadcrumb" aria-label="Lesson notebook" title="Lesson notebook" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</button>
+      <div className="lesson-title-row"><button className="notebook-button lesson-breadcrumb" aria-label="Lesson notebook" title="Lesson notebook" onClick={()=>setNotebook(!notebook)}><BookOpen size={17}/>{editor?<LessonName editor={editor}/>:<strong>Your canvas</strong>}</button>{binding?.test&&<div className="practice-test-controls"><span>Test · {binding.test.stage}</span><button disabled={startingNext} onClick={async()=>{setStartingNext(true);try{await launchTest(binding.test!.conceptId,binding.test!.stage);}catch(e){lesson.notify((e as Error).message);setStartingNext(false);}}}>Restart</button></div>}</div>
       <div className="lesson-tools-actions"><button className={`connection ${lesson.connected?'online':''}`} onClick={connectTutor} title="Tutor connection"><span/>{lesson.connected?'Connected':lesson.phase==='connecting'?'Connecting…':'Connect tutor'}</button>
+
     <div className="footer-utilities">{editor&&<CanvasControls editor={editor} fit={lesson.fit}/>}<button title="Export page" aria-label="Export page" onClick={exportPage}><Download size={16}/></button></div>
       </div>
     </div>

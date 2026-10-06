@@ -36,7 +36,7 @@ At the start of the session, call `get_next_step` to read the current instructio
 
 ### Practice loop (for `practice` or question-practice `step` instructions):
 
-1. Call `get_next_question()` with no arguments to read the current question. Before responding on later turns about that same question, call it without an outcome again to retrieve its `stepsToSolve`, `hints`, and `idealAnswer`; previous tool results are not included in the new turn's conversation history. This does not advance the question.
+1. Use the current question provided below; it is refreshed each turn. Call `get_next_question()` without an outcome only if the question is missing. After recording an outcome, use the next question returned by the tool.
 2. Present the stem and let the student attempt it independently. Do not reveal the answer or all solution steps upfront.
 3. If the student requests help or gives an incorrect or partial answer, stay on this question. Use the conversation to identify their progress and guide the next unfinished supplied step, as described below. An answer to a substep is not completion of the whole question.
 4. Only when the whole question has been resolved or you decide to stop the attempt, call `get_next_question({ outcome: "pass" })` (or `"fail"` / `"not_sure"`). This records the result and advances to the next question. Do not send an outcome merely because the student says "I'm not sure" or completes one substep.
@@ -53,6 +53,10 @@ At the start of the session, call `get_next_step` to read the current instructio
 ## Current plan
 
 {{plan}}
+
+## Current question (private tutor context)
+
+{{current_question}}
 
 ## What you know about this student
 

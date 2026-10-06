@@ -64,7 +64,7 @@ test('graph assesses mouse/touch attempts, sends structured results, reveals and
   expect(messages).toHaveLength(2);
   send({type:'audio_chunk',content:btoa('Now plot the next point.'),attrs:{mimeType:'text/plain'}});end();
   await place(3,3);await expect.poll(()=>messages.length).toBe(3);
-  await expect(graph.locator('.graph-crosshair circle')).toHaveAttribute('fill','#2d7851');
+  await expect(graph.locator('.graph-crosshair')).toHaveCount(0);
   await expect(graph.locator('[data-result="correct"] circle').first()).toHaveAttribute('fill','#356aca');end();
   await place(4,5,true);await expect.poll(()=>messages.length).toBe(4);end();
   expect(messages[3].activity).toMatchObject({correct:true,complete:true,remaining:[]});
@@ -135,6 +135,7 @@ test('graph updated while culled restores its plot at full size on return',async
 });
 
 test('opening a graph after removal keeps the old graph and activates a fresh graph beside the discussion',async({page})=>{
+  await page.setViewportSize({width:1180,height:820});
   let socket:WebSocketRoute;const messages:any[]=[];
   await page.routeWebSocket('**/graph-lifecycle',ws=>{socket=ws;ws.onMessage(data=>messages.push(JSON.parse(String(data))));});
   await page.goto('/test-session');
@@ -160,6 +161,12 @@ test('opening a graph after removal keeps the old graph and activates a fresh gr
   await expect(active).toHaveAttribute('data-ready','true');
   await expect(active.locator('header strong')).toHaveText('y = 2x + 1');
   await expect(active).toBeInViewport();await expect(discussion).toBeInViewport();
+  // Old graphs must not reserve an extra column between this graph and its work.
+  await expect.poll(async()=>{
+    const graphBox=await active.boundingBox(),textBox=await discussion.boundingBox();
+    return graphBox&&textBox?Math.round((textBox.x-graphBox.x-graphBox.width)/graphBox.width*560):-1;
+  }).toBe(40);
+  await page.screenshot({path:'test-results/two-graphs-aligned.png'});
   await expect(old).toHaveAttribute('data-points','1');
   await expect(old).toHaveAttribute('data-active','false');
   // Archived graphs cannot send answers, even when accessed with the keyboard.

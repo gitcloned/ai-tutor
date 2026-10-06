@@ -25,6 +25,16 @@ export function useLesson(editor:Editor|null) {
   const [endedTurns,setEndedTurns]=useState(0);
   const [savedTurn,setSavedTurn]=useState(0);
   const pendingPractice=useRef<PracticePresentation|null>(null);
+  const openingPractice=useRef<PracticePresentation|null>(null);
+  const openingPracticeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  function clearOpeningPractice(){
+    if(openingPracticeTimer.current)clearTimeout(openingPracticeTimer.current);
+    openingPracticeTimer.current=null;openingPractice.current=null;
+  }
+  function showOpeningPractice(){
+    const event=openingPractice.current;clearOpeningPractice();
+    if(event)renderer.current?.practiceStep(event);
+  }
   const [completed,setCompleted]=useState(false);
   const setBusy=(value:boolean)=>{busyRef.current=value;setTutorBusy(value);};
   const [follow,setFollow]=useState(true); const [simulated,setSimulated]=useState(false);
@@ -105,6 +115,7 @@ export function useLesson(editor:Editor|null) {
         nameLesson(block.content.replace(/^📖\s*/,''));return;
       }
       if(block.kind==='speech') {
+        showOpeningPractice();
         waiting.current=false;setQuestion('');setSimulated(true);setPhase('speaking');if(!block.attrs.localReplay)log('tutor',block.content);
         const duration=Math.min(4500,Math.max(1000,block.content.length*28));
         for(let elapsed=0;elapsed<duration;elapsed+=40) {
@@ -119,10 +130,12 @@ export function useLesson(editor:Editor|null) {
         const sentence=block.attrs.sentence;
         if(sentence){setCaption('');if(!block.attrs.localReplay)log('tutor',sentence);}
         let visible='';
-        const progress=sentence?(elapsed:number,duration:number)=>{
+        const progress=(elapsed:number,duration:number)=>{
+          if(elapsed>0)showOpeningPractice();
+          if(!sentence)return;
           const prefix=spokenPrefix(sentence,elapsed,duration);
           if(prefix.length>=visible.length){visible=prefix;setCaption(prefix);}
-        }:undefined;
+        };
         if(block.audioStream)await audio.current.playStream(block.audioStream,signal,(sentence?.length??0)/14,progress);
         else await audio.current.play(block.content,signal,progress);
         return;
@@ -150,7 +163,12 @@ export function useLesson(editor:Editor|null) {
             const event=block.action as unknown as PracticePresentation;
             const current=editor.getCurrentPageShapes().find((s):s is PracticeShape=>s.type==='practice-question'&&s.meta.unpinned!==true);
             const key=event.practice?.question?`${event.sessionId}:${event.step?.id}:${event.practice.question.id}`:null;
-            if(pendingPractice.current||(current&&current.props.key!==key))pendingPractice.current=event;
+            const existing=editor.getCurrentPageShapes().some(s=>s.type==='practice-question'&&(s as PracticeShape).props.key===key);
+            if(event.practice?.index===1&&key&&!existing){
+              openingPractice.current=event;
+              if(!openingPracticeTimer.current)openingPracticeTimer.current=setTimeout(showOpeningPractice,3000);
+            }
+            else if(pendingPractice.current||(current&&current.props.key!==key))pendingPractice.current=event;
             else renderer.current?.practiceStep(event);
           }
           else if(block.action.type==='send-ok') {
@@ -160,6 +178,7 @@ export function useLesson(editor:Editor|null) {
           }
         } return;
       }
+      showOpeningPractice();
       setPhase('writing');setCaption(block.kind==='svg'?'Let’s look at this together.':'Follow along, or try it yourself.');
       await renderer.current!.render(block,signal);
       if(signal.aborted) return;
@@ -171,6 +190,7 @@ export function useLesson(editor:Editor|null) {
       setBusy(active);
       if(socket.current?.readyState===WebSocket.OPEN && !paused.current) setPhase(active?'thinking':waiting.current?'waiting':'ready');
     },undefined,()=>renderer.current?.hasActiveQuestion??false,()=>{
+      showOpeningPractice();
       if(pendingPractice.current){renderer.current?.practiceStep(pendingPractice.current);pendingPractice.current=null;}
       startPracticeTimer(editor);
       // Choose the appropriate input tool after presentation, including when a
@@ -184,10 +204,10 @@ export function useLesson(editor:Editor|null) {
     player.current=playback;
     const diagnostics=()=>({playback:playback.snapshot(),audio:audio.current.state,audioStreaming:audio.current.snapshot(),turnActive:turnActive.current,tutorBusy:busyRef.current,following:renderer.current?.follow,events:[...trace.current]});
     window.canvasPlaybackDiagnostics=diagnostics;
-    return ()=>{clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
+    return ()=>{clearOpeningPractice();clearConnectTimer();if(window.canvasPlaybackDiagnostics===diagnostics)delete window.canvasPlaybackDiagnostics;if(sentTimer.current)clearTimeout(sentTimer.current);renderer.current?.dispose();socket.current?.close();socket.current=null;playback.cancel();audio.current.close();};
   },[editor,notify]);
   function connect(url:string) {
-    setConnectionError('');setCompleted(false);pendingPractice.current=null;
+    clearOpeningPractice();setConnectionError('');setCompleted(false);pendingPractice.current=null;
     try{url=normalizeTutorUrl(url);}catch(error){setConnectionError((error as Error).message);return false;}
     if(!player.current) return false;
     clearConnectTimer();setConnected(false);
@@ -213,7 +233,7 @@ export function useLesson(editor:Editor|null) {
       try {
         lastReceivedAt=Date.now();
         const event=JSON.parse(e.data) as WireEvent;if(!event || typeof event.type!=='string') throw new Error();
-        if(event.type==='error'){player.current?.cancel();adapter.current.reset();clearSubmission();setPhase('ready');notify(event.message||'Your tutor could not respond. Please try again.','tutor-retry');return;}
+        if(event.type==='error'){showOpeningPractice();player.current?.cancel();adapter.current.reset();clearSubmission();setPhase('ready');notify(event.message||'Your tutor could not respond. Please try again.','tutor-retry');return;}
         if(event.type==='event'&&event.event?.type==='session-completed'){setCompleted(true);clearSubmission();setSavedTurn(count=>count+1);return;}
         record(`received:${event.type}${event.event?.type?`:${event.event.type}`:''}`);
         if(event.type==='event'&&event.event?.type==='tutor-started'){turnActive.current=true;receivedReply();setBusy(true);setPhase('thinking');}
@@ -239,11 +259,12 @@ export function useLesson(editor:Editor|null) {
     };
     ws.onerror=()=>{if(socket.current!==ws)return;if(!opened)failed('We could not reach this tutor. Check your Wi-Fi and that the tunnel is running, or choose another address.');else notify('We could not reach your tutor. Check your connection and try again.','connect');};
     ws.onclose=event=>{if(socket.current!==ws)return;
+      clearOpeningPractice();
       const details={time:new Date().toISOString(),code:event.code,reason:event.reason,wasClean:event.wasClean,connectedMs:Date.now()-connectedAt,lastMessageAgoMs:Date.now()-lastReceivedAt,online:navigator.onLine};
       console.warn('Tutor WebSocket closed',details);record(`socket-close:${JSON.stringify(details)}`);if(!opened){failed('The tutor connection closed before it was ready. Try another address or check that the server is running.');return;}clearConnectTimer();rewatching.current=false;clearSubmission();preserveVideoOnAbort.current=true;player.current?.cancel();preserveVideoOnAbort.current=false;adapter.current.reset();setConnected(false);setPhase('offline');setCaption('Your notebook is saved on this device.');paused.current=false;notify(navigator.onLine?'Your tutor connection was lost. Your notebook is saved. Reconnect when you are ready.':'Your internet connection was lost. Check your Wi-Fi, then reconnect. Your notebook is saved.','connect');};
     return true;
   }
-  function disconnect(){clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();adapter.current.reset();setConnected(false);setPhase('offline');}
+  function disconnect(){clearOpeningPractice();clearConnectTimer();setConnectionError('');rewatching.current=false;setVideo(null);paused.current=false;connectionVersion.current++;clearSubmission();const ws=socket.current;socket.current=null;ws?.close();setIssue(null);player.current?.cancel();adapter.current.reset();setConnected(false);setPhase('offline');}
   function beforeDeletePage(id:ReturnType<Editor['getCurrentPageId']>){
     if(socket.current&&(connectionPage.current===id||(!connectionPage.current&&editor?.getCurrentPageId()===id))){
       disconnect();connectionPage.current=null;

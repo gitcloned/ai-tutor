@@ -108,3 +108,10 @@
 .notebook-resume { position:absolute; z-index:450; right:34px; bottom:180px; display:flex; flex-direction:column; gap:10px; align-items:center; max-width:300px; padding:16px 20px; border:1px solid #d6dfd0; border-radius:20px; background:#fffefa; box-shadow:0 8px 32px #29443315; color:#416653; font-size:15px; }
 .notebook-resume .primary { min-height:46px; }
 @media(max-width:600px){.notebook-resume{right:16px;bottom:150px;max-width:250px;}}
+
+.orb-camera-cue{position:absolute;bottom:calc(100% + 12px);right:0;display:flex;align-items:center;gap:12px;width:210px;padding:12px 14px;border:1px solid var(--line);border-radius:16px;background:var(--paper);box-shadow:0 4px 18px #293e3410;color:var(--green);font-size:13px;line-height:1.4;pointer-events:none}
+.orb-camera-cue::after{content:'';position:absolute;right:55px;bottom:-6px;width:10px;height:10px;background:var(--paper);border-right:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+.camera-tap-demo{position:relative;display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#e8eee2}
+.camera-tap-demo svg:last-child{position:absolute;right:-5px;bottom:-5px;animation:camera-double-tap 1.6s ease-in-out 4}
+@keyframes camera-double-tap{0%,45%,100%{transform:translateY(3px) scale(1)}15%,35%{transform:translateY(-3px) scale(.85)}25%{transform:translateY(3px) scale(1)}}
+@media(prefers-reduced-motion:reduce){.camera-tap-demo svg:last-child{animation:none}}

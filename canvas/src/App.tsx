@@ -122,12 +122,13 @@ export default function App() {
   const captionText=useRef<HTMLParagraphElement>(null);
   useEffect(()=>{const text=captionText.current;if(text)text.scrollTop=text.scrollHeight;},[lesson.caption]);
   const [preparing,setPreparing]=useState(false);
+  const [cameraCue,setCameraCue]=useState(0);
   const [camera,setCamera]=useState(false),[attachments,setAttachments]=useState<Record<string,CameraPage[]>>({}),[pagePreview,setPagePreview]=useState<string[]|null>(null);
   const canvasPage=useValue('camera attachment page',()=>editor?.getCurrentPageId()??'',[editor]);
   const cameraPages=attachments[canvasPage]??[];
   function setCameraPages(update:(pages:CameraPage[])=>CameraPage[]){setAttachments(current=>({...current,[canvasPage]:update(current[canvasPage]??[])}));}
-  useEffect(()=>{setCamera(false);setPagePreview(null);},[canvasPage]);
-  useEffect(()=>{if(lesson.openCamera){setCamera(true);lesson.resetOpenCamera();}},[lesson.openCamera]);
+  useEffect(()=>{setCamera(false);setCameraCue(0);setPagePreview(null);},[canvasPage]);
+  useEffect(()=>{if(lesson.openCamera){setCameraCue(Date.now());lesson.resetOpenCamera();}},[lesson.openCamera]);
   const cameraPagesRef=useRef(cameraPages);cameraPagesRef.current=cameraPages;
   const canvasPointer=useRef<{x:number;y:number}|null>(null);
   const work=useRef<StudentWork|null>(null),sending=useRef(false),pendingAudio=useRef<MediaInput|undefined>(undefined);
@@ -200,7 +201,7 @@ export default function App() {
       </div>
     </div>
     {lesson.caption&&lesson.connected&&<div className={`caption ${lesson.phase==='waiting'?'question-caption':''}`} aria-live="polite"><span>{lesson.phase==='waiting'?'Take your time':lesson.simulated?'Replay narration':'Your tutor'}</span><p ref={captionText} tabIndex={0} aria-label="Tutor captions">{lesson.caption}</p></div>}
-    <Orb pageCount={cameraPages.length} onCamera={()=>setCamera(true)} tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
+    <Orb cameraCue={cameraCue} pageCount={cameraPages.length} onCamera={()=>{setCameraCue(0);setCamera(true);}} tutorBusy={lesson.tutorBusy} phase={lesson.phase} submission={lesson.submission} preparing={preparing} watching={!!lesson.video} onTap={tapOrb} onAudio={audio=>{learnedInput('speak');void sendWork(audio);}} onRecording={lesson.recording} notify={lesson.notify}/>
     </footer>
     {editor&&<Appreciation editor={editor}/>}
     {editor&&<HelpChips editor={editor} turn={lesson.endedTurns} ready={lesson.connected&&!lesson.tutorBusy&&lesson.submission==='idle'&&!preparing&&!lesson.video&&!camera&&!pagePreview&&!sheet&&!notebook&&(!lesson.issue||lesson.issue.action==='tutor-retry')&&['ready','waiting'].includes(lesson.phase)} canRepeat={lesson.canRepeat} repeat={lesson.repeatNarration} send={text=>lesson.send(text)}/>}

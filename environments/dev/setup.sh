@@ -40,6 +40,11 @@ load_dotenv() {
 
 # ── Write nginx config ────────────────────────────────────────────────────────
 write_nginx_config() {
+  local report_file="$REPO_DIR/docs/Fluento — Student Growth Report – Growth Report.html"
+  if [ -f "$report_file" ]; then
+    sudo install -d -m 755 /var/www/prodigy
+    sudo install -m 644 "$report_file" /var/www/prodigy/growth-report.html
+  fi
   sudo tee /etc/nginx/sites-available/prodigy > /dev/null <<NGINXEOF
 # Prodigy — managed by setup.sh
 # HTTP: certbot ACME + redirect to HTTPS once cert exists
@@ -112,6 +117,12 @@ server {
         proxy_set_header   X-Real-IP \$remote_addr;
         proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+
+    # Standalone student growth report
+    location = /growth-report {
+        alias /var/www/prodigy/growth-report.html;
+        default_type text/html;
     }
 
     # Canvas

@@ -1,9 +1,11 @@
 import {useRef,useState,useEffect} from 'react';
-import {Mic,Check,LoaderCircle} from 'lucide-react';
+import {Mic,Check,LoaderCircle,Camera,Hand} from 'lucide-react';
 import type {Phase} from './useLesson';
 import {blobInput,type MediaInput} from './studentWork';
 
-export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,watching=false,onCamera,pageCount=0,onTap,onAudio,onRecording,notify}:{tutorBusy?:boolean;phase:Phase;submission?:'idle'|'sent'|'waiting';preparing?:boolean;watching?:boolean;onCamera?:()=>void;pageCount?:number;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string,action?:'connect'|'reply'|'retry'|'sound')=>void}) {
+export function Orb({cameraCue=0,tutorBusy=false,phase,submission='idle',preparing=false,watching=false,onCamera,pageCount=0,onTap,onAudio,onRecording,notify}:{cameraCue?:number;tutorBusy?:boolean;phase:Phase;submission?:'idle'|'sent'|'waiting';preparing?:boolean;watching?:boolean;onCamera?:()=>void;pageCount?:number;onTap:()=>void;onAudio:(audio:MediaInput)=>void;onRecording:(active:boolean)=>void;notify:(text:string,action?:'connect'|'reply'|'retry'|'sound')=>void}) {
+  const [showCameraCue,setShowCameraCue]=useState(false);
+  useEffect(()=>{setShowCameraCue(cameraCue>0);if(!cameraCue)return;const timeout=setTimeout(()=>setShowCameraCue(false),6500);return()=>clearTimeout(timeout);},[cameraCue]);
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null),held=useRef(false),pressed=useRef(false),cancelled=useRef(false);
   const secondTap=useRef(false),openCameraClick=useRef(false);
   const tapTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -65,6 +67,7 @@ export function Orb({tutorBusy=false,phase,submission='idle',preparing=false,wat
     else tapTimer.current=setTimeout(()=>{tapTimer.current=null;if(!tapCallbacks.current.unavailable)tapCallbacks.current.onTap();},350);
   }
   return <div className="orb-wrap">
+    {showCameraCue&&<div className="orb-camera-cue" role="status"><span className="camera-tap-demo" aria-hidden="true"><Camera size={20}/><Hand size={18}/></span><span>Double-tap the orb<br/>to open camera</span></div>}
     <span className="orb-label" aria-live="polite">{listening?'Listening…':requesting?'Opening microphone…':pressing?'Keep holding…':status??(watching?'Watch at your pace':({offline:'Meet your tutor',connecting:'Connecting…',ready:'Here with you',thinking:'Thinking…',speaking:'Explaining…',writing:'Writing…',waiting:'Your turn',paused:'Paused'})[phase])}</span>
     <button data-state={state} className={`orb ${busy?'active':''} ${listening?'listening':''} ${unavailable?'unavailable':'available'} ${submission==='sent'?'submitted':''}`} disabled={unavailable} aria-busy={tutorBusy||preparing||submission==='waiting'} aria-label={listening?'Release to send audio':'Send new work; hold to speak'}
       onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);startPoint.current={x:e.clientX,y:e.clientY};begin();}}

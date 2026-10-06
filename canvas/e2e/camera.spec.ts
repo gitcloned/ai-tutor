@@ -4,7 +4,9 @@ test.use({hasTouch:true,launchOptions:{args:['--use-fake-device-for-media-stream
 async function connect(page:Page){
   const messages:any[]=[];let socket:WebSocketRoute;
   await page.routeWebSocket('**/camera-test',ws=>{socket=ws;ws.onMessage(data=>messages.push(JSON.parse(String(data))));});
-  await page.goto('/');await page.getByRole('button',{name:'Start learning'}).click();
+  await page.addInitScript(()=>sessionStorage.setItem('prodigy-journey-live-identity',JSON.stringify({type:'student',studentId:'child',token:'test',name:'Child'})));
+  await page.route('**/me',r=>r.fulfill({json:{type:'student',studentId:'child',name:'Child'}}));
+  await page.goto('/test-session');
   await page.getByLabel('Tutor address').fill('ws://localhost:32004/camera-test');
   await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
   await expect(page.locator('.connection')).toContainText('Connected');
@@ -87,13 +89,18 @@ test('camera permission failure offers retry and does not discard captured pages
 });
 
 
-test('tutor opens camera after turn end without submitting photos automatically',async({page})=>{
+test('tutor shows a camera cue after turn end and waits for the student double tap',async({page})=>{
   const {messages,event}=await connect(page);
   event({type:'event',event:{type:'tutor-started'}});
   event({type:'action',action:{type:'open-camera'}});
   await page.waitForTimeout(300);
   await expect(page.getByRole('dialog',{name:'Show your work'})).toHaveCount(0);
   event({type:'event',event:{type:'tutor-ended'}});
+  await expect(page.locator('.orb-camera-cue')).toContainText('Double-tap the orb');
+  await expect(page.getByRole('dialog',{name:'Show your work'})).toHaveCount(0);
+  const orb=page.getByRole('button',{name:'Send new work; hold to speak'});
+  await orb.tap();await orb.tap();
+  await expect(page.locator('.orb-camera-cue')).toHaveCount(0);
   await expect(page.getByRole('dialog',{name:'Show your work'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Capture page',exact:true})).toBeEnabled();
   expect(messages).toHaveLength(0);

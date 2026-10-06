@@ -76,3 +76,23 @@ test('resume focuses the pending practice question even when saved focus is else
  await page.getByRole('button',{name:'Let’s start',exact:true}).click();
  await expect(page.getByRole('region',{name:'Practice question 1'})).toBeInViewport({ratio:.99});
 });
+
+for(const speech of [true,false])test(`first practice question waits for ${speech?'speech playback':'the three-second fallback'}`,async({page})=>{
+ let socket:WebSocketRoute;
+ await page.addInitScript(()=>sessionStorage.setItem('prodigy-journey-live-identity',JSON.stringify({type:'student',studentId:'child',token:'test',name:'Child'})));
+ await page.route('**/me',r=>r.fulfill({json:{type:'student',studentId:'child',name:'Child'}}));
+ await page.routeWebSocket('**/practice-opening',ws=>{socket=ws;});
+ await page.goto('/test-session');await page.getByLabel('Tutor address').fill('ws://localhost:32004/practice-opening');await page.getByRole('button',{name:'Connect to tutor',exact:true}).click();
+ await expect(page.locator('.connection')).toContainText('Connected');
+ const send=(event:unknown)=>socket!.send(JSON.stringify(event));
+ send({type:'event',event:{type:'tutor-started'}});
+ send({type:'event',event:{type:'step-changed',sessionId:'opening',step:{id:'1',type:'practice'},practice:{index:1,total:2,earnedPoints:0,question:{id:'q',stem:'Find y when x = 2.',points:1},results:[]}}});
+ const card=page.getByRole('region',{name:'Practice question 1'});
+ await page.waitForTimeout(400);await expect(card).toHaveCount(0);
+ if(speech){
+  send({type:'audio_chunk',content:Buffer.alloc(24000).toString('base64'),attrs:{mimeType:'audio/pcm',sampleRate:'24000',streamId:'intro',sentence:'Try this question.'}});
+  await expect(card).toBeVisible({timeout:1500});
+  send({type:'audio_chunk',content:'',attrs:{mimeType:'audio/pcm',sampleRate:'24000',streamId:'intro',streamEnd:'true'}});
+ }else await expect(card).toBeVisible({timeout:3500});
+ send({type:'event',event:{type:'tutor-ended'}});
+});

@@ -30,7 +30,7 @@
   {
     "id": "q3",
     "timeSeconds": 30,
-    "order": 3,
+    "order": 2,
     "type": "open",
     "difficulty": "easy",
     "score": 1,
@@ -48,7 +48,7 @@
   {
     "id": "q2",
     "timeSeconds": 90,
-    "order": 2,
+    "order": 3,
     "type": "open",
     "difficulty": "medium",
     "score": 2,

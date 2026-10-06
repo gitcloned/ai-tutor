@@ -101,3 +101,19 @@ body{margin:0}
 .j-child-setup>.j-primary{flex-shrink:0;margin-top:0}
 .j-child-setup .j-picker-summary{margin-top:8px}
 @media(max-width:600px){.j-child-setup .j-topic-picker>p{font-size:12px;margin-bottom:8px}.j-child-setup .j-topic-filters{gap:0 12px}.j-child-setup .j-topic-tools{padding:4px 0}.j-child-setup .j-topic-choice{padding:8px 10px}}
+
+/* Decorative layer only; the original art slot preserves the form layout. */
+.j-login-page{position:relative;isolation:isolate}
+.j-login-background{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.j-login-background img{position:absolute;left:28%;top:58%;transform:translate(-50%,-50%);width:max(720px,72vw);height:auto;max-width:none;opacity:1;mix-blend-mode:multiply;clip-path:inset(0 8%);-webkit-mask-image:radial-gradient(ellipse at center,#000 42%,transparent 72%);mask-image:radial-gradient(ellipse at center,#000 42%,transparent 72%)}
+.j-savanna img{visibility:hidden}
+.j-entry-heading-space{height:calc(clamp(30px,4.5vh,43px) * 2.32);margin-bottom:14px}
+@media(max-width:600px){.j-login-background img{left:28%;opacity:1}.j-entry-heading-space{height:74.24px}}
+
+.j-login-page .j-header{position:relative}
+.j-login-tagline{position:absolute;left:40px;top:calc(100% + 10px);font:400 22px/1.2 Georgia,serif;letter-spacing:-.4px;color:#416148}
+.j-login-page .j-art-note{visibility:hidden}
+@media(max-width:800px){.j-login-tagline{left:24px;font-size:20px}}
+@media(max-width:600px){.j-login-tagline{left:auto;right:22px;top:18px;font-size:14px;letter-spacing:0}}
+
+@media(min-width:801px){.j-login-page .j-header{padding-left:16px}.j-login-tagline{left:16px}}
